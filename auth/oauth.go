@@ -425,6 +425,11 @@ func saveAuth(a *Auth) error {
 	} else {
 		delete(raw, "group")
 	}
+	// Drop any legacy per-credential billing_rate that old downstream
+	// forks may have written into the credential file. Keeping the key
+	// out of the marshalled output normalises files across forks; the
+	// open-source build never wrote it, so this is a no-op there.
+	delete(raw, "billing_rate")
 	a.mu.RUnlock()
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
