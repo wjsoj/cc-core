@@ -1,6 +1,6 @@
 module github.com/wjsoj/cc-core
 
-go 1.26.2
+go 1.25.0
 
 require (
 	github.com/andybalholm/brotli v1.2.1
