@@ -133,6 +133,15 @@ type Auth struct {
 	// header addition. CodexRateLimitsAt is zero = never captured.
 	CodexRateLimits   map[string]string
 	CodexRateLimitsAt time.Time
+
+	// CodexUsage is the latest snapshot from the chatgpt.com web portal's
+	// wham/usage endpoint (FetchCodexUsage). Unlike CodexRateLimits — which
+	// is populated reactively from /responses response headers — CodexUsage
+	// can be refreshed actively, independent of proxy traffic, so the admin
+	// view stays current even when nothing is flowing through. Nil = never
+	// fetched. CodexUsageAt mirrors CodexUsage.Updated.
+	CodexUsage   *CodexUsageInfo
+	CodexUsageAt time.Time
 }
 
 // healthGrace is how long after an isolated failure we still treat the
@@ -207,6 +216,8 @@ func (a *Auth) Snapshot() AuthInfo {
 		ModelMap:          mm,
 		CodexRateLimits:   rl,
 		CodexRateLimitsAt: a.CodexRateLimitsAt,
+		CodexUsage:        a.CodexUsage,
+		CodexUsageAt:      a.CodexUsageAt,
 	}
 }
 
@@ -228,6 +239,8 @@ type AuthInfo struct {
 	ModelMap          map[string]string
 	CodexRateLimits   map[string]string
 	CodexRateLimitsAt time.Time
+	CodexUsage        *CodexUsageInfo
+	CodexUsageAt      time.Time
 }
 
 // IsQuotaExceeded reports true if Anthropic has signalled this auth is out of
