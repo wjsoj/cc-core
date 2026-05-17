@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -121,32 +122,68 @@ func (a *Auth) FetchCodexUsage(ctx context.Context, useUTLS bool) (*CodexUsageIn
 		return nil, fmt.Errorf("no access token after refresh")
 	}
 
-	// chatgpt.com is TLS-fingerprinted by Cloudflare — use a fresh per-call
-	// client to avoid h2 reuse pitfalls (see NewPlainHTTPClient docs).
-	client := NewPlainHTTPClient(a.ProxyURL, useUTLS)
+	// Use the pooled keep-alive client (ClientFor) rather than a fresh
+	// per-call client. wham/usage is a simple GET that doesn't suffer from
+	// the h2 reuse pitfalls that affect /responses streams, AND the SOCKS5
+	// proxies the project commonly tunnels through choke on rapidly
+	// repeated TLS handshakes (observed: "connection reset by peer" on
+	// every 2nd/3rd back-to-back probe through providers like 38.80.x.x).
+	// Keep-alive sidesteps both issues by reusing the existing connection.
+	client := ClientFor(a.ProxyURL, useUTLS)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, codexWhamUsageURL, nil)
-	if err != nil {
-		return nil, err
+	buildReq := func() (*http.Request, error) {
+		r, err := http.NewRequestWithContext(ctx, http.MethodGet, codexWhamUsageURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("Accept", "*/*")
+		r.Header.Set("Accept-Encoding", "identity")
+		r.Header.Set("Accept-Language", "en")
+		r.Header.Set("User-Agent", codexWebUserAgent)
+		r.Header.Set("Referer", "https://chatgpt.com/codex/cloud/settings/analytics")
+		r.Header.Set("Oai-Client-Version", codexWebClientVersion)
+		r.Header.Set("Oai-Client-Build-Number", codexWebClientBuildNumber)
+		r.Header.Set("Oai-Language", "en")
+		r.Header.Set("X-Openai-Target-Path", "/backend-api/wham/usage")
+		r.Header.Set("X-Openai-Target-Route", "/backend-api/wham/usage")
+		r.Header.Set("Sec-Fetch-Dest", "empty")
+		r.Header.Set("Sec-Fetch-Mode", "cors")
+		r.Header.Set("Sec-Fetch-Site", "same-origin")
+		return r, nil
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Accept-Encoding", "identity")
-	req.Header.Set("Accept-Language", "en")
-	req.Header.Set("User-Agent", codexWebUserAgent)
-	req.Header.Set("Referer", "https://chatgpt.com/codex/cloud/settings/analytics")
-	req.Header.Set("Oai-Client-Version", codexWebClientVersion)
-	req.Header.Set("Oai-Client-Build-Number", codexWebClientBuildNumber)
-	req.Header.Set("Oai-Language", "en")
-	req.Header.Set("X-Openai-Target-Path", "/backend-api/wham/usage")
-	req.Header.Set("X-Openai-Target-Route", "/backend-api/wham/usage")
-	req.Header.Set("Sec-Fetch-Dest", "empty")
-	req.Header.Set("Sec-Fetch-Mode", "cors")
-	req.Header.Set("Sec-Fetch-Site", "same-origin")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("wham/usage GET: %w", err)
+	// Best-effort retry on transient transport failures. The pooled client
+	// recovers fast (next call gets a fresh connection), so a single retry
+	// after a brief sleep almost always succeeds. We DO NOT retry on
+	// non-2xx HTTP responses — those are upstream signals (401 / 403 / 429)
+	// that the caller needs to see verbatim.
+	var resp *http.Response
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 250 * time.Millisecond):
+			}
+		}
+		req, err := buildReq()
+		if err != nil {
+			return nil, err
+		}
+		resp, err = client.Do(req)
+		if err == nil {
+			lastErr = nil
+			break
+		}
+		lastErr = err
+		if !isRetryableCodexUsageErr(err) {
+			break
+		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("wham/usage GET: %w", lastErr)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -218,4 +255,30 @@ func (a *Auth) FetchCodexUsage(ctx context.Context, useUTLS bool) (*CodexUsageIn
 	}
 
 	return info, nil
+}
+
+// isRetryableCodexUsageErr classifies transport errors that are worth retrying
+// when probing wham/usage. The notable case is SOCKS5 proxies (commonly used
+// for chatgpt.com from regions with restricted routing) throttling rapid
+// sequential TLS handshakes — they answer the first connection then RST the
+// next one or two, and recover after a brief pause. Errors that indicate a
+// real problem (auth failure, DNS, request-build) are NOT retried.
+func isRetryableCodexUsageErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	// uTLS handshake reset by the proxy mid-handshake.
+	if strings.Contains(s, "connection reset by peer") {
+		return true
+	}
+	// Generic broken-pipe / EOF mid-handshake from a half-closed pooled conn.
+	if strings.Contains(s, "broken pipe") || strings.Contains(s, "unexpected EOF") {
+		return true
+	}
+	// HTTP/2 GOAWAY when chatgpt.com cycles the stream.
+	if strings.Contains(s, "http2: server sent GOAWAY") {
+		return true
+	}
+	return false
 }
