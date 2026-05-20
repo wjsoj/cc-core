@@ -14,7 +14,13 @@ import (
 // sessions with slot-based concurrency for OAuth and unlimited for API keys.
 //
 // Concurrency model:
-//   - A "client session" is identified by the client's access token.
+//   - A "client session" (= one slot) is identified by (provider, client
+//     access token, sessionID). sessionID is the client-supplied per-window
+//     identifier (Claude Code's X-Claude-Code-Session-Id); when it is empty
+//     the session degrades to one slot per (provider, client token).
+//   - One user with N open CLI windows therefore presents N independent
+//     sessions, each sticky-assigned (and load-balanced) on its own — so a
+//     single user's windows can be spread across different OAuth credentials.
 //   - When a session makes a request, it is sticky-assigned to one OAuth auth.
 //   - The OAuth auth holds at most MaxConcurrent distinct active sessions.
 //   - A session is considered active if its last request is within ActiveWindow.
@@ -24,7 +30,7 @@ type Pool struct {
 	mu           sync.Mutex
 	oauths       []*Auth
 	apikeys      []*Auth
-	sessions     map[string]*session // client token -> session
+	sessions     map[string]*session // slot key (provider|token|sessionID) -> session
 	activeWindow time.Duration
 	useUTLS      bool
 	defaultProxy string
@@ -44,10 +50,21 @@ type Pool struct {
 
 type session struct {
 	clientToken string
+	sessionID   string // client per-window slot id; "" = one slot per token
 	provider    string // canonical provider id; sessions are scoped per-provider
 	authID      string // empty = never assigned
 	kind        Kind
 	lastSeen    time.Time
+}
+
+// slotKey builds the per-slot sessions-map key. A non-empty sessionID makes
+// each client window (one Claude Code CLI session) an independent slot, so one
+// user running several windows holds several slots and is load-balanced across
+// credentials window-by-window. Empty sessionID collapses to one slot per
+// (provider, client token) — the pre-sessionID behaviour, used for raw API
+// callers that send no window identifier.
+func slotKey(provider, clientToken, sessionID string) string {
+	return provider + "|" + clientToken + "|" + sessionID
 }
 
 func NewPool(oauths, apikeys []*Auth, activeWindow time.Duration, useUTLS bool, defaultProxy string) *Pool {
@@ -111,21 +128,28 @@ func (p *Pool) activeCountLocked(authID string, now time.Time) int {
 // preferred, falling back to public ("") credentials when the group's
 // credentials are exhausted. clientGroup == "" means public-only.
 // provider restricts selection to credentials of that upstream provider
-// (anthropic/openai) — sessions are keyed per (clientToken, provider) so a
-// token hitting both endpoints maintains independent stickiness.
+// (anthropic/openai) — sessions are keyed per (provider, clientToken,
+// sessionID) so a token hitting both endpoints maintains independent
+// stickiness.
+//
+// sessionID is the client-supplied per-window identifier (Claude Code's
+// X-Claude-Code-Session-Id). Each distinct value is its own slot, so the same
+// user opening another CLI window joins as a fresh session and is scheduled
+// independently — potentially onto a different credential. Pass "" for clients
+// that send no window identifier; the pool then keeps one slot per token.
 //
 // excludeIDs lets a retrying caller skip credentials it has already tried in
 // the current request, so a transient connection error on one credential
 // doesn't keep selecting the same one (the sticky-session logic would
 // otherwise pin the client to the failing auth until its session times out).
-func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, clientModel string, excludeIDs ...string) *Auth {
+func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, clientModel, sessionID string, excludeIDs ...string) *Auth {
 	provider = NormalizeProvider(provider)
 	clientGroup = NormalizeGroup(clientGroup)
 	excluded := make(map[string]bool, len(excludeIDs))
 	for _, id := range excludeIDs {
 		excluded[id] = true
 	}
-	sessionKey := provider + "|" + clientToken
+	sessionKey := slotKey(provider, clientToken, sessionID)
 
 	// Tiers, in preference order:
 	//   1. the client's own group, if it's a named non-shared group
@@ -153,7 +177,7 @@ func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, 
 
 	s, ok := p.sessions[sessionKey]
 	if !ok {
-		s = &session{clientToken: clientToken, provider: provider}
+		s = &session{clientToken: clientToken, sessionID: sessionID, provider: provider}
 		p.sessions[sessionKey] = s
 	}
 
@@ -263,13 +287,14 @@ func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, 
 }
 
 // Release stamps the session as seen right now (call at end of request).
-// This extends its active window. provider must match the one used on the
-// paired Acquire — sessions are scoped per (clientToken, provider).
-func (p *Pool) Release(provider, clientToken string) {
+// This extends its active window. provider and sessionID must match the ones
+// used on the paired Acquire — sessions are scoped per (provider, clientToken,
+// sessionID).
+func (p *Pool) Release(provider, clientToken, sessionID string) {
 	provider = NormalizeProvider(provider)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if s, ok := p.sessions[provider+"|"+clientToken]; ok {
+	if s, ok := p.sessions[slotKey(provider, clientToken, sessionID)]; ok {
 		s.lastSeen = time.Now()
 	}
 }
@@ -277,12 +302,13 @@ func (p *Pool) Release(provider, clientToken string) {
 // Unstick clears the sticky credential binding for a client session so the
 // next Acquire picks a fresh credential. Call this when the current credential
 // returned an upstream error — otherwise the client keeps hitting the same
-// failing auth until the session expires. provider must match Acquire.
-func (p *Pool) Unstick(provider, clientToken string) {
+// failing auth until the session expires. provider and sessionID must match
+// Acquire.
+func (p *Pool) Unstick(provider, clientToken, sessionID string) {
 	provider = NormalizeProvider(provider)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if s, ok := p.sessions[provider+"|"+clientToken]; ok {
+	if s, ok := p.sessions[slotKey(provider, clientToken, sessionID)]; ok {
 		s.authID = ""
 	}
 }
