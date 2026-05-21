@@ -14,7 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Anthropic OAuth constants. Mirror what `claude-cli/2.1.126` actually
+// Anthropic OAuth constants. Mirror what `claude-cli/2.1.146` actually
 // hits — the token endpoint moved off `api.anthropic.com` to a dedicated
 // `platform.claude.com` host in late 2025. The client_id is the public
 // OAuth application UUID for "Claude Code" (matches the `application.uuid`
