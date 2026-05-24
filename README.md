@@ -66,6 +66,12 @@ above; the only shared import is `thinkingsig` (used by `kirobridge` in v0.7.0).
 - `kiroapi` — typed clients for `ListAvailableModels`, `GenerateAssistantResponse`
   (streaming, returns a frame iterator), `SendTelemetryEvent` (per-turn
   business metrics), and `ToolkitTelemetry` (SigV4-signed `/metrics`).
+- `kirobridge` (v0.7.0) — Anthropic `/v1/messages` ↔ Kiro translation.
+  `Convert()` builds a `KiroRequest` from an `AnthropicRequest` (system →
+  context entry, messages → history, tools → toolSpecifications, tool_result
+  → toolResults). `StreamTranslator` turns the Kiro event-stream into the
+  Anthropic SSE event sequence (`message_start` → `content_block_*` →
+  `message_delta` → `message_stop`).
 
 Verified against `crack/kiro/rows/` (real kiro-cli 2.4.1 captures). Bumping
 the kiro client target is a one-place change in `kirotransport/fingerprint.go`.
@@ -118,6 +124,7 @@ consumes Phase 1+2+3; hypitoken consumes Phase 1+2).
 | `kirotransport` | **may evolve** | SigV4 + event-stream codec are stable; fingerprint constants track upstream releases |
 | `kirocognito` | **stable** | Wraps two AWS-side calls; surface won't grow |
 | `kiroapi` | **may evolve** | Typed model fields may grow as new event-types appear in captures |
+| `kirobridge` | **may evolve** | v0.7.0 covers text + tool_use round-trips; image / websearch / schema-normalization land in v0.7.x |
 
 ## License
 

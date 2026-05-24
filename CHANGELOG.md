@@ -1,5 +1,50 @@
 # Changelog
 
+## v0.7.0 — kirobridge: Anthropic /v1/messages ↔ Kiro translation
+
+Lets a fork proxy `/v1/messages` requests to a Kiro credential pool without
+hand-rolling 4000+ lines of conversion logic.
+
+### New package
+
+- **`kirobridge`** — Anthropic ↔ Kiro translation layer.
+  - `Convert(req *AnthropicRequest, opts ConvertOptions) (*KiroRequest, error)`
+    — folds Anthropic `system` into the current user message as a
+    `--- CONTEXT ENTRY BEGIN ---` block (Kiro has no top-level system field);
+    converts `messages[…]` history (including `tool_use` / `tool_result`
+    blocks) into Kiro's `history[]` + `userInputMessageContext.toolResults`;
+    maps Anthropic tools to Kiro `toolSpecifications`.
+  - `MapModel(anthropicName) string` — table-driven model mapping with
+    prefix fallback to `"auto"`.
+  - `StreamTranslator(src *kiroapi.Stream, model, msgID)` — converts a Kiro
+    event-stream into the Anthropic SSE event sequence: `message_start`,
+    `content_block_start` / `content_block_delta` / `content_block_stop`
+    (for both text and tool_use blocks), `message_delta`, `message_stop`.
+  - Typed Anthropic + Kiro request/response models so the translation has
+    no `interface{}` in its hot path.
+
+### Verified
+
+10 unit tests including round-trip of text deltas, multi-block tool_use,
+history with tool_result, model mapping, and conversation_id derivation.
+End-to-end test exercises `Convert` → `kiroapi.GenerateAssistantResponse`
+(httptest) → `StreamTranslator` → SSE event sequence.
+
+### Deferred to v0.7.x
+
+- Image content block translation (currently emitted as a stub line).
+- Full JSON-schema normalization for MCP-defined tools (schema is passed
+  through verbatim; works for well-formed schemas).
+- WebSearch tool transform (kiro.rs `anthropic/websearch.rs` is ~760 LOC of
+  domain logic; ship separately once a fork actually needs it).
+
+### Versioning
+
+v0.7.x is the bridge; v1.0.0 still waits on hypitoken to consume Phase 3
+mimicry+sidecar (independent of kiro work).
+
+---
+
 ## v0.6.0 — Kiro / Amazon Q foundation
 
 Adds the four-package isolated subtree for talking to the Kiro / kiro-cli
