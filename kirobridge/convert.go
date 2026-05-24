@@ -9,48 +9,58 @@ import (
 
 // ConvertOptions tunes the request-side translation behavior.
 type ConvertOptions struct {
-	// AgentTaskType defaults to "vibe" (kiro.rs precedent). Override to "" to
-	// omit the field.
+	// AgentTaskType defaults to "vibe" (kiro.rs precedent).
 	AgentTaskType string
-
-	// ChatTriggerType defaults to "MANUAL". Override to "" to omit.
+	// ChatTriggerType defaults to "MANUAL" — "AUTO" can trigger 400s upstream.
 	ChatTriggerType string
-
-	// Origin defaults to "AI_EDITOR" — what real Kiro IDE sends.
-	// For CLI flavor, set to "KIRO_CLI".
+	// Origin defaults to "AI_EDITOR" (kiro.rs IDE flavor). Use "KIRO_CLI" for
+	// CLI flavor.
 	Origin string
-
-	// ProfileARN to attach at the top level. Required by Kiro to bill the
-	// request to the right account. Pass kiroauth.SharedProfileARN.
+	// ProfileARN to attach at the top level. Required for billing; pass
+	// kiroauth.SharedProfileARN unless you have a custom enterprise profile.
 	ProfileARN string
-
-	// ConversationID. If empty, derived from sha256(first user message text +
-	// first assistant message text, if any) so multi-turn conversations are
-	// stable per Anthropic-side conversation.
+	// ConversationID. If empty, derives from req.metadata.user_id (when it
+	// carries a session UUID) or from a sha256 of the messages.
 	ConversationID string
+	// AllowImages toggles image content block processing. Set false for
+	// FlavorCLI requests targeting text-only models (e.g. glm-5).
+	AllowImages bool
+}
+
+// ConvertResult is the return shape — KiroRequest plus the tool-name map so a
+// fork can rename tool_use events on the response side back to their original
+// names when ShortenToolName fired.
+type ConvertResult struct {
+	Request     *KiroRequest
+	ToolNameMap ToolNameMap
 }
 
 // Convert builds a Kiro GenerateAssistantResponse request from an Anthropic
 // /v1/messages payload.
 //
-// The Anthropic system prompt is folded into the current user message as a
-// `--- CONTEXT ENTRY BEGIN ---` block (Kiro has no top-level system field).
-// Tools attach to the current message's userInputMessageContext. Prior
-// messages become history entries; tool_result blocks on a user turn move
-// into the corresponding history user message's toolResults.
+// Translation rules (mirrors kiro.rs convert_request):
 //
-// At least one user message is required.
-func Convert(req *AnthropicRequest, opts ConvertOptions) (*KiroRequest, error) {
+//  1. Map model name → Kiro modelId. Falls through to ModelAuto if unknown.
+//  2. Drop a trailing assistant message (Claude 4.x deprecates prefill;
+//     Kiro rejects it).
+//  3. Derive conversationId from metadata.user_id session UUID, then from
+//     content hash if missing.
+//  4. Walk messages: last user message → currentMessage, prior → history.
+//  5. Fold system prompt into currentMessage.content as a CONTEXT ENTRY block.
+//  6. Convert images on the last message via media_type → format inference.
+//  7. Validate tool_use ↔ tool_result pairing; drop orphans on both sides.
+//  8. Add placeholder Tool entries for any tool name used in history but
+//     missing from tools[] (Kiro requires every used tool to be declared).
+//  9. Shorten tool names > 63 chars; record the mapping.
+// 10. Normalize each tool's input_schema.
+//
+// Requires at least one user message; returns *ConvertError otherwise.
+func Convert(req *AnthropicRequest, opts ConvertOptions) (*ConvertResult, error) {
 	if req == nil {
 		return nil, &ConvertError{Msg: "anthropic request is nil"}
 	}
 	if len(req.Messages) == 0 {
 		return nil, &ConvertError{Msg: "anthropic request has no messages"}
-	}
-
-	if opts.AgentTaskType == "" && opts != (ConvertOptions{ProfileARN: opts.ProfileARN}) {
-		// Only default when caller didn't pass a zero options struct *for*
-		// AgentTaskType — but it's simpler: just default to vibe always.
 	}
 	if opts.AgentTaskType == "" {
 		opts.AgentTaskType = "vibe"
@@ -63,28 +73,55 @@ func Convert(req *AnthropicRequest, opts ConvertOptions) (*KiroRequest, error) {
 	}
 
 	modelID := MapModel(req.Model)
+	if modelID == "" {
+		modelID = ModelAuto
+	}
 	systemText := parseSystem(req.System)
 
-	// Walk messages: everything except the last user message becomes history.
-	// If the last message is assistant, treat it as history too and synthesize
-	// an empty current user message (Anthropic forbids this; we error).
-	lastIdx := len(req.Messages) - 1
-	last := req.Messages[lastIdx]
+	// Strip trailing assistant (prefill) by truncating to the last user msg.
+	msgs := dropTrailingAssistant(req.Messages)
+	if len(msgs) == 0 {
+		return nil, &ConvertError{Msg: "no user messages after prefill strip"}
+	}
+	lastIdx := len(msgs) - 1
+	last := msgs[lastIdx]
 	if last.Role != "user" {
 		return nil, &ConvertError{Msg: "last message must have role=user"}
 	}
 
-	history := buildHistory(req.Messages[:lastIdx], modelID, opts.Origin)
-
 	currentBlocks := parseContent(last.Content)
-	currentContent, currentToolResults := splitUserContent(currentBlocks)
+	currentContent, currentImages, currentToolResults := splitUserContent(currentBlocks, opts.AllowImages)
 	if systemText != "" {
 		currentContent = wrapWithContext(systemText, currentContent)
 	}
 
-	tools := convertTools(req.Tools)
+	history := buildHistory(msgs[:lastIdx], modelID, opts.Origin, opts.AllowImages)
+
+	// Validate tool_use ↔ tool_result pairing; remove orphans.
+	validated, orphans := validateToolPairing(history, currentToolResults)
+	removeOrphanedToolUses(history, orphans)
+
+	nameMap := make(ToolNameMap)
+	tools := convertTools(req.Tools, nameMap)
+
+	// Add placeholders for any history tool name missing from tools[].
+	existing := make(map[string]bool, len(tools))
+	for _, t := range tools {
+		existing[strings.ToLower(t.ToolSpecification.Name)] = true
+	}
+	for _, name := range collectHistoryToolNames(history) {
+		if !existing[strings.ToLower(name)] {
+			tools = append(tools, placeholderTool(name))
+			existing[strings.ToLower(name)] = true
+		}
+	}
 
 	convID := opts.ConversationID
+	if convID == "" {
+		if req.Metadata != nil {
+			convID = ExtractSessionID(req.Metadata.UserID)
+		}
+	}
 	if convID == "" {
 		convID = deriveConversationID(req.Messages)
 	}
@@ -100,23 +137,37 @@ func Convert(req *AnthropicRequest, opts ConvertOptions) (*KiroRequest, error) {
 					Content: currentContent,
 					ModelID: modelID,
 					Origin:  opts.Origin,
+					Images:  currentImages,
 					UserInputMessageContext: KiroUserInputMessageContext{
 						Tools:       tools,
-						ToolResults: currentToolResults,
+						ToolResults: validated,
 					},
 				},
 			},
 			History: history,
 		},
 	}
-	return kr, nil
+	return &ConvertResult{Request: kr, ToolNameMap: nameMap}, nil
 }
 
-// splitUserContent walks the Anthropic user-turn blocks and produces:
-//   - a concatenated text content string for Kiro's `content` field
-//   - the tool_result blocks broken out into Kiro's toolResults shape
-func splitUserContent(blocks []ContentBlock) (string, []KiroToolResult) {
+// dropTrailingAssistant truncates msgs to the last user message. Returns the
+// original slice when the last message is already user (no copy).
+func dropTrailingAssistant(msgs []AnthropicMessage) []AnthropicMessage {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "user" {
+			return msgs[:i+1]
+		}
+	}
+	return nil
+}
+
+// splitUserContent walks Anthropic user-turn blocks into:
+//   - concatenated text content for Kiro's `content` field
+//   - image attachments
+//   - tool_result entries
+func splitUserContent(blocks []ContentBlock, allowImages bool) (string, []KiroImage, []KiroToolResult) {
 	var sb strings.Builder
+	var images []KiroImage
 	var results []KiroToolResult
 	for _, b := range blocks {
 		switch b.Type {
@@ -125,22 +176,60 @@ func splitUserContent(blocks []ContentBlock) (string, []KiroToolResult) {
 				sb.WriteString("\n")
 			}
 			sb.WriteString(b.Text)
+		case "image":
+			if !allowImages || b.Source == nil {
+				continue
+			}
+			img := convertImage(b.Source)
+			if img != nil {
+				images = append(images, *img)
+			}
 		case "tool_result":
 			results = append(results, convertToolResult(b))
-		case "image":
-			// Image handling is deferred to v0.7.x; pass through as a stub line.
-			if sb.Len() > 0 {
-				sb.WriteString("\n")
-			}
-			sb.WriteString("[image content omitted — v0.7.0 limitation]")
 		}
 	}
-	return sb.String(), results
+	return sb.String(), images, results
 }
 
-// convertToolResult maps an Anthropic tool_result content block to KiroToolResult.
-// Anthropic content can be a bare string OR an array of blocks; we coerce both
-// to Kiro's [{"text": "..."}] shape.
+// convertImage maps an Anthropic image source to a KiroImage. Returns nil
+// when the media_type is unsupported or the data is unfetchable (url-source).
+func convertImage(src *ImageSource) *KiroImage {
+	if src == nil {
+		return nil
+	}
+	if src.Type != "base64" {
+		// url-source: we don't fetch remote at this layer. Caller can
+		// pre-process by downloading + setting Type="base64" + Data.
+		return nil
+	}
+	format := imageFormatFromMediaType(src.MediaType)
+	if format == "" {
+		return nil
+	}
+	return &KiroImage{
+		Format: format,
+		Source: KiroImageSource{Bytes: src.Data},
+	}
+}
+
+func imageFormatFromMediaType(mt string) string {
+	switch strings.ToLower(mt) {
+	case "image/jpeg", "image/jpg":
+		return "jpeg"
+	case "image/png":
+		return "png"
+	case "image/gif":
+		return "gif"
+	case "image/webp":
+		return "webp"
+	default:
+		return ""
+	}
+}
+
+// convertToolResult maps an Anthropic tool_result block to KiroToolResult.
+// Anthropic content can be a string OR an array of text blocks; we coerce
+// both to Kiro's [{"text": "..."}] shape (joined with newlines).
 func convertToolResult(b ContentBlock) KiroToolResult {
 	tr := KiroToolResult{ToolUseID: b.ToolUseID}
 	if b.IsError {
@@ -166,29 +255,25 @@ func toolResultContent(raw json.RawMessage) []map[string]any {
 	if raw[0] == '[' {
 		var inner []ContentBlock
 		if err := json.Unmarshal(raw, &inner); err == nil {
-			var out []map[string]any
+			// kiro.rs joins all text blocks into a single {"text": joined}.
+			var parts []string
 			for _, blk := range inner {
-				switch blk.Type {
-				case "text":
-					out = append(out, map[string]any{"text": blk.Text})
-				default:
-					out = append(out, map[string]any{"text": ""})
+				if blk.Type == "text" {
+					parts = append(parts, blk.Text)
 				}
 			}
-			if len(out) == 0 {
-				out = []map[string]any{{"text": ""}}
+			if len(parts) > 0 {
+				return []map[string]any{{"text": strings.Join(parts, "\n")}}
 			}
-			return out
+			return []map[string]any{{"text": ""}}
 		}
 	}
-	// Object or fallback: stuff under text key as JSON string.
+	// Object or fallback: serialize verbatim as text.
 	return []map[string]any{{"text": string(raw)}}
 }
 
-// buildHistory converts every message except the last into a Kiro history entry.
-// User messages collapse their text blocks; assistant messages keep text +
-// tool_use blocks.
-func buildHistory(msgs []AnthropicMessage, modelID, origin string) []KiroHistoryEntry {
+// buildHistory converts every message except the last into Kiro history entries.
+func buildHistory(msgs []AnthropicMessage, modelID, origin string, allowImages bool) []KiroHistoryEntry {
 	if len(msgs) == 0 {
 		return nil
 	}
@@ -197,12 +282,13 @@ func buildHistory(msgs []AnthropicMessage, modelID, origin string) []KiroHistory
 		blocks := parseContent(m.Content)
 		switch m.Role {
 		case "user":
-			text, results := splitUserContent(blocks)
+			text, images, results := splitUserContent(blocks, allowImages)
 			out = append(out, KiroHistoryEntry{
 				UserInputMessage: &KiroUserInputMessage{
 					Content: text,
 					ModelID: modelID,
 					Origin:  origin,
+					Images:  images,
 					UserInputMessageContext: KiroUserInputMessageContext{
 						ToolResults: results,
 					},
@@ -232,41 +318,138 @@ func splitAssistantContent(blocks []ContentBlock) (string, []KiroToolUseEntry) {
 			}
 			sb.WriteString(b.Text)
 		case "tool_use":
+			input := b.Input
+			if len(input) == 0 {
+				input = json.RawMessage(`{}`)
+			}
 			uses = append(uses, KiroToolUseEntry{
 				ToolUseID: b.ID,
 				Name:      b.Name,
-				Input:     b.Input,
+				Input:     input,
 			})
 		}
 	}
 	return sb.String(), uses
 }
 
-func convertTools(tools []AnthropicTool) []KiroTool {
+func convertTools(tools []AnthropicTool, nameMap ToolNameMap) []KiroTool {
 	if len(tools) == 0 {
 		return nil
 	}
 	out := make([]KiroTool, 0, len(tools))
 	for _, t := range tools {
-		schema := t.InputSchema
-		if len(schema) == 0 {
-			schema = json.RawMessage(`{"type":"object","properties":{}}`)
-		}
+		short := ShortenToolName(t.Name)
+		nameMap.Apply(short, t.Name)
 		out = append(out, KiroTool{
 			ToolSpecification: KiroToolSpec{
-				Name:        t.Name,
+				Name:        short,
 				Description: t.Description,
-				InputSchema: KiroInputSchema{JSON: schema},
+				InputSchema: KiroInputSchema{JSON: NormalizeJSONSchema(t.InputSchema)},
 			},
 		})
 	}
 	return out
 }
 
-// wrapWithContext prepends the system prompt as a `--- CONTEXT ENTRY ---`
-// block. Real Kiro CLI uses this convention to inject project context; we
-// reuse it to smuggle the Anthropic system prompt past Kiro's no-system-field
-// constraint.
+// validateToolPairing walks history to collect all tool_use IDs and which of
+// them already have a tool_result in history. Then for each currentResult:
+//   - if it matches an unpaired history tool_use ID → keep
+//   - if it matches an already-paired tool_use ID → drop (duplicate)
+//   - if it matches no known tool_use → drop (orphan)
+//
+// Returns kept tool_results AND the set of tool_use IDs from history that
+// never got a tool_result (orphan tool_use; caller must scrub from history).
+func validateToolPairing(history []KiroHistoryEntry, currentResults []KiroToolResult) ([]KiroToolResult, map[string]bool) {
+	allUseIDs := make(map[string]bool)
+	pairedUseIDs := make(map[string]bool)
+	for _, e := range history {
+		if e.AssistantResponseMessage != nil {
+			for _, tu := range e.AssistantResponseMessage.ToolUses {
+				allUseIDs[tu.ToolUseID] = true
+			}
+		}
+		if e.UserInputMessage != nil {
+			for _, tr := range e.UserInputMessage.UserInputMessageContext.ToolResults {
+				pairedUseIDs[tr.ToolUseID] = true
+			}
+		}
+	}
+	unpaired := make(map[string]bool, len(allUseIDs))
+	for id := range allUseIDs {
+		if !pairedUseIDs[id] {
+			unpaired[id] = true
+		}
+	}
+
+	kept := make([]KiroToolResult, 0, len(currentResults))
+	for _, r := range currentResults {
+		if unpaired[r.ToolUseID] {
+			kept = append(kept, r)
+			delete(unpaired, r.ToolUseID)
+		}
+		// else: orphan or duplicate → silently drop (kiro.rs would log; we omit logger dep)
+	}
+	return kept, unpaired
+}
+
+// removeOrphanedToolUses scrubs ToolUses entries from history whose ID is in
+// orphans. Entries become nil-out if they end up empty.
+func removeOrphanedToolUses(history []KiroHistoryEntry, orphans map[string]bool) {
+	if len(orphans) == 0 {
+		return
+	}
+	for i := range history {
+		am := history[i].AssistantResponseMessage
+		if am == nil || len(am.ToolUses) == 0 {
+			continue
+		}
+		kept := am.ToolUses[:0]
+		for _, tu := range am.ToolUses {
+			if !orphans[tu.ToolUseID] {
+				kept = append(kept, tu)
+			}
+		}
+		if len(kept) == 0 {
+			am.ToolUses = nil
+		} else {
+			am.ToolUses = kept
+		}
+	}
+}
+
+func collectHistoryToolNames(history []KiroHistoryEntry) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, e := range history {
+		if e.AssistantResponseMessage == nil {
+			continue
+		}
+		for _, tu := range e.AssistantResponseMessage.ToolUses {
+			if !seen[tu.Name] {
+				seen[tu.Name] = true
+				out = append(out, tu.Name)
+			}
+		}
+	}
+	return out
+}
+
+// placeholderTool synthesizes a minimal Tool entry. Kiro requires every tool
+// name referenced in history to be declared in currentMessage.tools — even if
+// the tool definition has since been removed by the caller.
+func placeholderTool(name string) KiroTool {
+	return KiroTool{
+		ToolSpecification: KiroToolSpec{
+			Name:        name,
+			Description: "Tool used in conversation history",
+			InputSchema: KiroInputSchema{JSON: json.RawMessage(
+				`{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{},"required":[],"additionalProperties":true}`)},
+		},
+	}
+}
+
+// wrapWithContext prepends the system prompt as a CONTEXT ENTRY block so it
+// reaches the model through Kiro's no-top-level-system constraint.
 func wrapWithContext(systemText, userText string) string {
 	if systemText == "" {
 		return userText
@@ -279,9 +462,50 @@ func wrapWithContext(systemText, userText string) string {
 	return sb.String()
 }
 
-// deriveConversationID hashes the first user message to a stable UUID-ish
-// string so retries of the same conversation reuse the same id (matches what
-// real Anthropic clients infer from message_id stability).
+// ExtractSessionID pulls a session UUID out of an Anthropic metadata.user_id
+// value. Supports both formats kiro.rs accepts:
+//
+//	JSON object:  {"device_id":"…","account_uuid":"…","session_id":"<UUID>"}
+//	String tag:   user_xxx_account__session_<UUID>
+//
+// Returns "" if neither matches a valid UUID.
+func ExtractSessionID(userID string) string {
+	if userID == "" {
+		return ""
+	}
+	// Try JSON object form.
+	if strings.HasPrefix(strings.TrimSpace(userID), "{") {
+		var obj struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := json.Unmarshal([]byte(userID), &obj); err == nil && isValidUUID(obj.SessionID) {
+			return obj.SessionID
+		}
+	}
+	// Try string-tag form.
+	if i := strings.Index(userID, "session_"); i >= 0 {
+		s := userID[i+len("session_"):]
+		if len(s) >= 36 && isValidUUID(s[:36]) {
+			return s[:36]
+		}
+	}
+	return ""
+}
+
+func isValidUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	count := 0
+	for _, c := range s {
+		if c == '-' {
+			count++
+		}
+	}
+	return count == 4
+}
+
+// deriveConversationID hashes the messages into a stable UUID-shape string.
 func deriveConversationID(msgs []AnthropicMessage) string {
 	if len(msgs) == 0 {
 		return "00000000-0000-0000-0000-000000000000"
@@ -294,7 +518,6 @@ func deriveConversationID(msgs []AnthropicMessage) string {
 		h.Write([]byte{0})
 	}
 	sum := h.Sum(nil)
-	// Format as a UUID (8-4-4-4-12) from the first 16 bytes for readability.
 	hexed := hex.EncodeToString(sum[:16])
 	return hexed[0:8] + "-" + hexed[8:12] + "-" + hexed[12:16] + "-" + hexed[16:20] + "-" + hexed[20:32]
 }

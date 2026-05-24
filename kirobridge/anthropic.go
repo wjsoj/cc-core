@@ -14,8 +14,14 @@ type AnthropicRequest struct {
 	Messages  []AnthropicMessage `json:"messages"`
 	Tools     []AnthropicTool    `json:"tools,omitempty"`
 	Stream    bool               `json:"stream,omitempty"`
-	// Free-form fields we want to round-trip but not interpret:
-	Metadata json.RawMessage `json:"metadata,omitempty"`
+	Metadata  *AnthropicMetadata `json:"metadata,omitempty"`
+}
+
+// AnthropicMetadata mirrors the Anthropic-side opaque metadata blob.
+// user_id is parsed for a session UUID to use as Kiro conversationId — see
+// ExtractSessionID in convert.go.
+type AnthropicMetadata struct {
+	UserID string `json:"user_id,omitempty"`
 }
 
 // AnthropicMessage is one entry in the messages array. Content is either a
@@ -33,12 +39,15 @@ type AnthropicTool struct {
 }
 
 // ContentBlock is one item inside a multi-block message content array.
-// At most one of Text / ToolUse / ToolResult is populated per block.
+// At most one of Text / Image / ToolUse / ToolResult is populated per block.
 type ContentBlock struct {
 	Type string `json:"type"`
 
 	// type=text
 	Text string `json:"text,omitempty"`
+
+	// type=image
+	Source *ImageSource `json:"source,omitempty"`
 
 	// type=tool_use (Anthropic assistant turn)
 	ID    string          `json:"id,omitempty"`
@@ -49,6 +58,18 @@ type ContentBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"` // string | array of blocks | object
 	IsError   bool            `json:"is_error,omitempty"`
+}
+
+// ImageSource is the wrapped image data on a type=image content block.
+// Anthropic supports two source.type values:
+//   - "base64": MediaType + Data (raw base64, no data: prefix)
+//   - "url": URL to fetch (caller responsible for download; we don't fetch
+//     remotely at this layer)
+type ImageSource struct {
+	Type      string `json:"type"`                 // "base64" | "url"
+	MediaType string `json:"media_type,omitempty"` // "image/png" | "image/jpeg" | ...
+	Data      string `json:"data,omitempty"`       // base64 payload
+	URL       string `json:"url,omitempty"`        // when type=url
 }
 
 // parseContent yields a normalized list of blocks regardless of whether the

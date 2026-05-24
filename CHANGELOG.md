@@ -1,5 +1,96 @@
 # Changelog
 
+## v0.7.1 — kirobridge parity with kiro.rs + Kiro credits API
+
+Catches up to kiro.rs feature-set + adds the per-credential quota endpoint.
+The v0.7.0 ModelMap had the wrong Kiro IDs (used uppercase placeholders);
+this release corrects them against the captured ListAvailableModels response.
+
+### Breaking — ModelMap rewrite
+
+**v0.7.0 returned bogus IDs.** Real Kiro modelIds are lowercase + dotted:
+`claude-opus-4.7`, `claude-sonnet-4.6`, `claude-haiku-4.5`, etc. Anyone who
+shipped against v0.7.0 will get `ValidationException` upstream; the v0.7.1
+IDs match captured `ListAvailableModels` responses verbatim.
+
+- `MapModel("claude-opus-4-7")` → **`"claude-opus-4.7"`** (was `"CLAUDE_OPUS_4_1_20250805_V1_0"`).
+- New constants: `ModelClaudeOpus47 / Opus46 / Opus45 / Sonnet46 / Sonnet45 / Sonnet4 / Haiku45`.
+- New non-Anthropic models in the catalog: `deepseek-3.2 / minimax-m2.5 / m2.1 / glm-5 / qwen3-coder-next`.
+- `ContextWindow(modelID)` returns 1,000,000 for Opus 4.6 / 4.7 / Sonnet 4.6, else 200,000.
+- `SupportedInputTypes(modelID)` returns `["TEXT"]` for `glm-5` / `minimax-m2.5`, else `["TEXT", "IMAGE"]`.
+
+### Breaking — Convert return shape
+
+`Convert` now returns `*ConvertResult` (instead of `*KiroRequest`) so the
+caller can recover the tool-name shortening map. Access the request as
+`result.Request`.
+
+### kirobridge — kiro.rs parity work
+
+- **Image content blocks** (`type=image`): converted to `KiroImage` entries
+  on the user message when `ConvertOptions.AllowImages=true`. Supports
+  `source.type=base64` with media_type → format inference
+  (jpeg/png/gif/webp). `source.type=url` is intentionally NOT fetched at
+  this layer; the caller pre-downloads and re-emits as base64.
+- **JSON-schema normalization** (`NormalizeJSONSchema`): coerces malformed
+  MCP tool schemas (`required: null`, missing `type`, etc.) to the canonical
+  shape Kiro accepts, instead of letting the server return 400. Applied
+  automatically inside `Convert`.
+- **Prefill stripping**: a trailing assistant message in `req.messages` is
+  silently dropped before translation (Claude 4.x deprecated prefill; Kiro
+  rejects it).
+- **Tool pairing validation**: orphan `tool_use` (no matching `tool_result`)
+  is scrubbed from history; orphan `tool_result` (no matching `tool_use`)
+  is dropped from the current message.
+- **Placeholder tools for history**: any tool name referenced in history
+  but missing from `req.tools[]` gets a stub `Tool` entry so Kiro accepts
+  the request.
+- **Tool name shortening** (`ShortenToolName`): names > 63 chars get
+  `prefix[:54] + "_" + sha256(name)[:8]`; original → short mapping is
+  returned in `ConvertResult.ToolNameMap` so a fork can rename `tool_use`
+  events on the response side.
+- **Session ID extraction** (`ExtractSessionID`): pulls the session UUID
+  out of Anthropic `metadata.user_id` so multi-turn conversations stay
+  coherent server-side. Supports both JSON form
+  `{"session_id":"UUID"}` and the legacy `user_xxx_account__session_<UUID>`
+  string-tag form.
+
+### kirobridge — WebSearch
+
+New side-channel for the Anthropic `web_search` tool:
+
+- `IsWebSearchRequest(req)` detects `tools.length == 1 && tools[0].name ==
+  "web_search"` and returns the extracted query (strips the
+  "Perform a web search for the query: " prefix Anthropic clients use).
+- `WebSearchClient.Execute(ctx, query)` POSTs a `tools/call` MCP request
+  to `q.<region>.amazonaws.com/mcp`, parses the inner search results.
+- `SynthesizeWebSearchSSE(model, query, results, inputTokens)` produces
+  the 11-event Anthropic SSE sequence (`message_start` → text block →
+  `server_tool_use` → `web_search_tool_result` → summary text →
+  `message_delta`/`message_stop`).
+
+### kiroapi — credits / usage-limits
+
+- `Client.GetCredits(ctx, profileARN)` calls
+  `GET https://q.<region>.amazonaws.com/getUsageLimits?origin=AI_EDITOR&resourceType=AGENTIC_REQUEST`
+  (FlavorCLI uses `origin=KIRO_CLI`).
+- `CreditsResponse` exposes `Plan()`, `UsageTotal()`, `LimitTotal()`,
+  `Remaining()`, `NextResetAt()`. Totals correctly sum the base bucket plus
+  any active free-trial or bonus credits (skipping `EXPIRED` entries).
+
+### Tests
+
+35+ new test cases across `kirobridge` and `kiroapi`. Full `go test ./...`
+green across all 17 packages.
+
+### Still deferred
+
+- `source.type=url` image fetching (caller's responsibility for now).
+- Anthropic `metadata.user_id` is now parsed for session_id but other
+  metadata fields are still ignored.
+
+---
+
 ## v0.7.0 — kirobridge: Anthropic /v1/messages ↔ Kiro translation
 
 Lets a fork proxy `/v1/messages` requests to a Kiro credential pool without
