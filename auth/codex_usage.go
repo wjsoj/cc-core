@@ -108,7 +108,7 @@ func (a *Auth) FetchCodexUsage(ctx context.Context, useUTLS bool) (*CodexUsageIn
 		return nil, fmt.Errorf("nil auth")
 	}
 	if a.Kind != KindOAuth {
-		return nil, fmt.Errorf("codex usage probe requires OAuth credential (got %s)", a.Kind)
+		return nil, fmt.Errorf("codex usage probe requires OAuth credential (got %v)", a.Kind)
 	}
 	if NormalizeProvider(a.Provider) != ProviderOpenAI {
 		return nil, fmt.Errorf("codex usage probe is OpenAI-only (auth is %s)", a.Provider)
