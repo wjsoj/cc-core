@@ -36,20 +36,41 @@ import (
 
 // Token is one client access token. SaaS-side data (wallet balance,
 // user binding, payment history) belongs in a separate layer.
+//
+// Group vs Groups:
+//
+//   - Group (legacy, scalar): single credential group scope. Empty = public.
+//   - Groups (priority-ordered list): zero or more groups tried in order
+//     by Pool.AcquireMulti — fallthrough happens when no healthy credential
+//     exists in the current group. Empty Groups + non-empty Group is
+//     auto-promoted to a single-element Groups (back-compat).
+//
+// Use EffectiveGroups() to read whichever is populated.
 type Token struct {
 	Token         string    `json:"token"`
 	Name          string    `json:"name"`
 	WeeklyUSD     float64   `json:"weekly_usd,omitempty"`     // 0 = no per-token weekly cap
 	MaxConcurrent int       `json:"max_concurrent,omitempty"` // 0 = use global default
 	RPM           int       `json:"rpm,omitempty"`            // 0 = use global default
-	Group         string    `json:"group,omitempty"`          // credential group scope; empty = public
+	Group         string    `json:"group,omitempty"`          // legacy single-group; promoted to Groups when set alone
+	Groups        []string  `json:"groups,omitempty"`         // priority-ordered group fallthrough list
 	CreatedAt     time.Time `json:"created_at,omitempty"`
 }
 
-// View is the API representation returned to the admin panel. Currently
-// identical to Token but kept as a separate type so future SaaS-only
-// fields (e.g. masked-balance display) can be added without bleeding
-// into the persisted Token.
+// EffectiveGroups returns the priority-ordered group list to try. If Groups
+// is set it is returned verbatim; otherwise Group is promoted to a single-
+// element slice; otherwise []string{""} so callers default to the public pool.
+func (t *Token) EffectiveGroups() []string {
+	if len(t.Groups) > 0 {
+		return t.Groups
+	}
+	if t.Group != "" {
+		return []string{t.Group}
+	}
+	return []string{""}
+}
+
+// View is the API representation returned to the admin panel.
 type View struct {
 	Token         string    `json:"token"`
 	Name          string    `json:"name"`
@@ -57,6 +78,7 @@ type View struct {
 	MaxConcurrent int       `json:"max_concurrent,omitempty"`
 	RPM           int       `json:"rpm,omitempty"`
 	Group         string    `json:"group,omitempty"`
+	Groups        []string  `json:"groups,omitempty"`
 	CreatedAt     time.Time `json:"created_at,omitempty"`
 }
 
@@ -99,12 +121,35 @@ func Open(path string) (*Store, error) {
 			continue
 		}
 		t.Group = auth.NormalizeGroup(t.Group)
+		t.Groups = normalizeGroups(t.Groups)
 		if t.WeeklyUSD < 0 {
 			t.WeeklyUSD = 0
 		}
 		s.tokens = append(s.tokens, t)
 	}
 	return s, nil
+}
+
+// normalizeGroups deduplicates + normalizes a group slice, preserving order.
+// Empty entries and dupes drop out.
+func normalizeGroups(groups []string) []string {
+	if len(groups) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(groups))
+	out := make([]string, 0, len(groups))
+	for _, g := range groups {
+		g = auth.NormalizeGroup(g)
+		if g == "" || seen[g] {
+			continue
+		}
+		seen[g] = true
+		out = append(out, g)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // Lookup reports whether tok is a known client token. The returned Token
@@ -153,7 +198,8 @@ func (s *Store) List() []View {
 		out = append(out, View{
 			Token: t.Token, Name: t.Name, WeeklyUSD: t.WeeklyUSD,
 			MaxConcurrent: t.MaxConcurrent, RPM: t.RPM,
-			Group: t.Group, CreatedAt: t.CreatedAt,
+			Group: t.Group, Groups: append([]string(nil), t.Groups...),
+			CreatedAt: t.CreatedAt,
 		})
 	}
 	return out
@@ -170,6 +216,7 @@ func (s *Store) Add(t Token) error {
 	}
 	t.Name = strings.TrimSpace(t.Name)
 	t.Group = auth.NormalizeGroup(t.Group)
+	t.Groups = normalizeGroups(t.Groups)
 	if t.CreatedAt.IsZero() {
 		t.CreatedAt = time.Now()
 	}
@@ -185,7 +232,8 @@ func (s *Store) Add(t Token) error {
 }
 
 // Update patches an existing token. nil fields mean "no change".
-func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int, rpm *int, group *string) error {
+// Passing groups != nil REPLACES the Groups slice (use []string{} to clear).
+func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int, rpm *int, group *string, groups *[]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.tokens {
@@ -216,6 +264,9 @@ func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int
 			}
 			if group != nil {
 				s.tokens[i].Group = auth.NormalizeGroup(*group)
+			}
+			if groups != nil {
+				s.tokens[i].Groups = normalizeGroups(*groups)
 			}
 			return s.saveLocked()
 		}

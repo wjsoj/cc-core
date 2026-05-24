@@ -286,6 +286,45 @@ func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, 
 	return nil
 }
 
+// AcquireMulti walks clientGroups in priority order, calling Acquire for each
+// until one returns a non-nil credential. Returns the chosen group AND the
+// credential, or ("", nil) if every group is exhausted.
+//
+// The returned group name tells the caller which group actually served the
+// request — important for billing (discount lookup) and for the fork's
+// dispatch logic (which upstream to forward to).
+//
+// excludeIDs propagates across all attempts so a credential failing in one
+// group isn't tried again in another (rare, but possible when groups overlap).
+//
+// Behavior is identical to Acquire when clientGroups has exactly one entry.
+// An empty / nil clientGroups is treated as a single empty-string group
+// (public pool).
+func (p *Pool) AcquireMulti(ctx context.Context, provider, clientToken string, clientGroups []string, clientModel, sessionID string, excludeIDs ...string) (string, *Auth) {
+	if len(clientGroups) == 0 {
+		clientGroups = []string{""}
+	}
+	tried := make(map[string]bool, len(excludeIDs))
+	for _, id := range excludeIDs {
+		tried[id] = true
+	}
+	for _, g := range clientGroups {
+		// Collect tried IDs as we go so a failing credential isn't retried
+		// across groups in the same fallthrough chain.
+		ex := make([]string, 0, len(tried))
+		for id := range tried {
+			ex = append(ex, id)
+		}
+		a := p.Acquire(ctx, provider, clientToken, g, clientModel, sessionID, ex...)
+		if a != nil {
+			return NormalizeGroup(g), a
+		}
+		// Acquire failed for this group; mark anything it sticky-rejected as
+		// tried so we don't loop. (No-op when Acquire returns nil cleanly.)
+	}
+	return "", nil
+}
+
 // Release stamps the session as seen right now (call at end of request).
 // This extends its active window. provider and sessionID must match the ones
 // used on the paired Acquire — sessions are scoped per (provider, clientToken,

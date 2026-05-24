@@ -41,7 +41,7 @@ func TestUpdateNilSemantics(t *testing.T) {
 	_ = s.Add(Token{Token: "sk-bbb", Name: "bob", RPM: 10, WeeklyUSD: 1.0})
 	name := "robert"
 	weekly := 2.0
-	if err := s.Update("sk-bbb", &name, &weekly, nil, nil, nil); err != nil {
+	if err := s.Update("sk-bbb", &name, &weekly, nil, nil, nil, nil); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	tok, _ := s.Lookup("sk-bbb")
@@ -55,7 +55,7 @@ func TestUpdateNilSemantics(t *testing.T) {
 	// Negative values get clamped to 0.
 	neg := -5.0
 	negI := -3
-	_ = s.Update("sk-bbb", nil, &neg, &negI, &negI, nil)
+	_ = s.Update("sk-bbb", nil, &neg, &negI, &negI, nil, nil)
 	tok, _ = s.Lookup("sk-bbb")
 	if tok.WeeklyUSD != 0 || tok.MaxConcurrent != 0 || tok.RPM != 0 {
 		t.Fatalf("negative not clamped: %+v", tok)
@@ -99,6 +99,76 @@ func TestPersistAndReload(t *testing.T) {
 	tok, ok := s2.Lookup("sk-persist")
 	if !ok || tok.WeeklyUSD != 3.14 || tok.Group != "g1" {
 		t.Fatalf("rehydrate wrong: %+v ok=%v", tok, ok)
+	}
+}
+
+func TestEffectiveGroups(t *testing.T) {
+	// Groups set: takes precedence
+	tk := Token{Groups: []string{"a", "b"}, Group: "ignored"}
+	got := tk.EffectiveGroups()
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("Groups should win: %v", got)
+	}
+	// Only Group set: promoted
+	tk = Token{Group: "legacy"}
+	got = tk.EffectiveGroups()
+	if len(got) != 1 || got[0] != "legacy" {
+		t.Fatalf("Group should be promoted: %v", got)
+	}
+	// Both empty: public
+	tk = Token{}
+	got = tk.EffectiveGroups()
+	if len(got) != 1 || got[0] != "" {
+		t.Fatalf("empty token should yield public: %v", got)
+	}
+}
+
+func TestNormalizeGroupsDeduplicates(t *testing.T) {
+	s := OpenInMemory()
+	_ = s.Add(Token{Token: "sk-grp", Groups: []string{"alpha", "", "alpha", "beta", "  alpha  "}})
+	tok, _ := s.Lookup("sk-grp")
+	if len(tok.Groups) != 2 || tok.Groups[0] != "alpha" || tok.Groups[1] != "beta" {
+		t.Fatalf("Groups dedup+normalize wrong: %v", tok.Groups)
+	}
+}
+
+func TestUpdateGroups(t *testing.T) {
+	s := OpenInMemory()
+	_ = s.Add(Token{Token: "sk-x", Group: "old"})
+	newGroups := []string{"new1", "new2"}
+	if err := s.Update("sk-x", nil, nil, nil, nil, nil, &newGroups); err != nil {
+		t.Fatal(err)
+	}
+	tok, _ := s.Lookup("sk-x")
+	if len(tok.Groups) != 2 || tok.Groups[0] != "new1" {
+		t.Fatalf("Update did not replace Groups: %v", tok.Groups)
+	}
+	// EffectiveGroups should now use Groups (not the still-set Group).
+	if eff := tok.EffectiveGroups(); len(eff) != 2 || eff[0] != "new1" {
+		t.Fatalf("EffectiveGroups stale: %v", eff)
+	}
+	// Pass &[]string{} to clear.
+	empty := []string{}
+	_ = s.Update("sk-x", nil, nil, nil, nil, nil, &empty)
+	tok, _ = s.Lookup("sk-x")
+	if len(tok.Groups) != 0 {
+		t.Fatalf("Update []string{} should clear Groups, got: %v", tok.Groups)
+	}
+	// And EffectiveGroups falls back to the still-set Group.
+	if eff := tok.EffectiveGroups(); len(eff) != 1 || eff[0] != "old" {
+		t.Fatalf("fallback to Group after clear: %v", eff)
+	}
+}
+
+func TestPersistGroups(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "tokens.json")
+	s1, _ := Open(p)
+	_ = s1.Add(Token{Token: "sk-multi", Groups: []string{"kiro", "claude"}})
+	s2, _ := Open(p)
+	tok, ok := s2.Lookup("sk-multi")
+	if !ok || len(tok.Groups) != 2 || tok.Groups[0] != "kiro" {
+		t.Fatalf("Groups did not persist: %+v ok=%v", tok, ok)
 	}
 }
 

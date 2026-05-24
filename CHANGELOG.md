@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.8.0 — Multi-group tokens + Pool.AcquireMulti
+
+Enables per-token credential-group fallthrough. A token can declare an
+ordered list of groups; the credential picker tries each in priority order
+until one yields a healthy credential. Required for forks routing the
+same token through multiple upstream channels (e.g. official Anthropic →
+Kiro fallback).
+
+### Breaking — `clienttoken.Store.Update` signature
+
+`Update` gained a trailing `groups *[]string` parameter. Pass `nil` to
+leave groups untouched, `&[]string{...}` to replace, `&[]string{}` to clear.
+
+### New — `clienttoken.Token.Groups`
+
+- New `Groups []string` field on `Token` and `View`. Priority-ordered.
+- `Token.EffectiveGroups()` helper: returns `Groups` if non-empty,
+  else promotes the legacy single `Group` field, else `[""]` (public pool).
+- Storage layer dedupes + normalizes (`auth.NormalizeGroup`) entries on
+  load and save.
+- `tokens.json` schema is additive: old files (Group only, no Groups)
+  load unchanged; saves only emit `groups` when non-empty.
+
+### New — `auth.Pool.AcquireMulti`
+
+```go
+group, cred := pool.AcquireMulti(ctx, provider, clientToken,
+    []string{"kiro-anthropic", "claude-official"},
+    model, sessionID, excludeIDs...)
+```
+
+Walks groups in order, calling `Acquire` until one returns a credential.
+Returns the chosen group name (for billing/dispatch routing) plus the
+credential. Empty/nil groups slice is treated as `[""]` (public pool).
+
+The `Release` / `Unstick` / `ReportUpstreamError` APIs are unchanged —
+they key on session, not group.
+
+---
+
 ## v0.7.1 — kirobridge parity with kiro.rs + Kiro credits API
 
 Catches up to kiro.rs feature-set + adds the per-credential quota endpoint.
