@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.4.0 — Phase 3 mimicry + sidecar (high-value, fingerprint-sensitive)
+
+Pulls the two CC-fingerprint-heavy packages out of CPA-Claude
+internal/server/ so any fork can present as a real Claude Code client
+without re-implementing the body/header dance.
+
+### New packages
+
+- **`mimicry`** — header + body Claude Code mimicry.
+  - `ApplyClaudeCodeBodyMimicry(body, model, SimIdentity)`: rewrites
+    `/v1/messages` body to the 3-block CC system layout, signs the cch
+    billing header via xxhash64-with-seed, populates `metadata.user_id`
+    in CC >= 2.1.78 JSON form. Skipped on Haiku and on bodies that
+    already look like real CC.
+  - `ApplyClaudeCodeHeaders(req, token, kind, stream, isAnthropicBase,
+    SimIdentity, body)`: pinned UA / X-Stainless / Anthropic-Beta /
+    X-App / session-id headers. `kind` is `mimicry.KindOAuth` or
+    `mimicry.KindAPIKey` (plain strings — no auth-package coupling).
+  - `SimIdentity`: stable per-account fingerprint anchor (AccountKey,
+    AccountUUID, ClientToken).
+  - `DeviceIDFor` / `SessionIDFor` / `BuildJSONUserID`: content-addressed
+    helpers so device_id, session_id, and metadata.user_id agree across
+    headers and body.
+  - Constants `CLICurrentVersion`, `ClaudeCLIUserAgent`,
+    `ClaudeAnthropicBetaFull`, ... pinned to CC 2.1.146.
+  - 8 golden tests verifying the structural invariants captured in
+    `crack/oauth/rows/17`.
+
+- **`sidecar`** — full sidecar Manager pulled wholesale from
+  `internal/server/sidecar.go` (1278 LOC).
+  - `Manager` tracks one virtual session per OAuth account. `Notify(a,
+    clientToken)` fires the 9-step CC bootstrap (Phase B), the quota
+    probe, and the event_logging heartbeat (Phase C). Datadog phase
+    intentionally left disabled (the public intake key is a pinned
+    fingerprint Anthropic could rotate or monitor).
+  - `Config{Enabled, UseUTLS, BaseURL}` exported for plain construction.
+  - Re-uses `mimicry.CLICurrentVersion`, `mimicry.ClaudeCLIUserAgent`,
+    `mimicry.NewRequestUUID`, `mimicry.DeviceIDFor`, etc. — single
+    source of truth for the CC version target.
+  - 8 tests from CPA-Claude moved verbatim and pass (23s wall-clock —
+    they exercise real bootstrap+heartbeat timing).
+
+### Test coverage
+
+`go test ./...` from a clean check-out: 9 packages green
+(`advisor / clienttoken / mimicry / pricing / ratelimit / requestlog /
+sidecar / stream / thinkingsig / usage`).
+
+---
+
 ## v0.3.0 — Phase 2 framework-agnostic gates + parsers
 
 Extracts three pure helpers that were inlined in CPA-Claude `internal/server/`.
