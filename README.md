@@ -46,6 +46,30 @@ One-JSON-line-per-terminal-request log with daily file rotation (`requests-YYYY-
 - `requestlog.AggregateHourly(dir, hours)` / `AggregateByAuth(dir, from, to)` — dashboards.
 - `requestlog.Writer.RewriteClientMask(old, new)` — historical telemetry migration for token rotation.
 
+### `kiroauth` / `kirotransport` / `kirocognito` / `kiroapi` — Kiro / Amazon Q (CodeWhisperer) primitives
+
+Isolated subtree for talking to the **Kiro / kiro-cli** AI service (AWS
+CodeWhisperer + Amazon Q). Independent from the Anthropic / Codex packages
+above; the only shared import is `thinkingsig` (used by `kirobridge` in v0.7.0).
+
+- `kiroauth` — PKCE login (`/oauth/token`), Social refresh (`/refreshToken`),
+  IdC refresh (AWS SSO OIDC `/token`), `/logout`. Multi-credential JSON file
+  (single-object or array) with priority-sort, atomic save, and rolling-refresh
+  writeback.
+- `kirotransport` — pinned client fingerprints (KIRO-CLI 2.4.1 / KiroIDE 0.2.43,
+  aws-sdk-rust 1.3.16 / aws-sdk-js 1.0.34), AWS SigV4 v4 signer (for the
+  toolkit-telemetry endpoint), and `eventstream` subpackage with the binary
+  frame codec (12B prelude + headers + CRC32 + payload + CRC32).
+- `kirocognito` — `GetId` + `GetCredentialsForIdentity` against the public
+  anonymous pool (`us-east-1:820fd6d1-…`). Yields short-lived STS creds
+  used only for signing toolkit-telemetry; never touches the business API.
+- `kiroapi` — typed clients for `ListAvailableModels`, `GenerateAssistantResponse`
+  (streaming, returns a frame iterator), `SendTelemetryEvent` (per-turn
+  business metrics), and `ToolkitTelemetry` (SigV4-signed `/metrics`).
+
+Verified against `crack/kiro/rows/` (real kiro-cli 2.4.1 captures). Bumping
+the kiro client target is a one-place change in `kirotransport/fingerprint.go`.
+
 ### `clienttoken`
 
 Runtime store of accepted client bearer tokens (`Authorization: Bearer sk-…`) and per-token policy (concurrency cap, RPM, weekly USD cap, credential group).
@@ -90,6 +114,10 @@ consumes Phase 1+2+3; hypitoken consumes Phase 1+2).
 | `stream` | **stable** | Thin wrappers over net/http + bufio |
 | `mimicry` | **may evolve** | CC version target bumps will change the pinned constants in lockstep; signatures stable |
 | `sidecar` | **may evolve** | Same as mimicry — bumping CC version may add bootstrap steps |
+| `kiroauth` | **may evolve** | Public API of `Client` is stable; multi-credential pool helpers may be added |
+| `kirotransport` | **may evolve** | SigV4 + event-stream codec are stable; fingerprint constants track upstream releases |
+| `kirocognito` | **stable** | Wraps two AWS-side calls; surface won't grow |
+| `kiroapi` | **may evolve** | Typed model fields may grow as new event-types appear in captures |
 
 ## License
 

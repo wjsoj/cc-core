@@ -1,5 +1,64 @@
 # Changelog
 
+## v0.6.0 — Kiro / Amazon Q foundation
+
+Adds the four-package isolated subtree for talking to the Kiro / kiro-cli
+AI service (AWS CodeWhisperer + Amazon Q). Independent from the existing
+Anthropic / Codex packages — no shared imports.
+
+### New packages
+
+- **`kiroauth`** — Kiro credential lifecycle.
+  - PKCE helpers (`NewPKCE`, `SignInURL`) + `Client.ExchangeCode` for the
+    `app.kiro.dev/signin` → `/oauth/token` flow.
+  - `Client.RefreshSocial` (Kiro-native `/refreshToken`, body `{refreshToken}`).
+  - `Client.RefreshIdC` (AWS SSO OIDC, standard `grant_type=refresh_token`).
+  - `Client.Logout` to revoke a refresh chain server-side.
+  - `Credentials` struct + `File` loader/saver (camelCase JSON, single-object
+    or array form, atomic write with refresh-token rotation writeback).
+
+- **`kirotransport`** — transport primitives shared by all Kiro clients.
+  - `eventstream` subpackage: AWS event-stream binary frame codec
+    (12B prelude + headers + CRC32 + payload + CRC32), `Decoder` with
+    `Skip` / `SkipFrame` recovery for malformed bytes.
+  - Pinned fingerprint constants for IDE (kiro.rs-style: aws-sdk-js +
+    KiroIDE) and CLI (capture-style: aws-sdk-rust + AmazonQ-For-CLI) flavors.
+  - `SignV4` — minimal AWS Signature V4 v4 implementation (sufficient for
+    the toolkit-telemetry endpoint; we don't implement chunked signing or
+    presigned URLs).
+  - Header helpers: `UserAgent`, `XAmzUserAgent`, `ApplyCommonAWSHeaders`,
+    `ApplySmithyHeaders`, `ApplyBearerAuth`.
+
+- **`kirocognito`** — anonymous STS provider.
+  - `Provider` wraps `GetId` + `GetCredentialsForIdentity` against the
+    public anonymous pool (`us-east-1:820fd6d1-…`). Caches creds with
+    5-min pre-expiry refresh.
+
+- **`kiroapi`** — typed CodeWhisperer / Amazon Q clients.
+  - `Client.ListAvailableModels` (sync RPC, Smithy x-amz-json-1.0).
+  - `Client.GenerateAssistantResponse` (streaming; returns `Stream` iterator
+    over decoded event-stream frames).
+  - `Client.SendTelemetryEvent` (per-turn business metrics).
+  - `ToolkitTelemetryClient.Send` (SigV4-signed `/metrics` via Cognito creds).
+  - Typed event payloads: `AssistantResponseEvent`, `ToolUseEvent`,
+    `ContextUsageEvent`, `MessageMetadataEvent`; structured
+    `RemoteError` / `RemoteException` for non-event frames.
+
+### Wire verification
+
+All shapes verified against `crack/kiro/rows/` captures (kiro-cli 2.4.1,
+2026-05-24 session). Bumping the kiro client target requires updating one
+constants file (`kirotransport/fingerprint.go`) — version, UA segments,
+profile ARN.
+
+### Versioning policy
+
+v0.6.x is foundation-only; `kirobridge` (Anthropic /v1/messages translation
+layer) lands in v0.7.0. v1.0.0 still waits on hypitoken consuming Phase 3
+mimicry+sidecar.
+
+---
+
 ## v0.5.0 — Feature-complete; API audit
 
 No new packages. Codifies the API surface that resulted from the
