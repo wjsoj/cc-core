@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.5.0 — Feature-complete; API audit
+
+No new packages. Codifies the API surface that resulted from the
+v0.2.0–v0.4.0 absorption work and adds a `Stability` section to the
+README so downstream forks know what they can rely on.
+
+### 11 packages, all exported APIs reviewed
+
+```
+auth         credential pool + OAuth refresh + Codex JWT + uTLS + login
+thinkingsig  thinking-block signature sanitization on credential switch
+usage        token consumption ledger (Counts + Store)
+pricing      (provider, model) → USD calculator
+requestlog   daily-rotated JSONL + Filter/Query/Aggregate
+clienttoken  bearer-token registry (Token + Store, Lookup returns (Token, bool))
+ratelimit    RPM + Concurrency gates (zero-value-usable)
+advisor      advisor-tool-2026-03-01 iterations[] parser
+stream       Decompress(*http.Response) + SSEScanner
+mimicry      Claude Code header + body fingerprint (CC 2.1.146 pinned)
+sidecar      bootstrap + heartbeat Manager
+```
+
+### Versioning policy (post-v0.5.0)
+
+- v0.5–v0.x: API may still change as forks finish consuming. Each break
+  is called out in CHANGELOG, but no deprecation cycle is guaranteed.
+- v1.0.0: once both CPA-Claude AND hypitoken consume mimicry + sidecar
+  end-to-end, public API freezes; subsequent breaks go through a
+  deprecation cycle.
+
+### Notes
+
+- CPA-Claude consumes Phase 1+2+3 in full (data layer + ratelimit +
+  advisor + stream + mimicry + sidecar). `internal/server/` no longer
+  has `fingerprint.go`, `mimicry.go`, `sidecar.go`, `ratelimit.go`.
+- hypitoken consumes Phase 1+2 (data layer + ratelimit). Local
+  fingerprint/mimicry/sidecar still byte-identical to cc-core's —
+  switch is a mechanical follow-up, not a correctness gap.
+
+---
+
 ## v0.4.0 — Phase 3 mimicry + sidecar (high-value, fingerprint-sensitive)
 
 Pulls the two CC-fingerprint-heavy packages out of CPA-Claude

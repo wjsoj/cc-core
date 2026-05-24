@@ -66,9 +66,30 @@ requestlog (independent)
 
 No cyclic deps. Every package is independently testable. All packages avoid HTTP framework lock-in (pure `net/http` / no `gin`, `echo`, etc.).
 
-## Versioning
+## Versioning & stability
 
-Semver. v0.x.y until the public API stabilizes.
+Semver. **v0.5.0 = feature-complete; API frozen for consuming forks,
+modulo follow-up cleanup**. Breaking changes between v0.5.x and v1.0.0
+will be called out in `CHANGELOG.md` but won't go through a deprecation
+cycle. v1.0.0 will be tagged once both CPA-Claude and hypitoken consume
+the mimicry + sidecar packages end-to-end (currently CPA-Claude fully
+consumes Phase 1+2+3; hypitoken consumes Phase 1+2).
+
+### Stability matrix
+
+| Package | API stability | Notes |
+|---|---|---|
+| `auth` | **stable** | Pool / Auth / login flows; battle-tested in two production forks |
+| `thinkingsig` | **stable** | Used in every chat turn; no recent changes |
+| `usage` | **stable** | State.json wire format unchanged since pre-cc-core |
+| `pricing` | **stable** | Built-in catalog may grow but signatures won't |
+| `requestlog` | **stable** | Record wire format is the unified superset across forks |
+| `clienttoken` | **stable** | Lookup returns `(Token, bool)` so new Token fields don't break callers |
+| `ratelimit` | **stable** | Pure value-types, zero-value-usable |
+| `advisor` | **stable** | Parser only; billing decisions stay in fork |
+| `stream` | **stable** | Thin wrappers over net/http + bufio |
+| `mimicry` | **may evolve** | CC version target bumps will change the pinned constants in lockstep; signatures stable |
+| `sidecar` | **may evolve** | Same as mimicry — bumping CC version may add bootstrap steps |
 
 ## License
 

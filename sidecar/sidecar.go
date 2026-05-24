@@ -76,12 +76,15 @@ const (
 	// dispatcher goroutine) and never blocks the user request.
 	sidecarRequestTimeout = 30 * time.Second
 
-	// bootstrapWaitCap caps how long the first business /v1/messages from
-	// a fresh (account, clientToken) pair will wait for sidecar bootstrap
+	// BootstrapWaitCap caps how long the first business /v1/messages from
+	// a fresh (account, clientToken) pair should wait for sidecar bootstrap
 	// to reach the quota_probe step (real CC's last pre-business call,
 	// captured at T+1.27s). 5s comfortably accommodates slow proxy lanes
-	// while ensuring a wedged upstream can't hang user traffic.
-	bootstrapWaitCap = 5 * time.Second
+	// while ensuring a wedged upstream can't hang user traffic. Exported
+	// so the caller's "wait for bootstrap before business" select has a
+	// sane shared upper bound.
+	BootstrapWaitCap = 5 * time.Second
+	bootstrapWaitCap = BootstrapWaitCap
 
 	// heartbeatBaseInterval is the median spacing between event_logging
 	// heartbeats. Real captures show 10-25s between batches; we centre
