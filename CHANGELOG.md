@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.3.0 — Phase 2 framework-agnostic gates + parsers
+
+Extracts three pure helpers that were inlined in CPA-Claude `internal/server/`.
+None depend on HTTP frameworks, so they drop into any Go project.
+
+### New packages
+
+- **`ratelimit`** — sliding-window RPM gate (`RPM.Allow(key, limit)`) and
+  in-flight concurrency gate (`Concurrency.Begin(key)`) keyed on arbitrary
+  strings. Both zero-value-usable and `sync.Map`-backed. `Concurrency.Begin`
+  returns an idempotent release closure so `defer` patterns are leak-free.
+
+- **`advisor`** — parser/aggregator for `usage.iterations[]` added by the
+  `advisor-tool-2026-03-01` beta. `SubUsage.ReplaceFrom` overwrites on every
+  SSE observation (server emits cumulative iterations) to prevent double
+  counting. Billing/storage stays in the fork — this package is parsing only.
+
+- **`stream`** — `Decompress(*http.Response)` transparently swaps `gzip`/`br`
+  upstream bodies for plain readers + strips Content-Encoding/Length, so
+  downstream consumers see plain bytes. `SSEScanner` is a tiny event-aware
+  line scanner that lets callers re-emit lines verbatim while also parsing
+  `data:` payloads (the dual mode CPA-Claude's streamSSE needs).
+
+### Test coverage
+
+Each new package has unit tests. Combined LOC: ~400 (source) + ~400 (tests).
+
+---
+
 ## v0.2.0 — Phase 1 lower the foundations
 
 Adds the four "infrastructure" packages that were previously duplicated
