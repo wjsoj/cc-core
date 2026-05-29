@@ -27,6 +27,11 @@ func TestLookupExactMatch(t *testing.T) {
 	if p.InputPer1M != 5.00 {
 		t.Fatalf("opus-4-7 InputPer1M=%v want 5.00", p.InputPer1M)
 	}
+	// opus-4-8 bills identically to opus-4-7.
+	p8 := cat.Lookup("anthropic", "claude-opus-4-8")
+	if p8.InputPer1M != 5.00 || p8.OutputPer1M != 25.00 {
+		t.Fatalf("opus-4-8 price=%+v want input 5.00 output 25.00", p8)
+	}
 }
 
 func TestLookupDateSuffixFallback(t *testing.T) {
