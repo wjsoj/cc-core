@@ -269,8 +269,9 @@ func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, 
 			if isGroupIdleNow(k.Group, now) {
 				continue
 			}
-			// Per-key model routing: a key with a non-empty ModelMap only
-			// serves models listed in it. Empty map = wildcard.
+			// ModelMap is rewrite-only and never filters, so AcceptsModel
+			// always passes here; the call is kept for symmetry in case
+			// per-key routing is reintroduced.
 			if !k.AcceptsModel(clientModel) {
 				continue
 			}

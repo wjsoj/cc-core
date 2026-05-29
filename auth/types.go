@@ -93,15 +93,14 @@ type Auth struct {
 	// public acting as a fallback when the group's credentials are exhausted.
 	Group string
 
-	// ModelMap (API-key only) maps client-facing model names to upstream
-	// model names. When non-nil and non-empty:
-	//   - this credential will only be picked for requests whose model
-	//     appears as a key in the map (acts as a routing filter)
-	//   - the request body's "model" field is rewritten to the mapped value
-	//     before being sent upstream (the empty string means "accept this
-	//     model name but don't rewrite")
-	// Nil/empty map = wildcard (no filtering, no rewriting). OAuth credentials
-	// ignore this field.
+	// ModelMap (API-key only) is a pure REWRITE table from client-facing
+	// model names to upstream model names. It does NOT filter / allow-list:
+	// the credential still accepts every model. For a model listed with a
+	// non-empty value, the request body's "model" field is rewritten to that
+	// value before being sent upstream (e.g. a relay that registered haiku as
+	// "claude-haiku-4-5" but receives the dated "claude-haiku-4-5-20251001").
+	// Any model not in the map — or mapped to "" — passes through unchanged.
+	// Nil/empty map = no rewriting. OAuth credentials ignore this field.
 	ModelMap map[string]string
 
 	// Source file for OAuth (empty for APIKey)
@@ -605,28 +604,20 @@ func (a *Auth) SetModelMap(m map[string]string) {
 func (a *Auth) ResolveUpstreamModel(clientModel string) (upstream string, ok bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	if len(a.ModelMap) == 0 {
-		return clientModel, true
+	// ModelMap is a rewrite table, not an allow-list. A model listed with a
+	// non-empty value is rewritten; anything else (unlisted, or mapped to "")
+	// passes through unchanged. ok is always true — the second return is kept
+	// for call-site symmetry.
+	if mapped, exists := a.ModelMap[clientModel]; exists && mapped != "" {
+		return mapped, true
 	}
-	mapped, exists := a.ModelMap[clientModel]
-	if !exists {
-		return "", false
-	}
-	if mapped == "" {
-		return clientModel, true
-	}
-	return mapped, true
+	return clientModel, true
 }
 
-// AcceptsModel reports whether this credential is eligible to serve a request
-// for the given client-facing model. Used by the pool selector. Wildcard
-// (empty ModelMap) accepts everything.
+// AcceptsModel reports whether this credential may serve a request for the
+// given client-facing model. ModelMap is rewrite-only and never filters, so
+// every credential accepts every model; the method is retained for the pool
+// selector's call sites and possible future per-key routing.
 func (a *Auth) AcceptsModel(clientModel string) bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if len(a.ModelMap) == 0 {
-		return true
-	}
-	_, ok := a.ModelMap[clientModel]
-	return ok
+	return true
 }
