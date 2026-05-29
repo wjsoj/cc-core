@@ -37,3 +37,34 @@ func IsSignatureError(body []byte) bool {
 	}
 	return false
 }
+
+// IsThinkingError reports whether a 4xx/5xx body indicates ANY thinking-block
+// rejection — the signature flavor handled by SanitizeForSwitch, plus the
+// inverse flavor that stripping CANNOT fix:
+//
+//	"`thinking` or `redacted_thinking` blocks in the latest assistant message
+//	 cannot be modified. These blocks must remain as they were in the original
+//	 response."
+//
+// This one fires when the thinking blocks on the message being continued were
+// minted by a different account than the one now validating them (common on
+// relays / Bedrock backends that rotate accounts per request). You can't strip
+// them — the latest assistant turn's thinking must stay put — and you can't
+// keep them — the validator rejects the signature. The only escape is to
+// replay with thinking disabled entirely (DisableThinking), so there is no
+// thinking block left to validate.
+//
+// Used to gate the proxy's tier-2 recovery. Substring match on lowercase to
+// survive wording drift.
+func IsThinkingError(body []byte) bool {
+	if IsSignatureError(body) {
+		return true
+	}
+	lower := bytes.ToLower(body)
+	if !bytes.Contains(lower, []byte("thinking")) {
+		return false
+	}
+	return bytes.Contains(lower, []byte("cannot be modified")) ||
+		bytes.Contains(lower, []byte("must remain as they were")) ||
+		bytes.Contains(lower, []byte("must be the same"))
+}
