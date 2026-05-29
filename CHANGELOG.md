@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.8.5 — Claude Code 2.1.156 fingerprint refresh
+
+Re-pins the mimicry + sidecar fingerprint to a live CC 2.1.156 capture
+(2026-05-29). Full 2.1.146→2.1.156 diff in the consuming repos'
+`crack/cc2156/SPEC.md`.
+
+### New — `mimicry.ClaudeReportedBetas`
+
+The 9-item beta list real CC reports in its telemetry bodies
+(`event_logging` / datadog `betas`), distinct from the 14-item
+`ClaudeAnthropicBetaFull` request header. Telemetry was previously
+(incorrectly) reusing the full header list — itself a fingerprint mismatch.
+
+### Changed
+
+- `CLICurrentVersion` / `ClaudeCLIUserAgent` → `2.1.156`.
+- `ClaudeAnthropicBetaFull` gains `thinking-token-count-2026-05-13` and
+  `mid-conversation-system-2026-04-07` (14 items, exact order).
+- **Fix**: inverted system cache scope. `scope:global` now sits on the
+  second-to-last system block and a plain ephemeral 1h breakpoint on the
+  last — matching all 18 captured `/v1/messages` (was reversed).
+- Sidecar: `axios/1.13.6`→`axios/1.15.2`; bootstrap + telemetry model
+  `claude-opus-4-7`→`claude-opus-4-8`; telemetry `betas`→`ClaudeReportedBetas`;
+  env `build_time` bumped + new `linux_distro_id` / `linux_kernel`; datadog
+  body gains `renderer_mode` / `feature_name`.
+
+No breaking API changes (additive const only).
+
 ## v0.8.0 — Multi-group tokens + Pool.AcquireMulti
 
 Enables per-token credential-group fallthrough. A token can declare an

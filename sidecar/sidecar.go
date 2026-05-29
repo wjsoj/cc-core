@@ -31,7 +31,7 @@ func maskClientToken(t string) string {
 	return t[:7] + "***"
 }
 
-// Sidecar emulates the auxiliary traffic real Claude Code 2.1.126 fires
+// Sidecar emulates the auxiliary traffic real Claude Code 2.1.156 fires
 // alongside /v1/messages. Three phases:
 //
 //   - Phase A (always): quota probe (Haiku "quota") at session start.
@@ -41,7 +41,7 @@ func maskClientToken(t string) string {
 //   - Phase B (bootstrap burst): the 8 other GET/POST sidecars CC fires
 //     at process start, each with the *exact* User-Agent / anthropic-beta /
 //     Connection header captured for that endpoint in
-//     crack/oauth/rows/01..10. Real CC mixes Bun fetch, axios 1.13.6,
+//     crack/oauth/rows/01..10. Real CC mixes Bun fetch, axios 1.15.2,
 //     claude-code/<ver>, and claude-cli/<ver> across these endpoints —
 //     getting any of them wrong is itself a fingerprint, so each sidecar
 //     step pins its own client identity.
@@ -49,7 +49,7 @@ func maskClientToken(t string) string {
 //   - Phase C (heartbeat): a goroutine that POSTs
 //     /api/event_logging/v2/batch every ~18s ±40% with a realistic
 //     ClaudeCodeInternalEvent payload (env block matches our pinned
-//     2.1.126 / Linux / x64 / Node v24.3.0 fingerprint). Stops 5 min
+//     2.1.156 / Linux / x64 / Node v24.3.0 fingerprint). Stops 5 min
 //     after the session goes idle — mirrors a real CLI process exit.
 //
 // A virtual session is identified by accountKey alone. Multiple downstream
@@ -144,16 +144,29 @@ const (
 	quotaProbeModel = "claude-haiku-4-5-20251001"
 )
 
-// User-Agent strings used across sidecar endpoints. Real CC 2.1.126 uses
-// FOUR distinct HTTP clients: Bun fetch (GrowthBook only), axios 1.13.6
+// User-Agent strings used across sidecar endpoints. Real CC 2.1.156 uses
+// FOUR distinct HTTP clients: Bun fetch (GrowthBook only), axios 1.15.2
 // (penguin / mcp-registry / mcp_servers / downloads), claude-code/<ver>
 // (oauth/account/settings, bootstrap, event_logging), and the main
 // claude-cli UA (grove + chat). Mismatching is detectable.
 const (
 	uaBun        = "Bun/1.3.14"
-	uaAxios      = "axios/1.13.6"
+	uaAxios      = "axios/1.15.2"
 	uaClaudeCode = "claude-code/" + mimicry.CLICurrentVersion
 	uaClaudeCLI  = mimicry.ClaudeCLIUserAgent // shared with the chat path
+)
+
+// Telemetry env profile — the pinned 2.1.156 client-machine fingerprint shared
+// by the event_logging and datadog heartbeat bodies. Values captured from real
+// CC 2.1.156 (crack/cc2156 SPEC.md §6). The block is a single plausible-host
+// profile (it already pins konsole / zsh / x64), so distro + kernel are pinned
+// to match rather than probed from the proxy's own host.
+const (
+	ccBuildTime      = "2026-05-28T18:30:33Z"
+	ccLinuxDistroID  = "arch"
+	ccLinuxKernel    = "7.0.10-arch1-1"
+	ccTelemetryModel = "claude-opus-4-8[1m]" // event_logging event_data.model
+	ccDatadogModel   = "claude-opus-4-8"     // datadog model field + ddtags (no [1m])
 )
 
 // Manager tracks the lifecycle of every virtual session and dispatches
@@ -395,7 +408,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			// the entrypoint and the model the user is launching with.
 			name:            "claude_cli_bootstrap",
 			method:          "GET",
-			url:             baseURL + "/api/claude_cli/bootstrap?entrypoint=cli&model=claude-opus-4-7",
+			url:             baseURL + "/api/claude_cli/bootstrap?entrypoint=cli&model=claude-opus-4-8",
 			delayFromStart:  1250 * time.Millisecond,
 			userAgent:       uaClaudeCode,
 			beta:            "oauth-2025-04-20",
@@ -424,15 +437,15 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			connection:     "keep-alive",
 			bodyBuilder:    buildQuotaProbeBody,
 			extraHeaders: map[string]string{
-				"X-App":                       "cli",
-				"X-Stainless-Lang":            mimicry.ClaudeStainlessLang,
-				"X-Stainless-Runtime":         mimicry.ClaudeStainlessRuntime,
-				"X-Stainless-Runtime-Version": mimicry.ClaudeStainlessRuntimeV,
-				"X-Stainless-Package-Version": mimicry.ClaudeStainlessPackageV,
-				"X-Stainless-Os":              mimicry.ClaudeStainlessOS,
-				"X-Stainless-Arch":            mimicry.ClaudeStainlessArch,
-				"X-Stainless-Timeout":         mimicry.ClaudeStainlessTimeout,
-				"X-Stainless-Retry-Count":     mimicry.ClaudeStainlessRetryCnt,
+				"X-App":                                     "cli",
+				"X-Stainless-Lang":                          mimicry.ClaudeStainlessLang,
+				"X-Stainless-Runtime":                       mimicry.ClaudeStainlessRuntime,
+				"X-Stainless-Runtime-Version":               mimicry.ClaudeStainlessRuntimeV,
+				"X-Stainless-Package-Version":               mimicry.ClaudeStainlessPackageV,
+				"X-Stainless-Os":                            mimicry.ClaudeStainlessOS,
+				"X-Stainless-Arch":                          mimicry.ClaudeStainlessArch,
+				"X-Stainless-Timeout":                       mimicry.ClaudeStainlessTimeout,
+				"X-Stainless-Retry-Count":                   mimicry.ClaudeStainlessRetryCnt,
 				"Anthropic-Dangerous-Direct-Browser-Access": "true",
 			},
 		},
@@ -874,7 +887,7 @@ func (m *Manager) sendHeartbeat(parent context.Context, a *auth.Auth, sessionID 
 
 // buildHeartbeatBody constructs a single-event batch shaped like row 14.
 // Volatile fields (timestamps, event_id, process metric) are refreshed
-// each tick; the env block stays fixed at our pinned 2.1.126 / Linux /
+// each tick; the env block stays fixed at our pinned 2.1.156 / Linux /
 // x64 / Node v24.3.0 fingerprint so it matches the X-Stainless headers.
 //
 // Event name `tengu_dir_search` is what real CC emits most frequently
@@ -1015,8 +1028,10 @@ func buildHeartbeatEvent(a *auth.Auth, sessionID, eventName string, ts time.Time
 		"deployment_environment": "unknown-linux",
 		"is_conductor":           false,
 		"version_base":           mimicry.CLICurrentVersion,
-		"build_time":             "2026-04-30T16:01:00Z",
+		"build_time":             ccBuildTime,
 		"is_local_agent_mode":    false,
+		"linux_distro_id":        ccLinuxDistroID,
+		"linux_kernel":           ccLinuxKernel,
 		"vcs":                    "git",
 		"platform_raw":           "linux",
 		"shell":                  "zsh",
@@ -1027,10 +1042,10 @@ func buildHeartbeatEvent(a *auth.Auth, sessionID, eventName string, ts time.Time
 		"event_data": map[string]any{
 			"event_name":          eventName,
 			"client_timestamp":    ts.Format("2006-01-02T15:04:05.000Z"),
-			"model":               "claude-opus-4-7[1m]",
+			"model":               ccTelemetryModel,
 			"session_id":          sessionID,
 			"user_type":           "external",
-			"betas":               mimicry.ClaudeAnthropicBetaFull,
+			"betas":               mimicry.ClaudeReportedBetas,
 			"env":                 envBlock,
 			"entrypoint":          "cli",
 			"is_interactive":      true,
@@ -1115,10 +1130,13 @@ func jitteredDatadogInterval() time.Duration {
 	return time.Duration(d + delta)
 }
 
-// sendDatadogHeartbeat POSTs one tengu_dir_search event to the Datadog
-// intake. Headers and body match crack/oauth/rows/16/21 — note that the
+// sendDatadogHeartbeat POSTs one tengu_feature_ok event to the Datadog
+// intake. Headers and body match crack/cc2156 (SPEC.md §5) — note that the
 // Authorization header is NOT set (the dd-api-key header carries auth)
-// and User-Agent is axios/1.13.6 (the Datadog client lib in CC).
+// and User-Agent is axios/1.15.2 (the Datadog client lib in CC). Real CC's
+// datadog stream only carries tengu_feature_ok / tengu_api_success /
+// tengu_tool_use_* / tengu_session_file_read (never tengu_dir_search), so the
+// heartbeat uses tengu_feature_ok — the dominant shape — when enabled.
 func (m *Manager) sendDatadogHeartbeat(parent context.Context, a *auth.Auth, sessionID string) error {
 	ctx, cancel := context.WithTimeout(parent, sidecarRequestTimeout)
 	defer cancel()
@@ -1177,11 +1195,11 @@ func buildDatadogHeartbeatBody(a *auth.Auth, sessionID string) ([]byte, error) {
 	bucket := userBucketFor(a.AccountKey())
 	subType, _ := subscriptionAttrsFor(a)
 	tags := []string{
-		"event:tengu_dir_search",
+		"event:tengu_feature_ok",
 		"arch:" + mimicry.ClaudeStainlessArch,
 		"client_type:cli",
 		"entrypoint:cli",
-		"model:claude-opus-4-7",
+		"model:" + ccDatadogModel,
 		"platform:linux",
 		"subscription_type:" + subType,
 		fmt.Sprintf("user_bucket:%d", bucket),
@@ -1205,14 +1223,14 @@ func buildDatadogHeartbeatBody(a *auth.Auth, sessionID string) ([]byte, error) {
 	event := map[string]any{
 		"ddsource":               "nodejs",
 		"ddtags":                 strings.Join(tags, ","),
-		"message":                "tengu_dir_search",
+		"message":                "tengu_feature_ok",
 		"service":                "claude-code",
 		"hostname":               "claude-code",
 		"env":                    "external",
-		"model":                  "claude-opus-4-7",
+		"model":                  ccDatadogModel,
 		"session_id":             sessionID,
 		"user_type":              "external",
-		"betas":                  mimicry.ClaudeAnthropicBetaFull,
+		"betas":                  mimicry.ClaudeReportedBetas,
 		"entrypoint":             "cli",
 		"is_interactive":         "true",
 		"client_type":            "cli",
@@ -1222,6 +1240,7 @@ func buildDatadogHeartbeatBody(a *auth.Auth, sessionID string) ([]byte, error) {
 		"swe_bench_task_id":      "",
 		"subscription_type":      subType,
 		"rh":                     randomHex16(),
+		"renderer_mode":          "default",
 		"platform":               "linux",
 		"platform_raw":           "linux",
 		"arch":                   mimicry.ClaudeStainlessArch,
@@ -1241,9 +1260,12 @@ func buildDatadogHeartbeatBody(a *auth.Auth, sessionID string) ([]byte, error) {
 		"is_claude_ai_auth":      true,
 		"version":                mimicry.CLICurrentVersion,
 		"version_base":           mimicry.CLICurrentVersion,
-		"build_time":             "2026-04-30T16:01:00Z",
+		"build_time":             ccBuildTime,
 		"deployment_environment": "unknown-linux",
+		"linux_kernel":           ccLinuxKernel,
+		"linux_distro_id":        ccLinuxDistroID,
 		"vcs":                    "git",
+		"feature_name":           "api_request",
 		"user_bucket":            bucket,
 	}
 	return json.Marshal([]any{event})

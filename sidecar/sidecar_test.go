@@ -145,7 +145,7 @@ func TestBootstrapFiresAllStepsWithCorrectUA(t *testing.T) {
 		uaFragment string
 		beta       string
 	}{
-		"/api/eval/sdk-zAZezfDKGoZuXXKe":  {"Bun/", "oauth-2025-04-20"},
+		"/api/eval/sdk-zAZezfDKGoZuXXKe": {"Bun/", "oauth-2025-04-20"},
 		"/api/oauth/account/settings":    {"claude-code/", "oauth-2025-04-20"},
 		"/api/claude_code_grove":         {"claude-code/", "oauth-2025-04-20"},
 		"/api/claude_cli/bootstrap":      {"claude-code/", "oauth-2025-04-20"},
@@ -410,8 +410,8 @@ func TestStartupBatchSuppressedUnderCooldown(t *testing.T) {
 }
 
 // TestDatadogHeartbeatBodyShape verifies the Datadog payload matches the
-// captured row 16/21 shape: a JSON ARRAY of one event with all the
-// flattened fields, ddtags carrying the indexed dimensions, and
+// captured crack/cc2156 shape: a JSON ARRAY of one tengu_feature_ok event
+// with all the flattened fields, ddtags carrying the indexed dimensions, and
 // user_bucket present at the top level (as int).
 func TestDatadogHeartbeatBodyShape(t *testing.T) {
 	a := newTestAuth("auth-1", "alice@example.com")
@@ -422,14 +422,18 @@ func TestDatadogHeartbeatBodyShape(t *testing.T) {
 	s := string(body)
 	for _, want := range []string{
 		`"ddsource":"nodejs"`,
-		`"message":"tengu_dir_search"`,
+		`"message":"tengu_feature_ok"`,
 		`"service":"claude-code"`,
+		`"renderer_mode":"default"`,
+		`"linux_distro_id":"` + ccLinuxDistroID + `"`,
+		`"feature_name":"api_request"`,
+		`"betas":"` + mimicry.ClaudeReportedBetas + `"`,
 		`"version":"` + mimicry.CLICurrentVersion + `"`,
 		`"arch":"` + mimicry.ClaudeStainlessArch + `"`,
 		`"subscription_type":"max"`,
 		`"is_claude_ai_auth":true`,
 		`"session_id":"00000000-0000-0000-0000-000000000000"`,
-		`event:tengu_dir_search`,
+		`event:tengu_feature_ok`,
 		`subscription_type:max`,
 	} {
 		if !strings.Contains(s, want) {
@@ -556,7 +560,7 @@ func TestStartupHeartbeatBatchShape(t *testing.T) {
 // in row 01 (organization_type=claude_max, subscriptionType=max).
 func TestSubscriptionAttrsFor(t *testing.T) {
 	cases := []struct {
-		name, orgType, rlTier  string
+		name, orgType, rlTier   string
 		wantSubType, wantRLTier string
 	}{
 		{"empty → defaults", "", "", "max", "default_claude_max_20x"},

@@ -26,15 +26,15 @@ import (
 	"strings"
 )
 
-// Header values pinned to Claude Code 2.1.146 / @anthropic-ai/sdk 0.94.0.
-// Values verified against a live CC 2.1.146 OAuth session capture
-// (whistle dump 2026-05-21, rows 018/028/037/044).
+// Header values pinned to Claude Code 2.1.156 / @anthropic-ai/sdk 0.94.0.
+// Values verified against a live CC 2.1.156 OAuth session capture
+// (whistle dump 2026-05-29 — see crack/cc2156/SPEC.md).
 // CLICurrentVersion MUST match the version baked into ClaudeCLIUserAgent;
 // any drift will cause the cc_version=X.Y.Z.{fp} billing block to disagree
 // with the User-Agent and trigger Anthropic's third-party detection.
 const (
-	CLICurrentVersion       = "2.1.146"
-	ClaudeCLIUserAgent      = "claude-cli/2.1.146 (external, cli)"
+	CLICurrentVersion       = "2.1.156"
+	ClaudeCLIUserAgent      = "claude-cli/2.1.156 (external, cli)"
 	ClaudeStainlessLang     = "js"
 	ClaudeStainlessRuntime  = "node"
 	ClaudeStainlessRuntimeV = "v24.3.0"
@@ -44,19 +44,27 @@ const (
 	ClaudeStainlessTimeout  = "600"
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"
-	// ClaudeAnthropicBetaFull is the beta list captured from real CC 2.1.146
-	// — exact value, exact order. Any beta we drop that real CLI sends will
-	// downgrade us to "extra usage" billing; any extra beta we add that
-	// real CLI doesn't send is also a fingerprint signal.
-	// 2.1.141→2.1.146 diff: re-added context-1m-2025-08-07 (positioned
-	// immediately after oauth-2025-04-20).
-	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	// ClaudeAnthropicBetaFull is the Anthropic-Beta REQUEST HEADER captured
+	// from real CC 2.1.156 — exact value, exact order (14 items). Any beta we
+	// drop that real CLI sends will downgrade us to "extra usage" billing; any
+	// extra beta we add that real CLI doesn't send is also a fingerprint signal.
+	// 2.1.146→2.1.156 diff: inserted thinking-token-count-2026-05-13 (after
+	// redact-thinking) and mid-conversation-system-2026-04-07 (after
+	// prompt-caching-scope).
+	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	// ClaudeReportedBetas is the SHORTER beta list real CC 2.1.156 reports in
+	// its telemetry bodies (event_logging `betas`, datadog `betas`/ddtags) —
+	// the first 9 items of ClaudeAnthropicBetaFull, stopping at
+	// mid-conversation-system. It deliberately omits advisor-tool,
+	// advanced-tool-use, effort, extended-cache-ttl, cache-diagnosis. Reusing
+	// the full header list in telemetry is itself a fingerprint mismatch.
+	ClaudeReportedBetas = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07"
 )
 
 // Default cache_control TTL for cache breakpoints injected by the body
-// layer. Real CC 2.1.146 uses "1h" with scope=global on the heavy system
-// blocks — match it so prefix caching works the same way and the request
-// shape is byte-identical.
+// layer. Real CC 2.1.156 uses "1h" with scope=global on the second-to-last
+// system block (the last block is plain ephemeral) — match it so prefix
+// caching works the same way and the request shape is byte-identical.
 const (
 	ClaudeDefaultCacheTTL   = "1h"
 	ClaudeDefaultCacheScope = "global"

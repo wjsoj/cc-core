@@ -19,7 +19,7 @@ import (
 //     cc_version=X.Y.Z.{3hex}, cc_entrypoint=cli, and cch={5hex}
 //     (xxhash64 of the body with a fixed seed).
 //  2. system[1] is "You are Claude Code, Anthropic's official CLI for Claude."
-//     (bare — no cache_control, matches real 2.1.146).
+//     (bare — no cache_control, matches real 2.1.156).
 //  3. messages carry a stable cache breakpoint on the last block.
 //  4. metadata.user_id is JSON: {"device_id":..., "account_uuid":..., "session_id":...}
 //
@@ -69,7 +69,7 @@ func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byt
 		return signBillingHeaderCCH(body)
 	}
 
-	// Step 1: rebuild system to match the CC 2.1.146 layout.
+	// Step 1: rebuild system to match the CC 2.1.156 layout.
 	out, err := rewriteSystemForOAuth(obj, body)
 	if err != nil {
 		return body
@@ -82,12 +82,13 @@ func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byt
 	// Step 3: metadata.user_id (JSON shape, CC 2.1.78+).
 	out = ensureMetadataUserID(out, id)
 
-	// NOTE: real CC 2.1.146 also carries `thinking`, `output_config`, and
-	// `context_management` on every non-Haiku /v1/messages. We deliberately
-	// do NOT inject them — each is gated by a beta header AND alters
-	// response semantics in ways that break downstream clients which
-	// aren't real CC. Mocking them is a bigger fingerprint risk than
-	// omitting them, since the upstream returns 400 if the credential's
+	// NOTE: real CC 2.1.156 also carries `thinking` ({"type":"adaptive"}),
+	// `output_config` ({"effort":...}), `context_management` ({"edits":[...]}),
+	// and `diagnostics` ({"previous_message_id":...}) on every non-Haiku
+	// /v1/messages. We deliberately do NOT inject them — each is gated by a
+	// beta header AND alters response semantics in ways that break downstream
+	// clients which aren't real CC. Mocking them is a bigger fingerprint risk
+	// than omitting them, since the upstream returns 400 if the credential's
 	// beta list lacks the matching marker.
 
 	// Step 4: replace cch=00000 placeholder with xxhash64 of the final body.
@@ -125,15 +126,16 @@ func matchesClaudeCodePrefix(text string) bool {
 	return false
 }
 
-// rewriteSystemForOAuth rebuilds the system field to match the real CC 2.1.146
-// layout captured in crack/oauth/rows/17:
+// rewriteSystemForOAuth rebuilds the system field to match the real CC 2.1.156
+// layout captured in crack/cc2156 (SPEC.md §2):
 //
 //	system[0] = billing block (no cache_control)
 //	system[1] = "You are Claude Code, Anthropic's official CLI for Claude."
 //	            (no cache_control — real CC leaves this bare)
 //	system[2..] = the client's original system prompt, preserved as text blocks
-//	              with cache_control: ephemeral 1h scope=global on the last block
-//	              (and on the second-to-last when 4+ blocks exist)
+//	              with cache_control: ephemeral 1h scope=global on the
+//	              second-to-last block and a plain ephemeral 1h breakpoint on
+//	              the last block
 //
 // The client's original prompt stays in system, NOT moved into messages —
 // real CC never moves it, and a stray [user/assistant] pair at message[0..1]
@@ -199,10 +201,14 @@ func applySystemCacheBreakpoints(blocks []json.RawMessage) {
 	if len(blocks) == 0 {
 		return
 	}
+	// Real CC 2.1.156 puts scope:global on the SECOND-TO-LAST system block
+	// (the heavy, stable prefix) and a plain ephemeral 1h breakpoint on the
+	// LAST block. Verified across all 18 /v1/messages in the 2026-05-29
+	// capture (sysCC = ['-','-','S1h','e1h']). Earlier code had these swapped.
 	if len(blocks) >= 2 {
-		blocks[len(blocks)-2] = injectCacheControl(blocks[len(blocks)-2], false)
+		blocks[len(blocks)-2] = injectCacheControl(blocks[len(blocks)-2], true)
 	}
-	blocks[len(blocks)-1] = injectCacheControl(blocks[len(blocks)-1], true)
+	blocks[len(blocks)-1] = injectCacheControl(blocks[len(blocks)-1], false)
 }
 
 func injectCacheControl(raw json.RawMessage, withGlobalScope bool) json.RawMessage {
@@ -365,8 +371,8 @@ func stripMessageCacheControl(body []byte) []byte {
 }
 
 // addMessageCacheBreakpoints injects an ephemeral 1h cache_control on the
-// last block of the last message — exactly what real CC 2.1.146 does
-// (verified in crack/oauth/rows/17).
+// last block of the last message — exactly what real CC 2.1.156 does
+// (verified in crack/cc2156, SPEC.md §2).
 func addMessageCacheBreakpoints(body []byte) []byte {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(body, &obj); err != nil {
