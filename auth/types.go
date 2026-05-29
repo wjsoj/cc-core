@@ -266,7 +266,14 @@ func (a *Auth) MarkFailure(reason string) {
 	a.LastFailure = time.Now()
 	a.LastFailureReason = reason
 	a.ConsecutiveFailures++
-	if a.ConsecutiveFailures >= hardFailureThreshold && a.HardFailureAt.IsZero() {
+	// API-key credentials are operator-managed BYOK / relay channels: a run
+	// of transient upstream errors (500s, gateway hiccups, relay weather)
+	// must NOT auto-retire them, or a working key gets pinned offline until
+	// someone clears it by hand. Keep the counter for admin visibility, but
+	// skip the sticky hard-failure escalation. Only OAuth subscription
+	// accounts — scarce and genuinely worth taking out of rotation when they
+	// go bad — auto-promote on repeated failure.
+	if a.Kind != KindAPIKey && a.ConsecutiveFailures >= hardFailureThreshold && a.HardFailureAt.IsZero() {
 		a.HardFailureAt = a.LastFailure
 		a.HardFailureReason = fmt.Sprintf("%d consecutive failures: %s", a.ConsecutiveFailures, reason)
 	}
@@ -288,7 +295,10 @@ func (a *Auth) MarkRateLimited(reason string) int {
 	a.mu.Lock()
 	a.Consecutive429s++
 	n := a.Consecutive429s
-	if a.Consecutive429s >= rateLimit429HardFailureThreshold && a.HardFailureAt.IsZero() {
+	// API-key channels never auto-retire (see MarkFailure): a relay serving
+	// a stretch of 429s is throttling, not stealth-banning a subscription
+	// account, and the operator manages disabling manually.
+	if a.Kind != KindAPIKey && a.Consecutive429s >= rateLimit429HardFailureThreshold && a.HardFailureAt.IsZero() {
 		a.HardFailureAt = time.Now()
 		a.HardFailureReason = fmt.Sprintf("%d consecutive 429s (suspected stealth ban): %s", a.Consecutive429s, reason)
 		a.LastFailure = a.HardFailureAt
@@ -336,12 +346,22 @@ func (a *Auth) ClientCancelSnapshot() (time.Time, string) {
 // MarkHardFailure flags the credential as sticky-unhealthy. The admin panel
 // must manually clear it before traffic resumes. Used for obvious terminal
 // signals (e.g. account disabled, upstream dead).
+//
+// API-key credentials are exempt: they are operator-managed BYOK / relay
+// channels that must never be auto-retired by error detection — a single
+// 401/403 from a flaky relay backend shouldn't pull the whole channel out of
+// rotation until someone clears it by hand. The failure is still recorded for
+// admin visibility, but the sticky hard-failure flag is not set. Operators who
+// genuinely want an API key offline use SetDisabled (the manual Disabled flag),
+// which IsHealthy honours independently of this path.
 func (a *Auth) MarkHardFailure(reason string) {
 	a.mu.Lock()
-	a.HardFailureAt = time.Now()
-	a.HardFailureReason = reason
-	a.LastFailure = a.HardFailureAt
+	a.LastFailure = time.Now()
 	a.LastFailureReason = reason
+	if a.Kind != KindAPIKey {
+		a.HardFailureAt = a.LastFailure
+		a.HardFailureReason = reason
+	}
 	a.mu.Unlock()
 }
 
@@ -385,6 +405,17 @@ func (a *Auth) IsHealthy() bool {
 	}
 	if !a.QuotaExceededAt.IsZero() {
 		return false
+	}
+	// API-key channels are never downgraded by error detection: a relay
+	// serving a run of 500s (or a model it can't fulfil) stays in rotation so
+	// it can recover on the very next good request, instead of dropping out
+	// the moment ConsecutiveFailures crosses the degraded threshold and then
+	// having no way back in if it's the only channel for a model. The sticky
+	// HardFailureAt and quota cooldowns above still apply; only the
+	// consecutive-failure "degraded" heuristic below is skipped. Operators
+	// take an API key offline explicitly via the Disabled flag.
+	if a.Kind == KindAPIKey {
+		return true
 	}
 	if a.LastFailure.IsZero() {
 		return true
