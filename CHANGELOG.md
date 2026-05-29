@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.8.6 — Persistent per-credential strip-thinking flag
+
+### New — `Auth.StripThinking` + `MarkStripThinking()` / `StripThinkingEnabled()`
+
+A persisted boolean on the credential. Relays that pool/rotate backend accounts
+per request (e.g. an aws2-style vllmproxy) reject every echoed `thinking`
+signature, so each request fails once with a thinking-block signature error and
+recovers via replay. Consumers call `MarkStripThinking()` after the first
+successful sanitize-recovery to persist the decision (written to the credential
+file as `strip_thinking: true`, append-only / old files default false), then
+proactively sanitize on subsequent forwards — eliminating the recurring failing
+first attempt. `StripThinkingEnabled()` is the lock-guarded reader.
+
+Works for both OAuth and file-backed API-key credentials (`saveAuth` persists
+the field for both kinds).
+
+
 ## v0.8.5 — Claude Code 2.1.156 fingerprint refresh
 
 Re-pins the mimicry + sidecar fingerprint to a live CC 2.1.156 capture

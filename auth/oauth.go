@@ -119,6 +119,7 @@ func parseFile(path string, data []byte) (*Auth, error) {
 	orgUUID, _ := raw["organization_uuid"].(string)
 	orgType, _ := raw["organization_type"].(string)
 	orgRateLimitTier, _ := raw["organization_rate_limit_tier"].(string)
+	stripThinking, _ := raw["strip_thinking"].(bool)
 
 	a := &Auth{
 		ID:                        filepath.Base(path),
@@ -138,6 +139,7 @@ func parseFile(path string, data []byte) (*Auth, error) {
 		OrganizationUUID:          orgUUID,
 		OrganizationType:          orgType,
 		OrganizationRateLimitTier: orgRateLimitTier,
+		StripThinking:             stripThinking,
 	}
 	return a, nil
 }
@@ -189,18 +191,20 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 	baseURL, _ := raw["base_url"].(string)
 	group, _ := raw["group"].(string)
 	modelMap := parseModelMap(raw["model_map"])
+	stripThinking, _ := raw["strip_thinking"].(bool)
 	return &Auth{
-		ID:          filepath.Base(path),
-		Kind:        KindAPIKey,
-		Provider:    provider,
-		Label:       label,
-		AccessToken: apiKey,
-		ProxyURL:    proxyURL,
-		BaseURL:     baseURL,
-		FilePath:    path,
-		Disabled:    disabled,
-		Group:       NormalizeGroup(group),
-		ModelMap:    modelMap,
+		ID:            filepath.Base(path),
+		Kind:          KindAPIKey,
+		Provider:      provider,
+		Label:         label,
+		AccessToken:   apiKey,
+		ProxyURL:      proxyURL,
+		BaseURL:       baseURL,
+		FilePath:      path,
+		Disabled:      disabled,
+		Group:         NormalizeGroup(group),
+		ModelMap:      modelMap,
+		StripThinking: stripThinking,
 	}, nil
 }
 
@@ -412,6 +416,11 @@ func saveAuth(a *Auth) error {
 		}
 	}
 	raw["disabled"] = a.Disabled
+	if a.StripThinking {
+		raw["strip_thinking"] = true
+	} else {
+		delete(raw, "strip_thinking")
+	}
 	if a.ProxyURL != "" {
 		raw["proxy_url"] = a.ProxyURL
 	} else {
@@ -466,6 +475,31 @@ func (a *Auth) UpdateSubscriptionInfo(orgType, rateLimitTier string) error {
 	if !changed {
 		return nil
 	}
+	return saveAuth(a)
+}
+
+// StripThinkingEnabled reports whether this credential is flagged to
+// proactively sanitize prior `thinking` block signatures before every forward.
+func (a *Auth) StripThinkingEnabled() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.StripThinking
+}
+
+// MarkStripThinking sets the strip-thinking flag and persists it to the
+// credential file. Idempotent: a no-op (no write) once already set, so callers
+// can invoke it on every successful signature-error recovery without churning
+// the file. Relays that reject every echoed thinking signature (per-request
+// backend rotation) get flagged once, then future requests sanitize ahead of
+// the forward instead of failing once and replaying.
+func (a *Auth) MarkStripThinking() error {
+	a.mu.Lock()
+	if a.StripThinking {
+		a.mu.Unlock()
+		return nil
+	}
+	a.StripThinking = true
+	a.mu.Unlock()
 	return saveAuth(a)
 }
 

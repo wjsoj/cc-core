@@ -103,7 +103,17 @@ type Auth struct {
 	// Nil/empty map = no rewriting. OAuth credentials ignore this field.
 	ModelMap map[string]string
 
-	// Source file for OAuth (empty for APIKey)
+	// StripThinking, when true, makes consumers proactively sanitize prior
+	// `thinking` block signatures from messages[] before every forward on this
+	// credential. Set + persisted automatically the first time an upstream
+	// thinking-signature-error recovery succeeds: relays that pool/rotate
+	// backend accounts per request (e.g. an aws2-style vllmproxy) reject every
+	// echoed signature, so without proactive stripping each request fails once
+	// and recovers via replay. Persisted to the credential file so the decision
+	// survives restarts. Append-only field; old files default to false.
+	StripThinking bool
+
+	// Source file for OAuth and file-backed APIKey credentials.
 	FilePath string
 
 	// Health
