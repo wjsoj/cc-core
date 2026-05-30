@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wjsoj/cc-core/mimicry"
 )
 
 // CodexUsageInfo mirrors the GET https://chatgpt.com/backend-api/wham/usage
@@ -34,16 +36,41 @@ type CodexUsageInfo struct {
 	// so future variants pass through unchanged.
 	RateLimitReachedType string `json:"rate_limit_reached_type,omitempty"`
 
+	// Fields added with the codex-tui/0.135.0 capture (crack/codex/SPEC.md).
+	// CodeReviewRateLimit is a top-level sibling of rate_limit (typically null);
+	// kept as raw JSON since its non-null shape isn't yet captured.
+	CodeReviewRateLimit json.RawMessage `json:"code_review_rate_limit,omitempty"`
+	// AdditionalRateLimits carries per-feature windows (e.g. the
+	// "GPT-5.3-Codex-Spark" / metered_feature "codex_bengalfox" limiter).
+	AdditionalRateLimits []CodexAdditionalRateLimit `json:"additional_rate_limits,omitempty"`
+	// RateLimitResetCredits reports how many one-off limit-reset credits remain.
+	RateLimitResetCredits *CodexUsageResetCredits `json:"rate_limit_reset_credits,omitempty"`
+	// Promo / ReferralBeacon are surfaced-as-is (usually null).
+	Promo         json.RawMessage `json:"promo,omitempty"`
+	ReferralBeacon json.RawMessage `json:"referral_beacon,omitempty"`
+
 	// Updated is when we last successfully fetched this view.
 	Updated time.Time `json:"updated"`
 }
 
 type CodexUsageRateLimit struct {
-	Allowed          bool                   `json:"allowed"`
-	LimitReached     bool                   `json:"limit_reached"`
-	PrimaryWindow    *CodexUsageRateWindow  `json:"primary_window,omitempty"`
-	SecondaryWindow  *CodexUsageRateWindow  `json:"secondary_window,omitempty"`
-	CodeReviewWindow map[string]interface{} `json:"code_review_rate_limit,omitempty"`
+	Allowed         bool                  `json:"allowed"`
+	LimitReached    bool                  `json:"limit_reached"`
+	PrimaryWindow   *CodexUsageRateWindow `json:"primary_window,omitempty"`
+	SecondaryWindow *CodexUsageRateWindow `json:"secondary_window,omitempty"`
+}
+
+// CodexAdditionalRateLimit is one entry in additional_rate_limits[]: a named,
+// per-feature limiter with the same two-window rate-limit shape.
+type CodexAdditionalRateLimit struct {
+	LimitName      string               `json:"limit_name"`
+	MeteredFeature string               `json:"metered_feature"`
+	RateLimit      *CodexUsageRateLimit `json:"rate_limit,omitempty"`
+}
+
+// CodexUsageResetCredits is the rate_limit_reset_credits object.
+type CodexUsageResetCredits struct {
+	AvailableCount int `json:"available_count"`
 }
 
 type CodexUsageRateWindow struct {
@@ -71,17 +98,6 @@ type CodexUsageSpendControl struct {
 // in this package is also pinned to a captured client version.
 const (
 	codexWhamUsageURL = "https://chatgpt.com/backend-api/wham/usage"
-
-	// Web client signature observed in the captured analytics page request.
-	// chatgpt.com inspects oai-client-version + a few sibling headers; sending
-	// these matches what the real settings/analytics page sends and avoids
-	// the "unknown client" rejection path. Bump in lockstep when the web app
-	// version drifts (low cadence — these headers were stable across months
-	// of capture).
-	codexWebClientVersion     = "prod-bede35f9dcd856d080e012478f0c1031faa2588e"
-	codexWebClientBuildNumber = "6631702"
-	codexWebUserAgent         = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-		"(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
 )
 
 // FetchCodexUsage actively queries the wham/usage endpoint and stores the
@@ -131,6 +147,13 @@ func (a *Auth) FetchCodexUsage(ctx context.Context, useUTLS bool) (*CodexUsageIn
 	// Keep-alive sidesteps both issues by reusing the existing connection.
 	client := ClientFor(a.ProxyURL, useUTLS)
 
+	// The Codex CLI's own wham/usage probe (crack/codex/SPEC.md, rows/02)
+	// carries only Authorization + Chatgpt-Account-Id + the codex-tui UA — NOT
+	// the web portal's oai-client-version / x-openai-target-* / sec-fetch-*
+	// headers (those belong to the browser settings page, a different client).
+	// Sending the CLI's minimal set is both simpler and a tighter match for an
+	// OAuth credential that otherwise talks to the backend as the CLI.
+	accountID, _ := a.CodexIdentity()
 	buildReq := func() (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodGet, codexWhamUsageURL, nil)
 		if err != nil {
@@ -139,17 +162,10 @@ func (a *Auth) FetchCodexUsage(ctx context.Context, useUTLS bool) (*CodexUsageIn
 		r.Header.Set("Authorization", "Bearer "+token)
 		r.Header.Set("Accept", "*/*")
 		r.Header.Set("Accept-Encoding", "identity")
-		r.Header.Set("Accept-Language", "en")
-		r.Header.Set("User-Agent", codexWebUserAgent)
-		r.Header.Set("Referer", "https://chatgpt.com/codex/cloud/settings/analytics")
-		r.Header.Set("Oai-Client-Version", codexWebClientVersion)
-		r.Header.Set("Oai-Client-Build-Number", codexWebClientBuildNumber)
-		r.Header.Set("Oai-Language", "en")
-		r.Header.Set("X-Openai-Target-Path", "/backend-api/wham/usage")
-		r.Header.Set("X-Openai-Target-Route", "/backend-api/wham/usage")
-		r.Header.Set("Sec-Fetch-Dest", "empty")
-		r.Header.Set("Sec-Fetch-Mode", "cors")
-		r.Header.Set("Sec-Fetch-Site", "same-origin")
+		r.Header.Set("User-Agent", mimicry.CodexUsageUserAgent)
+		if accountID != "" {
+			r.Header.Set("Chatgpt-Account-Id", accountID)
+		}
 		return r, nil
 	}
 

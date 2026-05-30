@@ -10,6 +10,10 @@ package auth
 // id_token's chatgpt_plan_type) the caller should fall back to the
 // Pro list — matches CLIProxyAPI's default, i.e. favor availability
 // over restriction.
+//
+// Verified against a live codex-tui/0.135.0 Pro session (crack/codex/SPEC.md,
+// 2026-05-30): default model gpt-5.5, plus the metered gpt-5.3-codex-spark —
+// both already present in the Pro/Plus lists. No new model names observed.
 var CodexModelCatalog = map[string][]string{
 	CodexPlanFree: {
 		"gpt-5.2",
