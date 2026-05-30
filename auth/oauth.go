@@ -45,6 +45,26 @@ type fileFormat struct {
 	Extra         map[string]any `json:"-"`
 }
 
+// DefaultClaudeOAuthModelMap upgrades retired Claude Opus model names to the
+// current one. It is injected into a Claude (Anthropic) OAuth credential's
+// ModelMap when the credential file has no `model_map` key at all — OAuth hits
+// api.anthropic.com directly, where opus-4-6 / opus-4-7 are retired, so they're
+// transparently served by opus-4-8. Operators override it via the admin
+// model-map editor; saving any map (even empty) suppresses re-injection, so an
+// empty map cleanly disables the defaults. API-key credentials get no defaults.
+var DefaultClaudeOAuthModelMap = map[string]string{
+	"claude-opus-4-6": "claude-opus-4-8",
+	"claude-opus-4-7": "claude-opus-4-8",
+}
+
+func defaultModelMapClone() map[string]string {
+	m := make(map[string]string, len(DefaultClaudeOAuthModelMap))
+	for k, v := range DefaultClaudeOAuthModelMap {
+		m[k] = v
+	}
+	return m
+}
+
 func parseFile(path string, data []byte) (*Auth, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -120,6 +140,14 @@ func parseFile(path string, data []byte) (*Auth, error) {
 	orgType, _ := raw["organization_type"].(string)
 	orgRateLimitTier, _ := raw["organization_rate_limit_tier"].(string)
 	stripThinking, _ := raw["strip_thinking"].(bool)
+	// model_map for OAuth: rewrite-only like API-key. When the file has no
+	// model_map key at all, a Claude (Anthropic) OAuth credential gets the
+	// default opus-4-6/4-7 → 4-8 upgrade injected; an explicit (even empty)
+	// map suppresses it.
+	modelMap := parseModelMap(raw["model_map"])
+	if _, hasModelMap := raw["model_map"]; !hasModelMap && NormalizeProvider(provider) == ProviderAnthropic {
+		modelMap = defaultModelMapClone()
+	}
 
 	a := &Auth{
 		ID:                        filepath.Base(path),
@@ -140,6 +168,7 @@ func parseFile(path string, data []byte) (*Auth, error) {
 		OrganizationType:          orgType,
 		OrganizationRateLimitTier: orgRateLimitTier,
 		StripThinking:             stripThinking,
+		ModelMap:                  modelMap,
 	}
 	return a, nil
 }
@@ -358,15 +387,6 @@ func saveAuth(a *Auth) error {
 		} else {
 			delete(raw, "base_url")
 		}
-		if len(a.ModelMap) > 0 {
-			mm := make(map[string]any, len(a.ModelMap))
-			for k, v := range a.ModelMap {
-				mm[k] = v
-			}
-			raw["model_map"] = mm
-		} else {
-			delete(raw, "model_map")
-		}
 		// Clear OAuth-only keys if the file was converted.
 		delete(raw, "refresh_token")
 		delete(raw, "access_token")
@@ -420,6 +440,18 @@ func saveAuth(a *Auth) error {
 		raw["strip_thinking"] = true
 	} else {
 		delete(raw, "strip_thinking")
+	}
+	// model_map: persist for both kinds, always (empty → {}). An absent key
+	// re-injects DefaultClaudeOAuthModelMap for Claude OAuth at load, so writing
+	// an explicit empty object is what lets an operator clear the defaults.
+	if len(a.ModelMap) > 0 {
+		mm := make(map[string]any, len(a.ModelMap))
+		for k, v := range a.ModelMap {
+			mm[k] = v
+		}
+		raw["model_map"] = mm
+	} else {
+		raw["model_map"] = map[string]any{}
 	}
 	if a.ProxyURL != "" {
 		raw["proxy_url"] = a.ProxyURL

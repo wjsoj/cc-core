@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.8.7 — model_map for OAuth + default Claude opus upgrade
+
+### Changed — `model_map` now applies to OAuth credentials too
+
+`parseFile`/`saveAuth` read & persist `model_map` for OAuth (was API-key only;
+`ResolveUpstreamModel` already honored it). A **Claude (Anthropic) OAuth**
+credential with no `model_map` key gets `DefaultClaudeOAuthModelMap` injected
+(`claude-opus-4-6` & `claude-opus-4-7` → `claude-opus-4-8`) — api.anthropic.com
+retired 4-6/4-7, so they're transparently served by 4-8. An explicit map (even
+empty `{}`) suppresses the default, so operators can override/disable it; the
+field is now always persisted (empty → `{}`) so a cleared map stays cleared.
+API-key credentials get no defaults.
+
+
 ## v0.8.6 — Persistent per-credential strip-thinking flag
 
 ### New — `Auth.StripThinking` + `MarkStripThinking()` / `StripThinkingEnabled()`
