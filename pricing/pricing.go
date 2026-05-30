@@ -267,13 +267,18 @@ var builtIn = map[string]ModelPrice{
 	},
 
 	// ─── OpenAI / Codex (subscription tier labels) ─────────────────────
-	// Tier labels track CLIProxyAPI/internal/registry/models/models.json.
-	ProviderOpenAI + "/gpt-5.2":              {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
-	ProviderOpenAI + "/gpt-5.3-codex":        {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
-	ProviderOpenAI + "/gpt-5.3-codex-spark":  {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
-	ProviderOpenAI + "/gpt-5.4":              {InputPer1M: 1.50, OutputPer1M: 12.00, CacheReadPer1M: 0.15},
-	ProviderOpenAI + "/gpt-5.4-mini":         {InputPer1M: 0.25, OutputPer1M: 2.00, CacheReadPer1M: 0.025},
-	ProviderOpenAI + "/gpt-5.5":              {InputPer1M: 2.50, OutputPer1M: 20.00, CacheReadPer1M: 0.25},
+	// Official OpenAI API per-1M-token rates (input / cached-input / output),
+	// verified 2026-05-30 against developers.openai.com/api/docs/pricing,
+	// developers.openai.com/codex/pricing (credit rate 1 credit = $0.04), and
+	// OpenRouter. gpt-5.2 and gpt-5.3-codex-spark aren't on the standard API
+	// page (spark is a Pro research preview) but both bill at the gpt-5.3-codex
+	// rate per the codex credit card and per-model calculators.
+	ProviderOpenAI + "/gpt-5.2":              {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	ProviderOpenAI + "/gpt-5.3-codex":        {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	ProviderOpenAI + "/gpt-5.3-codex-spark":  {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	ProviderOpenAI + "/gpt-5.4":              {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25},
+	ProviderOpenAI + "/gpt-5.4-mini":         {InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075},
+	ProviderOpenAI + "/gpt-5.5":              {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
 
 	// ─── OpenAI BYOK API models ────────────────────────────────────────
 	ProviderOpenAI + "/gpt-5":      {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},

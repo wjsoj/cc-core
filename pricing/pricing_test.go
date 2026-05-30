@@ -46,7 +46,7 @@ func TestLookupDateSuffixFallback(t *testing.T) {
 func TestLookupThinkingSuffixStripped(t *testing.T) {
 	cat := NewCatalog(Config{})
 	p := cat.Lookup("openai", "gpt-5.3-codex(high)")
-	if p.InputPer1M != 1.25 {
+	if p.InputPer1M != 1.75 {
 		t.Fatalf("thinking suffix not stripped: %+v", p)
 	}
 }
