@@ -14,7 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Anthropic OAuth constants. Mirror what `claude-cli/2.1.146` actually
+// Anthropic OAuth constants. Mirror what `claude-cli/2.1.158` actually
 // hits — the token endpoint moved off `api.anthropic.com` to a dedicated
 // `platform.claude.com` host in late 2025. The client_id is the public
 // OAuth application UUID for "Claude Code" (matches the `application.uuid`
@@ -25,8 +25,10 @@ const (
 
 	// User-Agent sent by real CC for the token-exchange + refresh requests.
 	// (Most other CC traffic uses claude-cli or claude-code or Bun, but
-	// these two specific axios calls use this exact string.)
-	anthropicOAuthUA = "axios/1.13.6"
+	// these two specific axios calls use this exact string.) Verified against
+	// the 2.1.158 OAuth login capture (crack/claude SPEC §7.1) — every axios
+	// call sends axios/1.15.2, matching the sidecar's uaAxios.
+	anthropicOAuthUA = "axios/1.15.2"
 )
 
 // fileFormat is the JSON layout written by `claude setup-token` / our own
@@ -620,7 +622,7 @@ func (a *Auth) refreshAnthropicLocked(ctx context.Context, useUTLS bool) error {
 	}
 
 	// Same wire shape as the initial token-exchange in login.go: ordered
-	// JSON body (grant_type, refresh_token, client_id) + axios/1.13.6 UA +
+	// JSON body (grant_type, refresh_token, client_id) + axios/1.15.2 UA +
 	// gzip,br Accept-Encoding + Connection: close. Real CC reuses the same
 	// `platform.claude.com/v1/oauth/token` endpoint for refresh.
 	payload := struct {
