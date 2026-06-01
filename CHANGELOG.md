@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.8.12 — `clientguard` ingress blocklist
+
+### New — `clientguard` package
+
+A shared ingress filter that rejects non-interactive SDK / scripting clients
+(raw Anthropic/OpenAI SDKs, LiteLLM, python-requests, curl, Postman, …) by
+User-Agent while letting the interactive client family through (Claude Code CLI
++ IDE/Web, Claude Desktop, Cursor, and any UA not on the blocklist). Blocklist —
+not allowlist — so unknown legitimate clients keep working; it stops low-effort
+abuse, not a determined UA spoofer.
+
+- `clientguard.New(extra []string, blockEmptyUA bool)` / `NewDefault()`
+- `(*Guard).Inspect(http.Header) Decision` / `InspectUA(string) Decision`
+- `DefaultBlockedUASubstrings` — overridable/extendable default fragment list.
+
+Consumed by CPA-Claude (new `client_guard` config toggle, Claude endpoint only)
+and hypitoken (replaced its strict claude-cli/claude-code allowlist with this
+blocklist so desktop/IDE clients are no longer rejected).
+
 ## v0.8.7 — model_map for OAuth + default Claude opus upgrade
 
 ### Changed — `model_map` now applies to OAuth credentials too
