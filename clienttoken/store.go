@@ -54,7 +54,25 @@ type Token struct {
 	RPM           int       `json:"rpm,omitempty"`            // 0 = use global default
 	Group         string    `json:"group,omitempty"`          // legacy single-group; promoted to Groups when set alone
 	Groups        []string  `json:"groups,omitempty"`         // priority-ordered group fallthrough list
+	Providers     []string  `json:"providers,omitempty"`      // allow-list of canonical providers this token may use; empty = all
 	CreatedAt     time.Time `json:"created_at,omitempty"`
+}
+
+// AllowsProvider reports whether this token may route to the given provider.
+// An empty Providers list means unrestricted (any provider). Comparison is
+// done through auth.NormalizeProvider so friendly aliases ("claude", "codex")
+// match their canonical ids.
+func (t *Token) AllowsProvider(p string) bool {
+	if len(t.Providers) == 0 {
+		return true
+	}
+	p = auth.NormalizeProvider(p)
+	for _, x := range t.Providers {
+		if auth.NormalizeProvider(x) == p {
+			return true
+		}
+	}
+	return false
 }
 
 // EffectiveGroups returns the priority-ordered group list to try. If Groups
@@ -79,6 +97,7 @@ type View struct {
 	RPM           int       `json:"rpm,omitempty"`
 	Group         string    `json:"group,omitempty"`
 	Groups        []string  `json:"groups,omitempty"`
+	Providers     []string  `json:"providers,omitempty"`
 	CreatedAt     time.Time `json:"created_at,omitempty"`
 }
 
@@ -122,6 +141,7 @@ func Open(path string) (*Store, error) {
 		}
 		t.Group = auth.NormalizeGroup(t.Group)
 		t.Groups = normalizeGroups(t.Groups)
+		t.Providers = normalizeProviders(t.Providers)
 		if t.WeeklyUSD < 0 {
 			t.WeeklyUSD = 0
 		}
@@ -145,6 +165,28 @@ func normalizeGroups(groups []string) []string {
 		}
 		seen[g] = true
 		out = append(out, g)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// normalizeProviders canonicalizes a provider allow-list, dropping unknown /
+// empty entries and dupes while preserving order. nil out = unrestricted.
+func normalizeProviders(providers []string) []string {
+	if len(providers) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(providers))
+	out := make([]string, 0, len(providers))
+	for _, p := range providers {
+		p = auth.NormalizeProvider(p)
+		if !auth.IsKnownProvider(p) || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
 	}
 	if len(out) == 0 {
 		return nil
@@ -199,6 +241,7 @@ func (s *Store) List() []View {
 			Token: t.Token, Name: t.Name, WeeklyUSD: t.WeeklyUSD,
 			MaxConcurrent: t.MaxConcurrent, RPM: t.RPM,
 			Group: t.Group, Groups: append([]string(nil), t.Groups...),
+			Providers: append([]string(nil), t.Providers...),
 			CreatedAt: t.CreatedAt,
 		})
 	}
@@ -217,6 +260,7 @@ func (s *Store) Add(t Token) error {
 	t.Name = strings.TrimSpace(t.Name)
 	t.Group = auth.NormalizeGroup(t.Group)
 	t.Groups = normalizeGroups(t.Groups)
+	t.Providers = normalizeProviders(t.Providers)
 	if t.CreatedAt.IsZero() {
 		t.CreatedAt = time.Now()
 	}
@@ -233,7 +277,9 @@ func (s *Store) Add(t Token) error {
 
 // Update patches an existing token. nil fields mean "no change".
 // Passing groups != nil REPLACES the Groups slice (use []string{} to clear).
-func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int, rpm *int, group *string, groups *[]string) error {
+// Passing providers != nil REPLACES the Providers allow-list (use []string{}
+// to clear / unrestrict).
+func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int, rpm *int, group *string, groups *[]string, providers *[]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.tokens {
@@ -267,6 +313,9 @@ func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int
 			}
 			if groups != nil {
 				s.tokens[i].Groups = normalizeGroups(*groups)
+			}
+			if providers != nil {
+				s.tokens[i].Providers = normalizeProviders(*providers)
 			}
 			return s.saveLocked()
 		}

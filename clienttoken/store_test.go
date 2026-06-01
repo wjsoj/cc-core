@@ -41,7 +41,7 @@ func TestUpdateNilSemantics(t *testing.T) {
 	_ = s.Add(Token{Token: "sk-bbb", Name: "bob", RPM: 10, WeeklyUSD: 1.0})
 	name := "robert"
 	weekly := 2.0
-	if err := s.Update("sk-bbb", &name, &weekly, nil, nil, nil, nil); err != nil {
+	if err := s.Update("sk-bbb", &name, &weekly, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	tok, _ := s.Lookup("sk-bbb")
@@ -55,7 +55,7 @@ func TestUpdateNilSemantics(t *testing.T) {
 	// Negative values get clamped to 0.
 	neg := -5.0
 	negI := -3
-	_ = s.Update("sk-bbb", nil, &neg, &negI, &negI, nil, nil)
+	_ = s.Update("sk-bbb", nil, &neg, &negI, &negI, nil, nil, nil)
 	tok, _ = s.Lookup("sk-bbb")
 	if tok.WeeklyUSD != 0 || tok.MaxConcurrent != 0 || tok.RPM != 0 {
 		t.Fatalf("negative not clamped: %+v", tok)
@@ -136,7 +136,7 @@ func TestUpdateGroups(t *testing.T) {
 	s := OpenInMemory()
 	_ = s.Add(Token{Token: "sk-x", Group: "old"})
 	newGroups := []string{"new1", "new2"}
-	if err := s.Update("sk-x", nil, nil, nil, nil, nil, &newGroups); err != nil {
+	if err := s.Update("sk-x", nil, nil, nil, nil, nil, &newGroups, nil); err != nil {
 		t.Fatal(err)
 	}
 	tok, _ := s.Lookup("sk-x")
@@ -149,7 +149,7 @@ func TestUpdateGroups(t *testing.T) {
 	}
 	// Pass &[]string{} to clear.
 	empty := []string{}
-	_ = s.Update("sk-x", nil, nil, nil, nil, nil, &empty)
+	_ = s.Update("sk-x", nil, nil, nil, nil, nil, &empty, nil)
 	tok, _ = s.Lookup("sk-x")
 	if len(tok.Groups) != 0 {
 		t.Fatalf("Update []string{} should clear Groups, got: %v", tok.Groups)
@@ -169,6 +169,72 @@ func TestPersistGroups(t *testing.T) {
 	tok, ok := s2.Lookup("sk-multi")
 	if !ok || len(tok.Groups) != 2 || tok.Groups[0] != "kiro" {
 		t.Fatalf("Groups did not persist: %+v ok=%v", tok, ok)
+	}
+}
+
+func TestAllowsProvider(t *testing.T) {
+	// Empty allow-list = unrestricted.
+	open := Token{Token: "sk-open"}
+	if !open.AllowsProvider("anthropic") || !open.AllowsProvider("openai") {
+		t.Fatalf("empty Providers should allow all")
+	}
+	// Restricted to anthropic — also matches the "claude" alias, rejects openai.
+	claude := Token{Token: "sk-c", Providers: []string{"anthropic"}}
+	if !claude.AllowsProvider("anthropic") || !claude.AllowsProvider("claude") {
+		t.Fatalf("anthropic allow-list should accept anthropic/claude")
+	}
+	if claude.AllowsProvider("openai") || claude.AllowsProvider("codex") {
+		t.Fatalf("anthropic allow-list must reject openai/codex")
+	}
+	// Restricted to openai.
+	oa := Token{Token: "sk-o", Providers: []string{"openai"}}
+	if !oa.AllowsProvider("chatgpt") || oa.AllowsProvider("anthropic") {
+		t.Fatalf("openai allow-list wrong: %+v", oa)
+	}
+}
+
+func TestNormalizeProviders(t *testing.T) {
+	s := OpenInMemory()
+	// Friendly aliases + dupes + an unknown entry; expect canonical, deduped.
+	_ = s.Add(Token{Token: "sk-p", Providers: []string{"claude", "anthropic", "codex", "bogus", ""}})
+	tok, _ := s.Lookup("sk-p")
+	if len(tok.Providers) != 2 || tok.Providers[0] != "anthropic" || tok.Providers[1] != "openai" {
+		t.Fatalf("normalizeProviders wrong: %v", tok.Providers)
+	}
+	if !tok.AllowsProvider("claude") || !tok.AllowsProvider("openai") {
+		t.Fatalf("both providers should be allowed: %v", tok.Providers)
+	}
+}
+
+func TestUpdateProviders(t *testing.T) {
+	s := OpenInMemory()
+	_ = s.Add(Token{Token: "sk-up"})
+	only := []string{"openai"}
+	if err := s.Update("sk-up", nil, nil, nil, nil, nil, nil, &only); err != nil {
+		t.Fatal(err)
+	}
+	tok, _ := s.Lookup("sk-up")
+	if len(tok.Providers) != 1 || tok.Providers[0] != "openai" || tok.AllowsProvider("anthropic") {
+		t.Fatalf("Update did not set Providers: %v", tok.Providers)
+	}
+	// Clear with &[]string{} → unrestricted again.
+	empty := []string{}
+	_ = s.Update("sk-up", nil, nil, nil, nil, nil, nil, &empty)
+	tok, _ = s.Lookup("sk-up")
+	if len(tok.Providers) != 0 || !tok.AllowsProvider("anthropic") {
+		t.Fatalf("clear should unrestrict: %v", tok.Providers)
+	}
+}
+
+func TestPersistProviders(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "tokens.json")
+	s1, _ := Open(p)
+	_ = s1.Add(Token{Token: "sk-pp", Providers: []string{"anthropic"}})
+	s2, _ := Open(p)
+	tok, ok := s2.Lookup("sk-pp")
+	if !ok || len(tok.Providers) != 1 || tok.Providers[0] != "anthropic" {
+		t.Fatalf("Providers did not persist: %+v ok=%v", tok, ok)
 	}
 }
 
