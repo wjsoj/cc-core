@@ -97,6 +97,28 @@ func Convert(req *AnthropicRequest, opts ConvertOptions) (*ConvertResult, error)
 
 	history := buildHistory(msgs[:lastIdx], modelID, opts.Origin, opts.AllowImages)
 
+	// Kiro's vision pipeline only reads images from
+	// currentMessage.userInputMessage.images[] — verified against the real
+	// Kiro CLI capture in crack/kiro/image-tool-flow/rows/08, where every
+	// image upload sits on the currentMessage at the moment of upload, and
+	// Kiro server-side does NOT re-fetch images attached to history entries
+	// on follow-up turns. Claude Code, by contrast, leaves the image in
+	// the tool_result of an older user turn forever, expecting the model
+	// to "remember" it. To bridge this, hoist all historical user-message
+	// images up to the current message's images[] as well — they ride the
+	// wire alongside the current turn's content and are always visible to
+	// the model. Kiro server treats the duplicate-but-identical bytes as a
+	// no-op; the wire cost is bounded by the actual image set in the
+	// conversation, which Claude Code already paged in once anyway.
+	if opts.AllowImages {
+		for _, h := range history {
+			if h.UserInputMessage == nil {
+				continue
+			}
+			currentImages = append(currentImages, h.UserInputMessage.Images...)
+		}
+	}
+
 	// Validate tool_use ↔ tool_result pairing; remove orphans.
 	validated, orphans := validateToolPairing(history, currentToolResults)
 	removeOrphanedToolUses(history, orphans)

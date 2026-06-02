@@ -288,6 +288,61 @@ func TestConvertToolResultTextPlusImage(t *testing.T) {
 	}
 }
 
+// TestConvertHoistsHistoricalImagesToCurrent — Kiro only reads images from
+// currentMessage.images[], not from history entries. When a multi-turn
+// conversation has the image in an older turn (Claude Code attached it via
+// Read tool_result and the user has since asked a follow-up), we must copy
+// those historical images forward so the model still "sees" them.
+func TestConvertHoistsHistoricalImagesToCurrent(t *testing.T) {
+	pngB64 := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEX///+nxBvIAAAACklEQVQIHWNgAAAAAgABz8g15QAAAABJRU5ErkJggg=="
+	req := &AnthropicRequest{
+		Model: "claude-sonnet-4-5",
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Read /tmp/x.png and describe"`)},
+			{Role: "assistant", Content: json.RawMessage(`[
+				{"type":"tool_use","id":"tu_img","name":"Read","input":{"file_path":"/tmp/x.png"}}
+			]`)},
+			// This is the user turn that uploaded the image — it's now history
+			// because there's a later user turn below.
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"tu_img","content":[
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + pngB64 + `"}}
+				]}
+			]`)},
+			{Role: "assistant", Content: json.RawMessage(`"A small red square."`)},
+			// Follow-up user turn — NO image of its own.
+			{Role: "user", Content: json.RawMessage(`"What color is the top-left pixel?"`)},
+		},
+		Tools: []AnthropicTool{
+			{Name: "Read", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+	out, err := Convert(req, ConvertOptions{AllowImages: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := out.Request.ConversationState.CurrentMessage.UserInputMessage
+	if len(cm.Images) != 1 {
+		t.Fatalf("expected 1 image hoisted to currentMessage, got %d", len(cm.Images))
+	}
+	if cm.Images[0].Source.Bytes != pngB64 {
+		t.Errorf("image bytes not preserved on hoist")
+	}
+	// History entry that carried the image should still have it locally too —
+	// the hoist is additive, not a move (we leave history's own images intact
+	// in case Kiro ever starts honoring them).
+	var found bool
+	for _, h := range out.Request.ConversationState.History {
+		if h.UserInputMessage != nil && len(h.UserInputMessage.Images) == 1 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("history entry should keep its image after hoist")
+	}
+}
+
 // ---- orphan tool removal ----
 
 func TestConvertDropsOrphanToolUse(t *testing.T) {
