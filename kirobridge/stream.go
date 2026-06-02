@@ -49,6 +49,7 @@ type StreamTranslator struct {
 	src          *kiroapi.Stream
 	model        string // Anthropic model name to echo in message_start
 	messageID    string
+	nameMap      ToolNameMap // optional short→original tool-name reverse map
 
 	queue        []SSEEvent
 	current      SSEEvent
@@ -77,10 +78,21 @@ type anthropicUsage struct {
 // caller-generated UUID (will end up as `message.id` in the SSE stream);
 // pass kirotransport.NewInvocationID() if you don't have one.
 func NewStreamTranslator(src *kiroapi.Stream, anthropicModel, messageID string) *StreamTranslator {
+	return NewStreamTranslatorWithMap(src, anthropicModel, messageID, nil)
+}
+
+// NewStreamTranslatorWithMap is NewStreamTranslator that additionally accepts
+// the (short→original) tool-name map produced by Convert. When set, the
+// translator restores the original Anthropic tool name in every
+// content_block_start it emits (mirrors kiro.rs process_tool_use's
+// `tool_name_map.get(&tool_use.name)` lookup). Pass nil when no shortening
+// happened on the way in.
+func NewStreamTranslatorWithMap(src *kiroapi.Stream, anthropicModel, messageID string, nameMap ToolNameMap) *StreamTranslator {
 	return &StreamTranslator{
 		src:       src,
 		model:     anthropicModel,
 		messageID: messageID,
+		nameMap:   nameMap,
 		openTools: make(map[string]int),
 		nextIndex: 0,
 	}
@@ -193,10 +205,20 @@ func (t *StreamTranslator) handleToolUse(ev *kiroapi.ToolUseEvent) {
 		idx = t.nextIndex
 		t.nextIndex++
 		t.openTools[ev.ToolUseID] = idx
-		t.emit("content_block_start", contentBlockStartToolUsePayload(idx, ev.ToolUseID, ev.Name))
+		// Restore original tool name if Convert shortened it on the way in.
+		name := ev.Name
+		if t.nameMap != nil {
+			name = t.nameMap.Original(ev.Name)
+		}
+		t.emit("content_block_start", contentBlockStartToolUsePayload(idx, ev.ToolUseID, name))
 	}
-	if len(ev.Input) > 0 {
-		t.emit("content_block_delta", inputJSONDeltaPayload(idx, string(ev.Input)))
+	// ev.Input is already a JSON-unescaped fragment of the tool input (Kiro
+	// wire format ships it as a JSON-encoded string and ToolUseEvent.Input
+	// is a Go string, so json.Unmarshal does the unquoting for us). Emit it
+	// verbatim as partial_json — Claude Code reassembles the full input by
+	// concatenating fragments across frames.
+	if ev.Input != "" {
+		t.emit("content_block_delta", inputJSONDeltaPayload(idx, ev.Input))
 	}
 	if ev.Stop {
 		t.emit("content_block_stop", contentBlockStopPayload(idx))

@@ -122,11 +122,20 @@ type AssistantResponseEvent struct {
 }
 
 // ToolUseEvent is the typed payload of a toolUseEvent frame.
+//
+// Kiro sends `input` on the wire as a JSON-encoded STRING that — when the
+// stream is reassembled across all fragments — yields the full JSON-encoded
+// tool input. We MUST deserialize it as a Go string so that JSON unescaping
+// runs (matching kiro.rs `pub input: String` semantics in
+// src/kiro/model/events/tool_use.rs). Reading it as json.RawMessage preserves
+// the outer quotes + escapes, and forwarding that verbatim as Anthropic
+// `partial_json` causes Claude Code to see a JSON string literal instead of
+// the tool input object → "Invalid tool parameters" rejection.
 type ToolUseEvent struct {
-	ToolUseID string          `json:"toolUseId"`
-	Name      string          `json:"name"`
-	Input     json.RawMessage `json:"input,omitempty"` // may stream as partial JSON
-	Stop      bool            `json:"stop,omitempty"`  // true on the last fragment
+	ToolUseID string `json:"toolUseId"`
+	Name      string `json:"name"`
+	Input     string `json:"input,omitempty"` // streamed partial JSON, already unescaped
+	Stop      bool   `json:"stop,omitempty"`  // true on the last fragment
 }
 
 // ContextUsageEvent reports prompt cache hit/miss + token counts.

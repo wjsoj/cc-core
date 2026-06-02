@@ -496,6 +496,96 @@ func TestStreamTranslatorToolUse(t *testing.T) {
 	}
 }
 
+// TestStreamTranslatorToolUsePartialJSONUnquoted verifies that Kiro's
+// JSON-encoded `input` string is unescaped exactly once on the way through
+// the translator. If we leave the extra layer of quoting in, Claude Code
+// concatenates the fragments into a JSON string literal instead of the
+// expected input object → "Invalid tool parameters".
+func TestStreamTranslatorToolUsePartialJSONUnquoted(t *testing.T) {
+	body := buildKiroStream([]frameSpec{
+		// Wire format: input is itself a JSON-encoded string value.
+		// Fragments below concatenate to {"file_path":"/etc/hosts"}.
+		{event: "toolUseEvent", payload: `{"toolUseId":"tu_1","name":"Read","input":"{\"file_path\":\""}`},
+		{event: "toolUseEvent", payload: `{"toolUseId":"tu_1","name":"Read","input":"/etc/hosts\"}","stop":true}`},
+	})
+	stream := openTestStream(t, body)
+	defer stream.Close()
+
+	tr := NewStreamTranslator(stream, "claude-haiku-4-5", "msg_test")
+	events := drainEvents(tr)
+	if err := tr.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	var assembled strings.Builder
+	for _, ev := range events {
+		if ev.Name != "content_block_delta" {
+			continue
+		}
+		var v struct {
+			Delta struct {
+				Type        string `json:"type"`
+				PartialJSON string `json:"partial_json"`
+			} `json:"delta"`
+		}
+		if err := json.Unmarshal(ev.Data, &v); err != nil {
+			t.Fatal(err)
+		}
+		if v.Delta.Type == "input_json_delta" {
+			assembled.WriteString(v.Delta.PartialJSON)
+		}
+	}
+	got := assembled.String()
+	want := `{"file_path":"/etc/hosts"}`
+	if got != want {
+		t.Fatalf("partial_json reassembly:\n  got:  %s\n  want: %s", got, want)
+	}
+	// Final assembled fragment must parse as a JSON object.
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(got), &obj); err != nil {
+		t.Fatalf("assembled input not valid JSON object: %v", err)
+	}
+}
+
+// TestStreamTranslatorToolUseNameRestored verifies that long tool names
+// shortened at Convert time are restored to their original on the way out
+// when the caller passes the name map.
+func TestStreamTranslatorToolUseNameRestored(t *testing.T) {
+	body := buildKiroStream([]frameSpec{
+		{event: "toolUseEvent", payload: `{"toolUseId":"tu_2","name":"shortened_abc","input":"{}","stop":true}`},
+	})
+	stream := openTestStream(t, body)
+	defer stream.Close()
+
+	nm := ToolNameMap{}
+	long := strings.Repeat("a_very_long_tool_name", 4) // > 63 chars; doesn't matter for the test
+	nm.Apply("shortened_abc", long)
+
+	tr := NewStreamTranslatorWithMap(stream, "claude-haiku-4-5", "msg_test", nm)
+	events := drainEvents(tr)
+	if err := tr.Err(); err != nil {
+		t.Fatal(err)
+	}
+	var sawName string
+	for _, ev := range events {
+		if ev.Name != "content_block_start" {
+			continue
+		}
+		var v struct {
+			ContentBlock struct {
+				Type string `json:"type"`
+				Name string `json:"name"`
+			} `json:"content_block"`
+		}
+		if json.Unmarshal(ev.Data, &v) == nil && v.ContentBlock.Type == "tool_use" {
+			sawName = v.ContentBlock.Name
+		}
+	}
+	if sawName != long {
+		t.Fatalf("tool name not restored: got %q, want %q", sawName, long)
+	}
+}
+
 func TestSSEEventMarshal(t *testing.T) {
 	e := SSEEvent{Name: "ping", Data: []byte(`{"a":1}`)}
 	want := "event: ping\ndata: {\"a\":1}\n\n"
