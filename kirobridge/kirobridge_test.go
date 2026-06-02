@@ -201,6 +201,93 @@ func TestConvertHistoryWithTools(t *testing.T) {
 	}
 }
 
+// TestConvertHoistsToolResultImage exercises the Claude Code Read-an-image
+// flow: tool_result.content carries [{type:"image", source:{base64,…}}],
+// Kiro's wire shape expects that image at userInputMessage.images[] and
+// the tool_result content to be an empty list. See
+// crack/kiro/image-tool-flow/rows/08-claude-haiku-imageReply-SUCCESS.json.
+func TestConvertHoistsToolResultImage(t *testing.T) {
+	pngB64 := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEX///+nxBvIAAAACklEQVQIHWNgAAAAAgABz8g15QAAAABJRU5ErkJggg=="
+	req := &AnthropicRequest{
+		Model: "claude-haiku-4-5",
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Read /tmp/foo.png"`)},
+			{Role: "assistant", Content: json.RawMessage(`[
+				{"type":"tool_use","id":"tu_img","name":"Read","input":{"file_path":"/tmp/foo.png"}}
+			]`)},
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"tu_img","content":[
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + pngB64 + `"}}
+				]}
+			]`)},
+		},
+		Tools: []AnthropicTool{
+			{Name: "Read", Description: "Read a file", InputSchema: json.RawMessage(`{"type":"object","properties":{"file_path":{"type":"string"}}}`)},
+		},
+	}
+	out, err := Convert(req, ConvertOptions{AllowImages: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := out.Request.ConversationState.CurrentMessage.UserInputMessage
+	if len(cm.Images) != 1 {
+		t.Fatalf("expected 1 image hoisted to userInputMessage.images, got %d", len(cm.Images))
+	}
+	if cm.Images[0].Format != "png" {
+		t.Errorf("image format: %q want png", cm.Images[0].Format)
+	}
+	if cm.Images[0].Source.Bytes != pngB64 {
+		t.Errorf("image bytes not preserved")
+	}
+	tr := cm.UserInputMessageContext.ToolResults
+	if len(tr) != 1 {
+		t.Fatalf("expected 1 tool_result, got %d", len(tr))
+	}
+	if len(tr[0].Content) != 0 {
+		t.Errorf("expected empty tool_result content, got %v", tr[0].Content)
+	}
+	if tr[0].Status != "success" {
+		t.Errorf("tool_result status: %s", tr[0].Status)
+	}
+}
+
+// TestConvertToolResultTextPlusImage covers the mixed case — a tool_result
+// with both an inline text block AND an image. Text stays in content; image
+// hoists.
+func TestConvertToolResultTextPlusImage(t *testing.T) {
+	pngB64 := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEX///+nxBvIAAAACklEQVQIHWNgAAAAAgABz8g15QAAAABJRU5ErkJggg=="
+	req := &AnthropicRequest{
+		Model: "claude-haiku-4-5",
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Read it"`)},
+			{Role: "assistant", Content: json.RawMessage(`[
+				{"type":"tool_use","id":"tu_mix","name":"Read","input":{"file_path":"/tmp/x"}}
+			]`)},
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"tu_mix","content":[
+					{"type":"text","text":"file is binary; showing thumbnail:"},
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + pngB64 + `"}}
+				]}
+			]`)},
+		},
+		Tools: []AnthropicTool{
+			{Name: "Read", InputSchema: json.RawMessage(`{"type":"object"}`)},
+		},
+	}
+	out, err := Convert(req, ConvertOptions{AllowImages: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := out.Request.ConversationState.CurrentMessage.UserInputMessage
+	if len(cm.Images) != 1 {
+		t.Fatalf("image not hoisted (got %d)", len(cm.Images))
+	}
+	tr := cm.UserInputMessageContext.ToolResults[0]
+	if len(tr.Content) != 1 || tr.Content[0]["text"] != "file is binary; showing thumbnail:" {
+		t.Errorf("text block missing from tool_result: %v", tr.Content)
+	}
+}
+
 // ---- orphan tool removal ----
 
 func TestConvertDropsOrphanToolUse(t *testing.T) {

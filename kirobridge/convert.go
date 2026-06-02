@@ -163,8 +163,10 @@ func dropTrailingAssistant(msgs []AnthropicMessage) []AnthropicMessage {
 
 // splitUserContent walks Anthropic user-turn blocks into:
 //   - concatenated text content for Kiro's `content` field
-//   - image attachments
-//   - tool_result entries
+//   - image attachments (from inline `image` blocks AND from images
+//     nested inside `tool_result.content`; Kiro requires every image to
+//     live at userInputMessage.images[], not inside tool_result content)
+//   - tool_result entries (with their image blocks already stripped out)
 func splitUserContent(blocks []ContentBlock, allowImages bool) (string, []KiroImage, []KiroToolResult) {
 	var sb strings.Builder
 	var images []KiroImage
@@ -185,7 +187,9 @@ func splitUserContent(blocks []ContentBlock, allowImages bool) (string, []KiroIm
 				images = append(images, *img)
 			}
 		case "tool_result":
-			results = append(results, convertToolResult(b))
+			result, embeddedImages := convertToolResult(b, allowImages)
+			results = append(results, result)
+			images = append(images, embeddedImages...)
 		}
 	}
 	return sb.String(), images, results
@@ -228,9 +232,18 @@ func imageFormatFromMediaType(mt string) string {
 }
 
 // convertToolResult maps an Anthropic tool_result block to KiroToolResult.
-// Anthropic content can be a string OR an array of text blocks; we coerce
-// both to Kiro's [{"text": "..."}] shape (joined with newlines).
-func convertToolResult(b ContentBlock) KiroToolResult {
+// Anthropic content can be a string OR an array of (text|image) blocks.
+// Text blocks coerce to Kiro's [{"text":"…"}] shape; image blocks are
+// extracted and returned separately so the caller can hoist them into
+// userInputMessage.images[] (Kiro's wire shape — see
+// crack/kiro/image-tool-flow/rows/08-claude-haiku-imageReply-SUCCESS.json).
+//
+// When the tool_result content contains ONLY image blocks (a Claude Code
+// Read on an image file is the canonical case), Kiro expects the tool_result
+// content to be an empty list `[]` with status="success" — matching the
+// captured wire shape — and the image to surface on the enclosing user
+// message's images[] array.
+func convertToolResult(b ContentBlock, allowImages bool) (KiroToolResult, []KiroImage) {
 	tr := KiroToolResult{ToolUseID: b.ToolUseID}
 	if b.IsError {
 		tr.Status = "error"
@@ -238,18 +251,19 @@ func convertToolResult(b ContentBlock) KiroToolResult {
 	} else {
 		tr.Status = "success"
 	}
-	tr.Content = toolResultContent(b.Content)
-	return tr
+	content, images := toolResultContent(b.Content, allowImages)
+	tr.Content = content
+	return tr, images
 }
 
-func toolResultContent(raw json.RawMessage) []map[string]any {
+func toolResultContent(raw json.RawMessage, allowImages bool) ([]map[string]any, []KiroImage) {
 	if len(raw) == 0 {
-		return []map[string]any{{"text": ""}}
+		return []map[string]any{{"text": ""}}, nil
 	}
 	if raw[0] == '"' {
 		var s string
 		if err := json.Unmarshal(raw, &s); err == nil {
-			return []map[string]any{{"text": s}}
+			return []map[string]any{{"text": s}}, nil
 		}
 	}
 	if raw[0] == '[' {
@@ -257,19 +271,35 @@ func toolResultContent(raw json.RawMessage) []map[string]any {
 		if err := json.Unmarshal(raw, &inner); err == nil {
 			// kiro.rs joins all text blocks into a single {"text": joined}.
 			var parts []string
+			var images []KiroImage
 			for _, blk := range inner {
-				if blk.Type == "text" {
+				switch blk.Type {
+				case "text":
 					parts = append(parts, blk.Text)
+				case "image":
+					if !allowImages || blk.Source == nil {
+						continue
+					}
+					if img := convertImage(blk.Source); img != nil {
+						images = append(images, *img)
+					}
 				}
 			}
 			if len(parts) > 0 {
-				return []map[string]any{{"text": strings.Join(parts, "\n")}}
+				return []map[string]any{{"text": strings.Join(parts, "\n")}}, images
 			}
-			return []map[string]any{{"text": ""}}
+			// All-image (or empty) tool_result → empty content list. The
+			// Kiro CLI capture (rows/08) shows this exact shape: content=[]
+			// with status="success", and the image hoisted to the user
+			// message's images[] array.
+			if len(images) > 0 {
+				return []map[string]any{}, images
+			}
+			return []map[string]any{{"text": ""}}, nil
 		}
 	}
 	// Object or fallback: serialize verbatim as text.
-	return []map[string]any{{"text": string(raw)}}
+	return []map[string]any{{"text": string(raw)}}, nil
 }
 
 // buildHistory converts every message except the last into Kiro history entries.
