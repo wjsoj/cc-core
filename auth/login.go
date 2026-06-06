@@ -105,7 +105,7 @@ func pkceChallenge(verifier string) string {
 // browser navigation.
 func StartLogin(provider, proxyURL, label string) (*LoginSession, string, error) {
 	provider = NormalizeProvider(provider)
-	// Real Claude Code 2.1.158 uses 32-byte verifier + 32-byte state, both
+	// Real Claude Code 2.1.167 uses 32-byte verifier + 32-byte state, both
 	// emitted as 43-char base64url-no-padding. Match exactly so that any
 	// fingerprinting based on the length distribution of these two fields
 	// can't tell us apart from the vendor CLI. The Codex flow has its own
@@ -286,7 +286,7 @@ func finishAnthropicLogin(
 ) (*Auth, error) {
 	// Use a struct (not a map) so the JSON field order is fixed at:
 	//   grant_type, code, redirect_uri, client_id, code_verifier, state
-	// — exactly matching the wire form captured from real CC 2.1.158.
+	// — exactly matching the wire form captured from real CC 2.1.167.
 	// Map[string]any goes through json.Marshal which alphabetizes keys.
 	payload := struct {
 		GrantType    string `json:"grant_type"`

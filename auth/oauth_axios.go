@@ -13,7 +13,7 @@ import (
 )
 
 // applyAxiosOAuthHeaders sets the request headers exactly as captured from
-// real Claude Code 2.1.158 talking to platform.claude.com / api.anthropic.com
+// real Claude Code 2.1.167 talking to platform.claude.com / api.anthropic.com
 // during the OAuth token-exchange and refresh requests:
 //
 //	User-Agent: axios/1.15.2

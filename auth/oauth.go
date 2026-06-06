@@ -14,7 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Anthropic OAuth constants. Mirror what `claude-cli/2.1.158` actually
+// Anthropic OAuth constants. Mirror what `claude-cli/2.1.167` actually
 // hits — the token endpoint moved off `api.anthropic.com` to a dedicated
 // `platform.claude.com` host in late 2025. The client_id is the public
 // OAuth application UUID for "Claude Code" (matches the `application.uuid`
@@ -26,7 +26,7 @@ const (
 	// User-Agent sent by real CC for the token-exchange + refresh requests.
 	// (Most other CC traffic uses claude-cli or claude-code or Bun, but
 	// these two specific axios calls use this exact string.) Verified against
-	// the 2.1.158 OAuth login capture (crack/claude SPEC §7.1) — every axios
+	// the 2.1.167 OAuth login capture (crack/claude SPEC §7.1) — every axios
 	// call sends axios/1.15.2, matching the sidecar's uaAxios.
 	anthropicOAuthUA = "axios/1.15.2"
 )
