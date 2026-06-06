@@ -141,6 +141,7 @@ func parseFile(path string, data []byte) (*Auth, error) {
 	orgUUID, _ := raw["organization_uuid"].(string)
 	orgType, _ := raw["organization_type"].(string)
 	orgRateLimitTier, _ := raw["organization_rate_limit_tier"].(string)
+	hostProfile := parseHostProfile(raw["host_profile"])
 	stripThinking, _ := raw["strip_thinking"].(bool)
 	// model_map for OAuth: rewrite-only like API-key. When the file has no
 	// model_map key at all, a Claude (Anthropic) OAuth credential gets the
@@ -169,10 +170,28 @@ func parseFile(path string, data []byte) (*Auth, error) {
 		OrganizationUUID:          orgUUID,
 		OrganizationType:          orgType,
 		OrganizationRateLimitTier: orgRateLimitTier,
+		HostProfile:               hostProfile,
 		StripThinking:             stripThinking,
 		ModelMap:                  modelMap,
 	}
 	return a, nil
+}
+
+// parseHostProfile reads the append-only host_profile object from a credential
+// file. Tolerant of a missing/malformed key (returns the zero profile, which
+// HostProfileOrDefault then derives from accountKey).
+func parseHostProfile(v any) HostProfile {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return HostProfile{}
+	}
+	s := func(k string) string { x, _ := m[k].(string); return x }
+	return HostProfile{
+		DistroID: s("distro_id"),
+		Kernel:   s("kernel"),
+		Terminal: s("terminal"),
+		Shell:    s("shell"),
+	}
 }
 
 // AccountKey returns the most stable per-account anchor available on this
@@ -435,6 +454,16 @@ func saveAuth(a *Auth) error {
 			raw["organization_rate_limit_tier"] = a.OrganizationRateLimitTier
 		} else {
 			delete(raw, "organization_rate_limit_tier")
+		}
+		if !a.HostProfile.IsZero() {
+			raw["host_profile"] = map[string]any{
+				"distro_id": a.HostProfile.DistroID,
+				"kernel":    a.HostProfile.Kernel,
+				"terminal":  a.HostProfile.Terminal,
+				"shell":     a.HostProfile.Shell,
+			}
+		} else {
+			delete(raw, "host_profile")
 		}
 	}
 	raw["disabled"] = a.Disabled

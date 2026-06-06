@@ -82,6 +82,15 @@ type Auth struct {
 	OrganizationType          string // e.g. "claude_max", "claude_pro", "claude_team"
 	OrganizationRateLimitTier string // e.g. "default_claude_max_20x"
 
+	// HostProfile is the per-account synthetic Linux "client machine"
+	// (distro/kernel/terminal/shell) reported in sidecar telemetry, so that
+	// distinct OAuth accounts don't all advertise one identical host. Zero
+	// value = not yet pinned; HostProfileOrDefault() derives one on the fly
+	// and EnsureHostProfile() persists it to the credential file on first
+	// touch (see hostprofile.go). Append-only field — old credential files
+	// without it keep loading.
+	HostProfile HostProfile
+
 	// Routing
 	ProxyURL      string // per-credential upstream proxy (empty = direct/use default)
 	BaseURL       string // per-credential upstream base URL override (API-key only; empty = config.AnthropicBaseURL)

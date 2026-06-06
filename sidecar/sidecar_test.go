@@ -415,6 +415,7 @@ func TestStartupBatchSuppressedUnderCooldown(t *testing.T) {
 // user_bucket present at the top level (as int).
 func TestDatadogHeartbeatBodyShape(t *testing.T) {
 	a := newTestAuth("auth-1", "alice@example.com")
+	hp := auth.ProfileFor(a.AccountKey())
 	body, err := buildDatadogHeartbeatBody(a, "00000000-0000-0000-0000-000000000000")
 	if err != nil {
 		t.Fatalf("build failed: %v", err)
@@ -425,7 +426,10 @@ func TestDatadogHeartbeatBodyShape(t *testing.T) {
 		`"message":"tengu_feature_ok"`,
 		`"service":"claude-code"`,
 		`"renderer_mode":"default"`,
-		`"linux_distro_id":"` + ccLinuxDistroID + `"`,
+		`"linux_distro_id":"` + hp.DistroID + `"`,
+		`"linux_kernel":"` + hp.Kernel + `"`,
+		`"terminal":"` + hp.Terminal + `"`,
+		`"shell":"` + hp.Shell + `"`,
 		`"feature_name":"api_request"`,
 		`"betas":"` + mimicry.ClaudeReportedBetas + `"`,
 		`"version":"` + mimicry.CLICurrentVersion + `"`,
@@ -443,6 +447,34 @@ func TestDatadogHeartbeatBodyShape(t *testing.T) {
 	// Datadog expects an array.
 	if s[0] != '[' {
 		t.Errorf("datadog body must be a JSON array, got %q", s[0])
+	}
+}
+
+// TestProcessMetricsInvariants asserts the synthetic process metrics never
+// violate a real V8/process ordering (heapUsed ≤ heapTotal ≤ rss), across many
+// jittered draws and several accounts — an impossible pair would be an obvious
+// synthetic tell.
+func TestProcessMetricsInvariants(t *testing.T) {
+	for _, key := range []string{"acct-a", "acct-b", "acct-c", ""} {
+		for i := 0; i < 2000; i++ {
+			m := buildProcessMetrics(key)
+			rss := m["rss"].(int)
+			heapTotal := m["heapTotal"].(int)
+			heapUsed := m["heapUsed"].(int)
+			ext := m["external"].(int)
+			if heapUsed > heapTotal {
+				t.Fatalf("heapUsed %d > heapTotal %d (key=%q)", heapUsed, heapTotal, key)
+			}
+			if heapTotal > rss {
+				t.Fatalf("heapTotal %d > rss %d (key=%q)", heapTotal, rss, key)
+			}
+			if heapTotal+ext > rss {
+				t.Fatalf("heapTotal+external %d > rss %d (key=%q)", heapTotal+ext, rss, key)
+			}
+			if heapUsed <= 0 || rss <= 0 {
+				t.Fatalf("non-positive metric: %+v", m)
+			}
+		}
 	}
 }
 
