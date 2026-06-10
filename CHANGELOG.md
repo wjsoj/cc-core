@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.8.18 — bump CC fingerprint target 2.1.167 → 2.1.170
+
+Re-pinned `mimicry` + `sidecar` to a live Claude Code **2.1.170** OAuth capture
+(whistle dump 2026-06-10; ground truth in hypitoken `crack/cc2170/`).
+
+### Changed — `mimicry/fingerprint.go`
+
+- `CLICurrentVersion` / `ClaudeCLIUserAgent` → `2.1.170`.
+- `ClaudeAnthropicBetaFull` (the `/v1/messages` request header) — now **15
+  items**: **dropped** `context-1m-2025-08-07`, **added**
+  `server-side-fallback-2026-06-01` + `fallback-credit-2026-06-01` after
+  `effort-2025-11-24`.
+- `ClaudeReportedBetas` (telemetry `betas`) — **unchanged** (still 9 items incl.
+  `context-1m`). ⚠ As of 2.1.170 the request-header list and the telemetry list
+  have **DIVERGED** — telemetry is no longer the first-9-of-Full. Do not
+  regenerate one from the other.
+
+### Changed — `sidecar/sidecar.go`
+
+- `ccBuildTime` → `2026-06-09T15:09:09Z`; `ccTelemetryModel` /
+  `ccDatadogModel` → `claude-fable-5[1m]` / `claude-fable-5`.
+- Bootstrap probe URL model param → `claude-fable-5`.
+- `/v1/code/triggers` bootstrap step UA fixed `axios/…` → the main `claude-cli/…`
+  agent (real CC 2.1.170 uses claude-cli here, not axios).
+
 ## v0.8.12 — `clientguard` ingress blocklist
 
 ### New — `clientguard` package
