@@ -13,3 +13,7 @@
 /internal/admin/web/dist/*
 !/internal/admin/web/dist/.gitkeep
 .claude/
+
+# crack/ — never commit raw capture dumps or the local redaction map
+crack/scripts/redaction_map.json
+crack/**/raw/

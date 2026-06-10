@@ -28,7 +28,7 @@ import (
 
 // Header values pinned to Claude Code 2.1.170 / @anthropic-ai/sdk 0.94.0.
 // Values verified against a live CC 2.1.170 session capture
-// (whistle dump 2026-06-10 — see hypitoken crack/cc2170/SPEC.md).
+// (whistle dump 2026-06-10 — see crack/cc2170/SPEC.md).
 // CLICurrentVersion MUST match the version baked into ClaudeCLIUserAgent;
 // any drift will cause the cc_version=X.Y.Z.{fp} billing block to disagree
 // with the User-Agent and trigger Anthropic's third-party detection.
@@ -51,7 +51,7 @@ const (
 	// 2.1.167→2.1.170 diff: DROPPED context-1m-2025-08-07 from the request
 	// header (still present in ClaudeReportedBetas below — the two lists have
 	// DIVERGED), and ADDED server-side-fallback-2026-06-01 + fallback-credit-
-	// 2026-06-01 after effort-2025-11-24. (hypitoken crack/cc2170/SPEC.md §1.)
+	// 2026-06-01 after effort-2025-11-24. (crack/cc2170/SPEC.md §1.)
 	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,server-side-fallback-2026-06-01,fallback-credit-2026-06-01,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
 	// ClaudeReportedBetas is the SHORTER beta list real CC 2.1.170 reports in
 	// its telemetry bodies (event_logging `betas`, datadog `betas`/ddtags) — 9

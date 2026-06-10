@@ -487,7 +487,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			// anthropic-client-platform and X-Organization-UUID;
 			// extraHeaders below sets the latter from the auth at dispatch.
 			// UA is the main claude-cli agent, NOT axios — verified in the
-			// 2.1.170 capture (hypitoken crack/cc2170/rows/07-code_triggers).
+			// 2.1.170 capture (crack/cc2170/rows/07-code_triggers).
 			name:           "code_triggers",
 			method:         "GET",
 			url:            baseURL + "/v1/code/triggers",
