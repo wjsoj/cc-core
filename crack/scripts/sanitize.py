@@ -79,7 +79,7 @@ REGEX_SUBS = [
     (re.compile(r'aorAAAAA(?!REDACTED)[A-Za-z0-9_+/\-]{20,}(?::[A-Za-z0-9_+/=\-]+)?'),
                                                                      'aorAAAAAREDACTED_KIRO_REFRESH_TOKEN'),
     # 任意 AWS STS AccessKeyId 残留（前缀 ASIA + 16 字母数字）
-    (re.compile(r'ASIA(?!REDACTED)[A-Z0-9]{16}'),                    'ASIAREDACTEDAWSAKID0'),
+    (re.compile(r'ASIA(?!REDACTED)[A-Z0-9]{16}'),                    'REDACTED-AWS-STS-KEYID-0'),
     # AWS SessionToken（IQoJ 开头的 base64，~1500 char）；幂等
     (re.compile(r'IQoJb3JpZ2luX2Vj(?!_STS)[A-Za-z0-9+/=]{50,}'),     'IQoJb3JpZ2luX2Vj_STS_SESSION_TOKEN_REDACTED'),
     # SigV4 Authorization 里的 Signature=hex

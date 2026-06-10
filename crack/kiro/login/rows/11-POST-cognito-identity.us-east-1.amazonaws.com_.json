@@ -27,5 +27,5 @@
   "reqSize": 63,
   "resSize": 1756,
   "reqBody": "{\"IdentityId\":\"us-east-1:00000000-0000-0000-0000-000000000053\"}",
-  "resBody": "{\"Credentials\":{\"AccessKeyId\":\"ASIAREDACTEDAWSAKID3\",\"Expiration\":1.779614714E9,\"SecretKey\":\"AWS_SECRET_KEY_REDACTED_____40_chars_v3\",\"SessionToken\":\"IQoJb3JpZ2luX2Vj_STS_SESSION_TOKEN_REDACTED\"},\"IdentityId\":\"us-east-1:00000000-0000-0000-0000-000000000053\"}"
+  "resBody": "{\"Credentials\":{\"AccessKeyId\":\"REDACTED-AWS-STS-KEYID-3\",\"Expiration\":1.779614714E9,\"SecretKey\":\"AWS_SECRET_KEY_REDACTED_____40_chars_v3\",\"SessionToken\":\"IQoJb3JpZ2luX2Vj_STS_SESSION_TOKEN_REDACTED\"},\"IdentityId\":\"us-east-1:00000000-0000-0000-0000-000000000053\"}"
 }

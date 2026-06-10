@@ -19,7 +19,7 @@ POST https://client-telemetry.us-east-1.amazonaws.com/metrics
 | user-agent | aws-sdk-rust/1.3.10 os/linux lang/rust/1.92.0 |
 | x-amz-user-agent | aws-sdk-rust/1.3.10 ua/2.1 api/toolkittelemetry/1.0.0 os/linux lang/rust/1.92.0 app/AmazonQ-For-CLI |
 | x-amz-date | 20260524T082451Z |
-| authorization | AWS4-HMAC-SHA256 Credential=ASIAREDACTEDAWSAKID1/20260524/us-east-1/execute-api/aws4_request, SignedHeaders=content-length;content-type;host;x-amz-date;x-amz-security-token;x-amz-user-agent, Signature… |
+| authorization | AWS4-HMAC-SHA256 Credential=REDACTED-AWS-STS-KEYID-1/20260524/us-east-1/execute-api/aws4_request, SignedHeaders=content-length;content-type;host;x-amz-date;x-amz-security-token;x-amz-user-agent, Signature… |
 | x-amz-security-token | IQoJb3JpZ2luX2Vj_STS_SESSION_TOKEN_REDACTED |
 | amz-sdk-request | attempt=1; max=1 |
 | amz-sdk-invocation-id | 00000000-0000-0000-0000-000000000050 |
