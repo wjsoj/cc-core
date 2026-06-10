@@ -61,6 +61,16 @@ const (
 	// unchanged 2.1.156→2.1.170 (crack/cc2170/SPEC.md §4). Do NOT regenerate
 	// this from ClaudeAnthropicBetaFull — they have diverged.
 	ClaudeReportedBetas = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07"
+
+	// ClaudeAnthropicBetaApikey is the Anthropic-Beta REQUEST HEADER real CC
+	// sends on the API-KEY path (real CC pointed at a 3rd-party gateway with
+	// x-api-key), captured from crack/apikey/rows/*-POST-…v1_messages. Strict
+	// gateways (fucheers, etc.) reject any unknown beta token — notably they
+	// reject advanced-tool-use-* and cache-diagnosis-*, which real CC does NOT
+	// send on the apikey path. It also drops oauth-2025-04-20 (no OAuth here).
+	// Keep this list verbatim from capture; no 2.1.170 api-key capture exists,
+	// left verbatim from the 2.1.146 set.
+	ClaudeAnthropicBetaApikey = "claude-code-20250219,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advisor-tool-2026-03-01,context-1m-2025-08-07,effort-2025-11-24"
 )
 
 // Default cache_control TTL for cache breakpoints injected by the body

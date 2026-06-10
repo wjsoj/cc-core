@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.8.19 — apikey beta list + unified crack/ archive
+
+Lets hypitoken drop its vendored fingerprint copy (`internal/server/
+{fingerprint,mimicry,sidecar}.go`) and consume `cc-core/{mimicry,sidecar}`
+directly, the way CPA-Claude already does — the two were byte-identical except
+for the API-key beta selection added here.
+
+### New — `mimicry/fingerprint.go`
+
+- `ClaudeAnthropicBetaApikey` — the shorter Anthropic-Beta request header real
+  CC sends on the **API-key** path (3rd-party gateways with `x-api-key`). Drops
+  the OAuth-only / strict-gateway-rejected tokens (`oauth-2025-04-20`,
+  `advanced-tool-use-*`, `cache-diagnosis-*`). Verbatim from `crack/apikey/`.
+
+### Changed — `mimicry/headers.go`
+
+- `ApplyClaudeCodeHeaders` now selects `ClaudeAnthropicBetaApikey` when
+  `kind == KindAPIKey` (and the client supplied no beta of its own), instead of
+  always sending `ClaudeAnthropicBetaFull`. OAuth behavior is unchanged. This
+  matches real CC's apikey capture and is the last behavioral gap between the
+  shared header layer and hypitoken's vendored copy.
+
+### New — `crack/` (fingerprint ground truth, consolidated)
+
+- Merged the capture archives from both downstream apps into `cc-core/crack/`
+  so the rows live next to the constants they pin (`cc2170`, `cc2167`, `codex`,
+  `kiro`, `oauth`, `apikey`, `login`, `scripts`, `COMPARE.md`). cc-core is now
+  the single source of truth; the app repos drop their `crack/` dirs. No raw
+  whistle dumps were moved (history-only). See `crack/README.md`.
+
 ## v0.8.18 — bump CC fingerprint target 2.1.167 → 2.1.170
 
 Re-pinned `mimicry` + `sidecar` to a live Claude Code **2.1.170** OAuth capture

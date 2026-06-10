@@ -54,6 +54,12 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 		if kind == KindOAuth && !strings.Contains(existing, "oauth") {
 			req.Header.Set("Anthropic-Beta", existing+",oauth-2025-04-20")
 		}
+	} else if kind == KindAPIKey {
+		// Pick the right captured beta list per credential kind. The OAuth list
+		// contains tokens (oauth-2025-04-20, advanced-tool-use-2025-11-20,
+		// cache-diagnosis-2026-04-07) that strict 3rd-party apikey gateways will
+		// reject — real CC's apikey path doesn't send them either.
+		req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaApikey)
 	} else {
 		req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaFull)
 	}
