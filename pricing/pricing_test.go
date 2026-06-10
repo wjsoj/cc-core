@@ -32,6 +32,11 @@ func TestLookupExactMatch(t *testing.T) {
 	if p8.InputPer1M != 5.00 || p8.OutputPer1M != 25.00 {
 		t.Fatalf("opus-4-8 price=%+v want input 5.00 output 25.00", p8)
 	}
+	// claude-fable-5 is the premium tier — exactly 2× opus.
+	pf := cat.Lookup("anthropic", "claude-fable-5")
+	if pf.InputPer1M != 10.00 || pf.OutputPer1M != 50.00 || pf.CacheReadPer1M != 1.00 || pf.CacheCreatePer1M != 12.50 {
+		t.Fatalf("fable-5 price=%+v want input 10 output 50 cacheRead 1 cacheWrite 12.50", pf)
+	}
 }
 
 func TestLookupDateSuffixFallback(t *testing.T) {

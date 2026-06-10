@@ -259,6 +259,16 @@ var builtIn = map[string]ModelPrice{
 		CacheReadPer1M:   0.50,
 		CacheCreatePer1M: 6.25,
 	},
+	// claude-fable-5 is the premium tier — exactly 2× opus-4-8, which also
+	// satisfies Anthropic's standard cache ratios (read 0.1× input, write
+	// 1.25× input). One undated entry suffices: Lookup's prefix-fallback maps
+	// any dated variant (claude-fable-5-2026…) back to this card.
+	ProviderAnthropic + "/claude-fable-5": {
+		InputPer1M:       10.00,
+		OutputPer1M:      50.00,
+		CacheReadPer1M:   1.00,
+		CacheCreatePer1M: 12.50,
+	},
 	ProviderAnthropic + "/claude-sonnet-4-6": {
 		InputPer1M:       3.00,
 		OutputPer1M:      15.00,
