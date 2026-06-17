@@ -46,6 +46,13 @@ func ClientFor(proxyURL string, useUTLS bool) *http.Client {
 	} else {
 		rt = newStdTransport(proxyURL)
 	}
+	// Wrap in the transient-failure retry layer. chatgpt.com's CF edge RSTs
+	// connections from VPS/proxy IPs (mid-handshake or as an h2 PROTOCOL_ERROR)
+	// far more aggressively than api.anthropic.com does; this replays those
+	// flaps with backoff on the same credential before the caller has to burn a
+	// retry on a different one. Harmless on stable paths — it only fires on a
+	// transient error, which those rarely hit.
+	rt = &retryRoundTripper{base: rt}
 	globalPool.pool[key] = rt
 	return &http.Client{Transport: rt, Timeout: 0}
 }
