@@ -250,10 +250,33 @@ func (t *utlsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (t *utlsTransport) dialTLS(ctx context.Context, host, addr string) (*utls.UConn, error) {
+	c, err := DialTLSConn(ctx, host, addr, t.proxyURL, true, []string{"h2", "http/1.1"})
+	if err != nil {
+		return nil, err
+	}
+	uc, ok := c.(*utls.UConn)
+	if !ok {
+		_ = c.Close()
+		return nil, fmt.Errorf("utls dial %s: unexpected conn type %T", host, c)
+	}
+	return uc, nil
+}
+
+// DialTLSConn opens a TCP connection (direct or via proxyURL: http/https/socks5),
+// completes a TLS handshake, and returns the live conn. When useUTLS is true the
+// handshake uses the Chrome uTLS ClientHello (HelloChrome_Auto); otherwise it
+// uses crypto/tls. nextProtos sets the ALPN list — pass []string{"http/1.1"} for
+// a WebSocket upgrade (which cannot run over h2), or []string{"h2","http/1.1"}
+// for a normal HTTP exchange. The caller owns the returned conn and must Close it.
+//
+// This is the shared dial primitive behind both the pooled HTTP transport
+// (utlsTransport.dialTLS) and the Codex WebSocket transport (cc-core/codexws),
+// so the Chrome fingerprint stays byte-identical across HTTP and WS paths.
+func DialTLSConn(ctx context.Context, host, addr, proxyURL string, useUTLS bool, nextProtos []string) (net.Conn, error) {
 	var rawConn net.Conn
 	var err error
-	if t.proxyURL != "" {
-		rawConn, err = dialViaProxy(ctx, t.proxyURL, addr)
+	if proxyURL != "" {
+		rawConn, err = dialViaProxy(ctx, proxyURL, addr)
 	} else {
 		d := &net.Dialer{Timeout: 30 * time.Second}
 		rawConn, err = d.DialContext(ctx, "tcp", addr)
@@ -261,13 +284,20 @@ func (t *utlsTransport) dialTLS(ctx context.Context, host, addr string) (*utls.U
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
-	tlsCfg := &utls.Config{ServerName: host, NextProtos: []string{"h2", "http/1.1"}}
-	uc := utls.UClient(rawConn, tlsCfg, utls.HelloChrome_Auto)
-	if err := uc.HandshakeContext(ctx); err != nil {
-		_ = rawConn.Close()
-		return nil, fmt.Errorf("utls handshake %s: %w", host, err)
+	if useUTLS {
+		uc := utls.UClient(rawConn, &utls.Config{ServerName: host, NextProtos: nextProtos}, utls.HelloChrome_Auto)
+		if err := uc.HandshakeContext(ctx); err != nil {
+			_ = rawConn.Close()
+			return nil, fmt.Errorf("utls handshake %s: %w", host, err)
+		}
+		return uc, nil
 	}
-	return uc, nil
+	tc := tls.Client(rawConn, &tls.Config{ServerName: host, NextProtos: nextProtos})
+	if err := tc.HandshakeContext(ctx); err != nil {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("tls handshake %s: %w", host, err)
+	}
+	return tc, nil
 }
 
 // roundTripHTTP1 sends one request over an already-handshaken utls conn and

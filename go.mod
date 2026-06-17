@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/andybalholm/brotli v1.2.1
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/refraction-networking/utls v1.8.2
 	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/net v0.54.0

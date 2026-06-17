@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.8.21 — Codex WebSocket upstream transport (`codexws`)
+
+Adds the Codex-over-WebSocket upstream that real codex-tui 0.135.0 uses
+(`responses_websockets=2026-02-06`, `wss://chatgpt.com/backend-api/codex/
+responses`). A long-lived WS carries protocol-level ping/pong, so it survives
+the multi-second silent gaps that truncate the legacy HTTP SSE path and surface
+to clients as `stream disconnected before completion`. Consumed by hypitoken
+and CPA-Claude to add a Codex WS ingress endpoint.
+
+### New — `codexws/`
+
+- `Dial(ctx, DialConfig) (Conn, *http.Response, error)` — WebSocket handshake
+  over the **Chrome uTLS fingerprint** (not standard TLS), via gorilla's
+  `Dialer.NetDialTLSContext`. ALPN is forced to `http/1.1` (a WS Upgrade cannot
+  run over h2). Keeps the WS path byte-identical to the HTTP path that already
+  evades Cloudflare JA3/JA4 fingerprinting.
+- `Conn` interface (Read/Write/Ping/deadlines/`HandshakeResponse`), `ReadLimit`
+  16 MiB, message-type constants, `IsUnexpectedClose`.
+- `BuildUpstreamHeaders` + `CodexOpenAIBetaWS`/`CodexOpenAIBetaWSV1` — reuses the
+  pinned codex-tui identity from `mimicry`; omits the TUI-only workspace headers.
+
+### Changed — `auth/utls.go`
+
+- Exported `DialTLSConn(ctx, host, addr, proxyURL, useUTLS, nextProtos)` — the
+  shared dial primitive behind both the pooled HTTP transport and `codexws`, so
+  the Chrome fingerprint stays identical across HTTP and WS. The private
+  `(*utlsTransport).dialTLS` is now a thin wrapper; zero behavior change for the
+  existing Anthropic/Codex-HTTP paths.
+
+### Dependencies
+
+- Adds `github.com/gorilla/websocket v1.5.3` (no transitive deps beyond stdlib).
+
 ## v0.8.19 — apikey beta list + unified crack/ archive
 
 Lets hypitoken drop its vendored fingerprint copy (`internal/server/
