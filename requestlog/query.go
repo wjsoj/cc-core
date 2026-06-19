@@ -10,6 +10,27 @@ import (
 	"time"
 )
 
+// bucketLoc is the time zone used to assign records to day buckets (ByDay
+// keys) and to label hourly buckets. It defaults to UTC so existing
+// consumers are unaffected; a host can call SetBucketLocation to make the
+// dashboard's "day" align with local time. Day buckets are recomputed from
+// each record's raw timestamp at query time, so changing this re-buckets
+// all historical data without a migration. On-disk file names
+// (requests-YYYY-MM-DD.jsonl) and retention stay in UTC and are unaffected.
+// Set once at startup before serving — not guarded for concurrent mutation.
+var bucketLoc = time.UTC
+
+// SetBucketLocation sets the time zone used for day/hour bucketing. A nil
+// location is ignored. Call once during startup.
+func SetBucketLocation(l *time.Location) {
+	if l != nil {
+		bucketLoc = l
+	}
+}
+
+// BucketLocation returns the configured bucketing time zone (UTC by default).
+func BucketLocation() *time.Location { return bucketLoc }
+
 // Aggregate sums counters over a set of records.
 type Aggregate struct {
 	Count             int64   `json:"count"`
@@ -67,7 +88,7 @@ type Result struct {
 
 // HourBucket holds one hour's worth of aggregated counters.
 type HourBucket struct {
-	Hour              time.Time `json:"hour"` // UTC, truncated to the hour
+	Hour              time.Time `json:"hour"` // truncated to the hour, in bucketLoc (UTC by default)
 	Count             int64     `json:"count"`
 	InputTokens       int64     `json:"input_tokens"`
 	OutputTokens      int64     `json:"output_tokens"`
@@ -93,7 +114,9 @@ func AggregateHourly(dir string, hours int) ([]HourBucket, error) {
 	}
 	buckets := make([]HourBucket, hours)
 	for i := 0; i < hours; i++ {
-		buckets[i].Hour = start.Add(time.Duration(i) * time.Hour)
+		// Window math stays in UTC (file names + idx are UTC); only the
+		// displayed label is localized so the chart reads in local time.
+		buckets[i].Hour = start.Add(time.Duration(i) * time.Hour).In(bucketLoc)
 	}
 	for _, path := range files {
 		day := extractDay(path)
@@ -269,7 +292,7 @@ func scanFile(path string, f Filter, res *Result) error {
 		bm := res.ByModel[r.Model]
 		bm.add(r)
 		res.ByModel[r.Model] = bm
-		dayKey := r.TS.UTC().Format("2006-01-02")
+		dayKey := r.TS.In(bucketLoc).Format("2006-01-02")
 		bd := res.ByDay[dayKey]
 		bd.add(r)
 		res.ByDay[dayKey] = bd

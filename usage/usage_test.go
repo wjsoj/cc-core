@@ -174,3 +174,30 @@ func TestStateJSONShape(t *testing.T) {
 		t.Fatal("Auths[a] missing after roundtrip")
 	}
 }
+
+func TestBucketLocationDailyKey(t *testing.T) {
+	sh, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Skipf("no tzdata: %v", err)
+	}
+	SetBucketLocation(sh)
+	defer SetBucketLocation(time.UTC)
+
+	s := OpenInMemory()
+	// 2026-06-18T21:47Z == 2026-06-19 05:47 in Asia/Shanghai.
+	s.now = func() time.Time { return time.Date(2026, 6, 18, 21, 47, 0, 0, time.UTC) }
+	s.Record("acc1", "lbl", Counts{InputTokens: 10, Requests: 1})
+
+	snap := s.Snapshot()
+	p := snap["acc1"]
+	if _, ok := p.Daily["2026-06-19"]; !ok {
+		t.Fatalf("expected Daily[2026-06-19] (Shanghai), got %v", p.Daily)
+	}
+	if _, ok := p.Hourly["2026-06-19T05"]; !ok {
+		t.Fatalf("expected Hourly[2026-06-19T05] (Shanghai), got %v", p.Hourly)
+	}
+	// Sum24h reads the same location, so today's bucket is counted.
+	if got := s.Sum24h("acc1").Requests; got != 1 {
+		t.Fatalf("Sum24h Requests=%d want 1", got)
+	}
+}

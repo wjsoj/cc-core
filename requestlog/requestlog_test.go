@@ -139,3 +139,42 @@ func TestProviderLegacyTreatedAsAnthropic(t *testing.T) {
 		t.Fatalf("legacy provider record should match 'anthropic' filter; got %d entries", len(res.Entries))
 	}
 }
+
+func TestBucketLocationDayBoundary(t *testing.T) {
+	dir := t.TempDir()
+	w, err := Open(dir, 0)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	// 2026-06-18T21:47Z == 2026-06-19 05:47 in Asia/Shanghai (+08:00).
+	ts := time.Date(2026, 6, 18, 21, 47, 0, 0, time.UTC)
+	w.Log(Record{TS: ts, Model: "m", Status: 200})
+	w.Close()
+
+	// Default (UTC): record buckets under 2026-06-18.
+	res, err := Query(Filter{Dir: dir})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if _, ok := res.ByDay["2026-06-18"]; !ok {
+		t.Fatalf("UTC: expected ByDay[2026-06-18], got %v", res.ByDay)
+	}
+
+	// Shanghai: same record re-buckets under 2026-06-19 with no migration.
+	sh, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Skipf("no tzdata: %v", err)
+	}
+	SetBucketLocation(sh)
+	defer SetBucketLocation(time.UTC)
+	res, err = Query(Filter{Dir: dir})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if _, ok := res.ByDay["2026-06-19"]; !ok {
+		t.Fatalf("Shanghai: expected ByDay[2026-06-19], got %v", res.ByDay)
+	}
+	if _, ok := res.ByDay["2026-06-18"]; ok {
+		t.Fatalf("Shanghai: did not expect ByDay[2026-06-18], got %v", res.ByDay)
+	}
+}

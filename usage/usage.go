@@ -37,11 +37,31 @@ const dailyRetentionDays = 90
 // rolling window used by the OAuth load balancer (plus headroom).
 const hourlyRetentionHours = 24
 
-// hourKeyFormat is the UTC layout used for Hourly bucket keys.
+// hourKeyFormat is the layout used for Hourly bucket keys.
 const hourKeyFormat = "2006-01-02T15"
 
 // How many ISO weeks of per-client history to keep.
 const weeklyRetentionWeeks = 26
+
+// bucketLoc is the time zone used to assign records to Daily / Hourly
+// buckets (the day/hour boundary). It defaults to UTC so existing
+// consumers are unaffected; a host can call SetBucketLocation to make the
+// dashboard's "day" align with local time instead. Rolling-window sums
+// (Sum5h/Sum24h) and the retention trims read the same location so keys
+// and cutoffs always agree. Set once at startup before serving — it is
+// not guarded for concurrent mutation.
+var bucketLoc = time.UTC
+
+// SetBucketLocation sets the time zone used for Daily/Hourly bucketing.
+// A nil location is ignored. Call once during startup.
+func SetBucketLocation(l *time.Location) {
+	if l != nil {
+		bucketLoc = l
+	}
+}
+
+// BucketLocation returns the configured bucketing time zone (UTC by default).
+func BucketLocation() *time.Location { return bucketLoc }
 
 type Counts struct {
 	InputTokens       int64 `json:"input_tokens"`
@@ -86,8 +106,8 @@ type PerAuth struct {
 	AuthID   string            `json:"auth_id"`
 	Label    string            `json:"label,omitempty"`
 	LastUsed time.Time         `json:"last_used,omitempty"`
-	Daily    map[string]Counts `json:"daily,omitempty"`  // key = "YYYY-MM-DD" (UTC)
-	Hourly   map[string]Counts `json:"hourly,omitempty"` // key = "YYYY-MM-DDTHH" (UTC)
+	Daily    map[string]Counts `json:"daily,omitempty"`  // key = "YYYY-MM-DD" (bucketLoc; UTC by default)
+	Hourly   map[string]Counts `json:"hourly,omitempty"` // key = "YYYY-MM-DDTHH" (bucketLoc; UTC by default)
 }
 
 // DailyOrdered returns the Daily map as a slice sorted by date ascending.
@@ -343,12 +363,12 @@ func (s *Store) Record(authID, label string, c Counts) {
 	}
 	now := s.now()
 	p.LastUsed = now
-	utc := now.UTC()
-	day := utc.Format("2006-01-02")
+	local := now.In(bucketLoc)
+	day := local.Format("2006-01-02")
 	cur := p.Daily[day]
 	cur.Add(c)
 	p.Daily[day] = cur
-	hk := utc.Format(hourKeyFormat)
+	hk := local.Format(hourKeyFormat)
 	hcur := p.Hourly[hk]
 	hcur.Add(c)
 	p.Hourly[hk] = hcur
@@ -361,7 +381,7 @@ func (s *Store) trimHourlyLocked(p *PerAuth, now time.Time) {
 	if len(p.Hourly) <= hourlyRetentionHours {
 		return
 	}
-	cutoff := now.UTC().Add(-time.Duration(hourlyRetentionHours) * time.Hour).Format(hourKeyFormat)
+	cutoff := now.In(bucketLoc).Add(-time.Duration(hourlyRetentionHours) * time.Hour).Format(hourKeyFormat)
 	for k := range p.Hourly {
 		if k < cutoff {
 			delete(p.Hourly, k)
@@ -373,7 +393,7 @@ func (s *Store) trimDailyLocked(p *PerAuth, now time.Time) {
 	if len(p.Daily) <= dailyRetentionDays {
 		return
 	}
-	cutoff := now.UTC().AddDate(0, 0, -dailyRetentionDays).Format("2006-01-02")
+	cutoff := now.In(bucketLoc).AddDate(0, 0, -dailyRetentionDays).Format("2006-01-02")
 	for k := range p.Daily {
 		if k < cutoff {
 			delete(p.Daily, k)
@@ -594,7 +614,7 @@ func (s *Store) CurrentWeekKey() string {
 	return isoWeekKey(s.now())
 }
 
-// Sum5h returns the total counts over the last ~5 hours (UTC), summing
+// Sum5h returns the total counts over the last ~5 hours, summing
 // hourly buckets whose start hour falls within [now-5h, now]. This matches
 // Anthropic's 5-hour rolling quota window closely enough to drive OAuth
 // load balancing: the current partial hour plus up to five prior hours are
@@ -607,7 +627,7 @@ func (s *Store) Sum5h(authID string) Counts {
 	if !ok || len(p.Hourly) == 0 {
 		return Counts{}
 	}
-	now := s.now().UTC()
+	now := s.now().In(bucketLoc)
 	cutoff := now.Add(-5 * time.Hour).Truncate(time.Hour).Format(hourKeyFormat)
 	var sum Counts
 	for k, v := range p.Hourly {
@@ -618,7 +638,7 @@ func (s *Store) Sum5h(authID string) Counts {
 	return sum
 }
 
-// Sum24h returns the total counts over the last 24 hours (UTC), using the
+// Sum24h returns the total counts over the last 24 hours, using the
 // last two daily buckets. This is approximate — it sums today + yesterday's
 // buckets rather than a strict rolling window. Good enough for dashboards.
 func (s *Store) Sum24h(authID string) Counts {
@@ -628,7 +648,7 @@ func (s *Store) Sum24h(authID string) Counts {
 	if !ok {
 		return Counts{}
 	}
-	now := s.now().UTC()
+	now := s.now().In(bucketLoc)
 	today := now.Format("2006-01-02")
 	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
 	var sum Counts
