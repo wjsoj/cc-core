@@ -11,14 +11,15 @@ carry a `crack/`.
 
 | dir | provider / client | capture target | status |
 |---|---|---|---|
-| `cc2170/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.170`, 2026-06-10 | **current Claude target** — read `cc2170/SPEC.md` first |
-| `cc2167/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.167`, 2026-06-06 | superseded; kept for the startup rows (eval_sdk / grove / penguin / count_tokens) the 2.1.170 steady-state capture lacks |
+| `cc2183/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.183`, 2026-06-20 | **current Claude target** — read `cc2183/SPEC.md` first |
+| `cc2170/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.170`, 2026-06-10 | superseded by cc2183; see `cc2170/SPEC.md` for the 2.1.156→2.1.170 history |
+| `cc2167/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.167`, 2026-06-06 | superseded; kept for the startup rows (eval_sdk / grove / penguin / count_tokens) the steady-state captures lack |
 | `codex/` | OpenAI ChatGPT backend / Codex CLI | `codex-tui/0.135.0`, 2026-05-30 | **current Codex target** |
 | `kiro/` | Amazon Q / Kiro CLI | 2026-05/06 sessions + image-tool flow + PKCE login | **current Kiro target** |
 | `oauth/` | Anthropic / Claude Code 2.1.126-era benign OAuth session | historical | beta-list / body-shape provenance |
 | `apikey/` | Anthropic via x-api-key (3rd-party gateway path) | historical | provenance for the **apikey beta list** (strict gateways reject unknown betas) |
 | `login/` | Anthropic OAuth login flow (hello → token → profile → roles → bootstrap) | 2.1.158-era | login-path fingerprint; UA on login sidecars = axios |
-| `scripts/` | tooling | — | `extract_live.py` (structural redactor, default outdir `cc2170/rows/`), `split.py`/`sanitize.py`/`gen.py` (older pipeline) |
+| `scripts/` | tooling | — | `extract_live.py` (structural redactor; pass `cc2183/rows` as outdir), `split.py`/`sanitize.py`/`gen.py` (older pipeline) |
 | `COMPARE.md` | — | — | oauth-vs-apikey path diff notes |
 
 ## Redaction policy
@@ -44,4 +45,4 @@ secrets, local-only) is gitignored.
    `kiro*` for the other providers), run `go test ./...`, tag a release.
 5. Bump the `cc-core` dependency in hypitoken and CPA-Claude.
 
-See `cc2170/SPEC.md` for the worked 2.1.167 → 2.1.170 example.
+See `cc2183/SPEC.md` for the worked 2.1.170 → 2.1.183 example.
