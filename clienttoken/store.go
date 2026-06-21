@@ -223,7 +223,12 @@ func (s *Store) RPM(tok string) (int, bool) {
 	return 0, false
 }
 
-// Empty reports whether the proxy should run in open mode.
+// Empty reports whether the store holds no tokens. It is a pure storage query
+// and says nothing about authorization policy: callers MUST NOT treat an empty
+// store as "open mode" (serving any bearer token unauthenticated) — fail closed
+// instead. The historical open-mode convenience was removed from the proxies
+// because, once client tokens live in a separate SaaS DB, an empty legacy store
+// would turn the proxy into an unbilled open relay.
 func (s *Store) Empty() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
