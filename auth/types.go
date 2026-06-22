@@ -122,6 +122,15 @@ type Auth struct {
 	// survives restarts. Append-only field; old files default to false.
 	StripThinking bool
 
+	// Order is the operator-assigned selection priority for API-key
+	// credentials: lower comes first, so the pool keeps p.apikeys sorted by
+	// Order and Acquire returns the first viable (highest-priority) key. Ties
+	// fall back to load order via a stable sort. Default 0 = unranked (sorts
+	// before any positive Order, after any negative). Ignored for OAuth, which
+	// load-balances by rolling usage instead. Append-only field — old
+	// credential files without it default to 0.
+	Order int
+
 	// Source file for OAuth and file-backed APIKey credentials.
 	FilePath string
 
@@ -231,6 +240,7 @@ func (a *Auth) Snapshot() AuthInfo {
 		FilePath:          a.FilePath,
 		BaseURL:           a.BaseURL,
 		Group:             a.Group,
+		Order:             a.Order,
 		ModelMap:          mm,
 		CodexRateLimits:   rl,
 		CodexRateLimitsAt: a.CodexRateLimitsAt,
@@ -254,6 +264,7 @@ type AuthInfo struct {
 	FilePath          string
 	BaseURL           string
 	Group             string
+	Order             int
 	ModelMap          map[string]string
 	CodexRateLimits   map[string]string
 	CodexRateLimitsAt time.Time
@@ -575,6 +586,22 @@ func (a *Auth) SetBaseURL(u string) {
 	a.mu.Lock()
 	a.BaseURL = u
 	a.mu.Unlock()
+}
+
+// SetOrder updates the API-key selection priority (lower = used first). No-op
+// on routing for OAuth, which load-balances by usage. Re-sorting p.apikeys
+// after this is the caller's job (see Pool.ReorderAPIKeys).
+func (a *Auth) SetOrder(n int) {
+	a.mu.Lock()
+	a.Order = n
+	a.mu.Unlock()
+}
+
+// OrderValue returns the credential's selection priority under the lock.
+func (a *Auth) OrderValue() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.Order
 }
 
 // SetGroup updates the credential's group. Empty string or "public" (case-

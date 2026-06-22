@@ -242,6 +242,10 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 	group, _ := raw["group"].(string)
 	modelMap := parseModelMap(raw["model_map"])
 	stripThinking, _ := raw["strip_thinking"].(bool)
+	order := 0
+	if v, ok := raw["order"].(float64); ok {
+		order = int(v)
+	}
 	return &Auth{
 		ID:            filepath.Base(path),
 		Kind:          KindAPIKey,
@@ -255,6 +259,7 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 		Group:         NormalizeGroup(group),
 		ModelMap:      modelMap,
 		StripThinking: stripThinking,
+		Order:         order,
 	}, nil
 }
 
@@ -496,6 +501,13 @@ func saveAuth(a *Auth) error {
 		raw["group"] = a.Group
 	} else {
 		delete(raw, "group")
+	}
+	// Order is API-key selection priority. Default 0 = unranked, not written
+	// (keeps OAuth files and unranked keys clean). OAuth never sets it.
+	if a.Order != 0 {
+		raw["order"] = a.Order
+	} else {
+		delete(raw, "order")
 	}
 	// Drop any legacy per-credential billing_rate that old downstream
 	// forks may have written into the credential file. Keeping the key

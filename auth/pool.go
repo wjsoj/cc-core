@@ -82,7 +82,20 @@ func NewPool(oauths, apikeys []*Auth, activeWindow time.Duration, useUTLS bool, 
 			a.ProxyURL = defaultProxy
 		}
 	}
+	// Keep API keys in operator-assigned priority order so Acquire's
+	// first-viable scan returns the highest-priority key. Ties (same Order,
+	// e.g. all-default 0) preserve load order via the stable sort.
+	sortAPIKeysLocked(p.apikeys)
 	return p
+}
+
+// sortAPIKeysLocked stable-sorts the slice ascending by Order. Stable so equal
+// Order values keep their incoming (load / insertion) order. Caller holds p.mu
+// (or owns the slice exclusively, as in NewPool before publication).
+func sortAPIKeysLocked(keys []*Auth) {
+	sort.SliceStable(keys, func(i, j int) bool {
+		return keys[i].OrderValue() < keys[j].OrderValue()
+	})
 }
 
 func (p *Pool) UseUTLS() bool               { return p.useUTLS }
@@ -603,10 +616,56 @@ func (p *Pool) AddAPIKey(a *Auth) {
 	for i, existing := range p.apikeys {
 		if existing.ID == a.ID {
 			p.apikeys[i] = a
+			sortAPIKeysLocked(p.apikeys)
 			return
 		}
 	}
 	p.apikeys = append(p.apikeys, a)
+	sortAPIKeysLocked(p.apikeys)
+}
+
+// ReorderAPIKeys assigns selection priority to API-key credentials by the given
+// ID sequence: orderedIDs[0] becomes the highest-priority key, [1] the next,
+// and so on. IDs not present in the pool are ignored; API keys whose ID is
+// absent from orderedIDs keep their relative order after the listed ones.
+// The pool's apikeys slice is re-sorted and each credential whose Order changed
+// is persisted to disk. Returns the first persistence error encountered (the
+// in-memory order is still updated regardless).
+func (p *Pool) ReorderAPIKeys(orderedIDs []string) error {
+	rank := make(map[string]int, len(orderedIDs))
+	for i, id := range orderedIDs {
+		if _, dup := rank[id]; dup {
+			continue
+		}
+		rank[id] = i
+	}
+
+	p.mu.Lock()
+	// Unlisted keys sort after every listed one, preserving their prior
+	// relative order (stable sort + a shared sentinel rank).
+	tail := len(orderedIDs)
+	var touched []*Auth
+	for _, a := range p.apikeys {
+		want := tail
+		if r, ok := rank[a.ID]; ok {
+			want = r
+		}
+		if a.OrderValue() != want {
+			a.SetOrder(want)
+			touched = append(touched, a)
+		}
+	}
+	sortAPIKeysLocked(p.apikeys)
+	p.mu.Unlock()
+
+	// Persist outside p.mu — saveAuth does file IO and only takes a.mu.
+	var firstErr error
+	for _, a := range touched {
+		if err := a.Persist(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // RemoveOAuth detaches an OAuth credential from the pool and drops any
