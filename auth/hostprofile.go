@@ -16,8 +16,8 @@ import (
 // SCOPE — Linux only, and deliberately narrow:
 //   - platform/os, arch (x64), and the Node/Bun runtime bundle
 //     (node_version + is_running_with_bun + the Bun/<ver> sidecar UA) stay
-//     FIXED. We have exactly one ground-truth capture (Arch/x64/node v24.3.0,
-//     running under Bun 1.3.14); the runtime values move together with the CC
+//     FIXED. We have exactly one ground-truth capture (Arch/x64/node v26.3.0,
+//     running under Bun 1.4.0); the runtime values move together with the CC
 //     release, and we have no macOS/Windows capture to model their different
 //     env-block *structure* (mac has no linux_kernel, etc.). Inventing that
 //     structure would be a worse fingerprint than uniformity.

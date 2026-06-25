@@ -31,7 +31,7 @@ func maskClientToken(t string) string {
 	return t[:7] + "***"
 }
 
-// Sidecar emulates the auxiliary traffic real Claude Code 2.1.183 fires
+// Sidecar emulates the auxiliary traffic real Claude Code 2.1.191 fires
 // alongside /v1/messages. Three phases:
 //
 //   - Phase A (always): quota probe (Haiku "quota") at session start.
@@ -49,7 +49,7 @@ func maskClientToken(t string) string {
 //   - Phase C (heartbeat): a goroutine that POSTs
 //     /api/event_logging/v2/batch every ~18s ±40% with a realistic
 //     ClaudeCodeInternalEvent payload (env block matches our pinned
-//     2.1.183 / Linux / x64 / Node v24.3.0 fingerprint). Stops 5 min
+//     2.1.191 / Linux / x64 / Node v26.3.0 fingerprint). Stops 5 min
 //     after the session goes idle — mirrors a real CLI process exit.
 //
 // A virtual session is identified by accountKey alone. Multiple downstream
@@ -146,7 +146,7 @@ const (
 	quotaProbeModel = "claude-haiku-4-5-20251001"
 )
 
-// User-Agent strings used across sidecar endpoints. Real CC 2.1.183 uses
+// User-Agent strings used across sidecar endpoints. Real CC 2.1.191 uses
 // FOUR distinct HTTP clients: Bun fetch (GrowthBook only), axios 1.15.2
 // (penguin / mcp-registry / mcp_servers / downloads), claude-code/<ver>
 // (oauth/account/settings, bootstrap, event_logging), and the main
@@ -166,7 +166,7 @@ const (
 // advertise one identical host. platform/arch/node_version/is_running_with_bun
 // stay fixed (one ground-truth capture; runtime bundle moves with the release).
 const (
-	ccBuildTime      = "2026-06-18T23:04:10Z"
+	ccBuildTime      = "2026-06-24T11:24:03Z"
 	ccTelemetryModel = "claude-opus-4-8[1m]" // event_logging event_data.model
 	ccDatadogModel   = "claude-opus-4-8"     // datadog model field + ddtags (no [1m])
 )
@@ -487,7 +487,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			// anthropic-client-platform and X-Organization-UUID;
 			// extraHeaders below sets the latter from the auth at dispatch.
 			// UA is the main claude-cli agent, NOT axios — verified in the
-			// 2.1.183 capture (crack/cc2183/rows/10-code_triggers).
+			// 2.1.191 capture (crack/cc2191/rows/18-code_triggers).
 			name:           "code_triggers",
 			method:         "GET",
 			url:            baseURL + "/v1/code/triggers",
@@ -902,8 +902,8 @@ func (m *Manager) sendHeartbeat(parent context.Context, a *auth.Auth, sessionID 
 
 // buildHeartbeatBody constructs a single-event batch shaped like row 14.
 // Volatile fields (timestamps, event_id, process metric) are refreshed
-// each tick; the env block stays fixed at our pinned 2.1.183 / Linux /
-// x64 / Node v24.3.0 fingerprint so it matches the X-Stainless headers.
+// each tick; the env block stays fixed at our pinned 2.1.191 / Linux /
+// x64 / Node v26.3.0 fingerprint so it matches the X-Stainless headers.
 //
 // Event name `tengu_dir_search` is what real CC emits most frequently
 // during normal use (file-completion lookups), so it blends in with the

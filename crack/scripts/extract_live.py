@@ -11,7 +11,7 @@ descriptions, and identity values with `<redacted …>` placeholders.
 Usage:
     python3 crack/scripts/extract_live.py /path/to/whistle-dump.json [outdir]
 
-Default outdir = crack/cc2183/rows/ (current Claude Code target — pass an
+Default outdir = crack/cc2191/rows/ (current Claude Code target — pass an
 explicit outdir for codex/kiro or a new version dir). The source dump is NOT
 copied or committed.
 """
@@ -218,11 +218,15 @@ CLASSES = [
     ("oauth_token",   lambda u: "/v1/oauth/token" in u),
     ("oauth_profile", lambda u: "/api/oauth/profile" in u),
     ("oauth_roles",   lambda u: "claude_cli/roles" in u),
+    ("oauth_account_settings", lambda u: "/api/oauth/account/settings" in u),  # NEW in 2.1.191
+    ("api_hello",     lambda u: u.split("?")[0].rstrip("/").endswith("/api/hello")),  # NEW in 2.1.191
     ("oauth_referral", lambda u: "referral/eligibility" in u),
     ("startup_eval_sdk", lambda u: "/api/eval/" in u),
     ("startup_grove",    lambda u: "claude_code_grove" in u),
     ("startup_bootstrap", lambda u: "claude_cli/bootstrap" in u),
     ("startup_penguin",   lambda u: "penguin_mode" in u),
+    ("mcp_registry",  lambda u: "/mcp-registry/" in u),          # mcp server discovery
+    ("mcp_servers",   lambda u: "/v1/mcp_servers" in u),
     # Chat + telemetry (structurally redacted via summarize_body).
     ("v1_messages",   lambda u: "/v1/messages?beta" in u),
     ("count_tokens",  lambda u: "count_tokens" in u),
@@ -239,7 +243,8 @@ CLASSES = [
 # Classes whose bodies go through summarize_oauth (verbatim-but-value-masked)
 # instead of the structural redactor.
 OAUTH_CLASSES = {"oauth_hello", "oauth_token", "oauth_profile", "oauth_roles",
-                 "oauth_referral", "startup_eval_sdk", "startup_grove",
+                 "oauth_account_settings", "api_hello", "oauth_referral",
+                 "startup_eval_sdk", "startup_grove",
                  "startup_bootstrap", "startup_penguin"}
 
 
@@ -247,7 +252,7 @@ def main():
     if len(sys.argv) < 2:
         sys.exit("usage: extract_live.py <whistle-dump.json> [outdir]")
     src = json.load(open(sys.argv[1]))
-    out_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.join(CRACK_ROOT, "cc2183", "rows")
+    out_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.join(CRACK_ROOT, "cc2191", "rows")
     os.makedirs(out_dir, exist_ok=True)
     sessions = src["data"]["data"]
 

@@ -1,0 +1,283 @@
+{
+  "class": "mcp_registry",
+  "url": "https://api.anthropic.com/mcp-registry/v0/servers?version=latest&limit=100&visibility=commercial%2Cgsuite%2Centerprise%2Chealth",
+  "method": "GET",
+  "status": 200,
+  "reqSize": 0,
+  "resSize": 81124,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "user-agent": "claude-cli/2.1.191 (external, cli)",
+    "accept-encoding": "gzip, br",
+    "host": "api.anthropic.com",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "date": "Thu, 25 Jun 2026 07:06:39 GMT",
+    "content-type": "application/json",
+    "transfer-encoding": "chunked",
+    "connection": "close",
+    "x-request-id": "<masked:uuid>",
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-allow-headers": "*",
+    "content-encoding": "gzip",
+    "vary": "Accept-Encoding",
+    "server": "cloudflare",
+    "server-timing": "x-originResponse;dur=18",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<masked>",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "x-robots-tag": "none",
+    "cf-ray": "<masked>"
+  },
+  "reqBody": null,
+  "resBody": {
+    "body": {
+      "servers": [
+        {
+          "server": {
+            "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+            "name": "ai.tickettailor/mcp",
+            "description": "<text:230 chars>",
+            "repository": {},
+            "version": "1.0.0",
+            "remotes": [
+              {
+                "type": "streamable-http",
+                "url": "https://mcp.tickettailor.ai/mcp"
+              }
+            ],
+            "title": "Ticket Tailor"
+          },
+          "_meta": {
+            "io.modelcontextprotocol.registry/official": {
+              "status": "active",
+              "publishedAt": "2025-09-12T10:10:54.188764Z",
+              "updatedAt": "2025-09-12T10:10:54.188764Z",
+              "isLatest": true
+            },
+            "com.anthropic.api/mcp-registry": {
+              "uuid": "<masked:uuid>",
+              "type": "remote",
+              "toolNames": [
+                "bundle_create",
+                "bundle_delete",
+                "<… 62 more items redacted …>",
+                "waitlist_signups_get"
+              ],
+              "promptNames": [],
+              "isAuthless": false,
+              "displayName": "Ticket Tailor",
+              "oneLiner": "Event platform for managing tickets, orders & more",
+              "iconUrl": "https://www.tickettailor.com/",
+              "documentation": "<text:106 chars>",
+              "support": "https://help.tickettailor.com/",
+              "privacyPolicy": "https://www.tickettailor.com/legal/privacy-policy",
+              "url": "https://mcp.tickettailor.ai/mcp",
+              "author": {
+                "name": "Ticket Tailor",
+                "url": "https://www.tickettailor.com/"
+              },
+              "slug": "ticket-tailor",
+              "directoryUrl": "https://claude.ai/directory/<masked:uuid>",
+              "claudeCodeCopyText": "claude mcp add --transport http tickettailor https://mcp.tickettailor.ai/mcp",
+              "permissions": "Read and write",
+              "worksWith": [
+                "claude",
+                "claude-api",
+                "claude-code"
+              ],
+              "publishedOn": "Tue Jan 13 2026 20:19:08 GMT+0000 (Coordinated Universal Time)",
+              "createdOn": "Fri Sep 12 2025 22:54:15 GMT+0000 (Coordinated Universal Time)",
+              "updatedOn": "Tue Jan 13 2026 18:42:36 GMT+0000 (Coordinated Universal Time)",
+              "logo": "tickettailor",
+              "backgroundPattern": "Loop 3",
+              "serverLabel": "mcp.tickettailor.ai/mcp",
+              "itemId": "68c4a4971d255ece5ed2a9c0",
+              "collectionId": "68b05e2de975b4de7dd02d9d",
+              "localeId": "68a44d4040f98a4adf2207b5",
+              "htmlContent": "<text:986 chars>",
+              "source": "auto-sync",
+              "visibility": [
+                "commercial"
+              ],
+              "added_at": "2025-11-12",
+              "useCases": [
+                "financial-services"
+              ]
+            }
+          }
+        },
+        {
+          "server": {
+            "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+            "name": "app.linear/linear",
+            "description": "<text:258 chars>",
+            "repository": {},
+            "version": "1.0.0",
+            "remotes": [
+              {
+                "type": "streamable-http",
+                "url": "https://mcp.linear.app/mcp"
+              }
+            ],
+            "title": "Linear"
+          },
+          "_meta": {
+            "io.modelcontextprotocol.registry/official": {
+              "status": "active",
+              "publishedAt": "2025-09-18T15:51:15.598862Z",
+              "updatedAt": "2025-09-18T15:51:15.598862Z",
+              "isLatest": true
+            },
+            "com.anthropic.api/mcp-registry": {
+              "uuid": "<masked:uuid>",
+              "type": "remote",
+              "toolNames": [
+                "list_comments",
+                "create_comment",
+                "<… 19 more items redacted …>",
+                "search_documentation"
+              ],
+              "promptNames": [],
+              "isAuthless": false,
+              "displayName": "Linear",
+              "oneLiner": "Manage issues, projects & team workflows in Linear",
+              "iconUrl": "https://mcp.linear.app/mcp",
+              "documentation": "https://linear.app/docs/mcp",
+              "support": "https://linear.app/contact/support",
+              "privacyPolicy": "https://linear.app/privacy",
+              "url": "https://mcp.linear.app/mcp",
+              "author": {
+                "name": "Linear (Linear Orbit, Inc.)",
+                "url": "https://linear.app"
+              },
+              "slug": "linear",
+              "directoryUrl": "http://claude.ai/directory/<masked:uuid>",
+              "claudeCodeCopyText": "claude mcp add --transport http linear https://mcp.linear.app/mcp",
+              "permissions": "Read and write",
+              "useCases": [
+                "productivity"
+              ],
+              "worksWith": [
+                "claude",
+                "claude-api",
+                "claude-code"
+              ],
+              "publishedOn": "Mon Jan 12 2026 16:21:41 GMT+0000 (Coordinated Universal Time)",
+              "createdOn": "Thu Aug 28 2025 14:02:56 GMT+0000 (Coordinated Universal Time)",
+              "updatedOn": "Mon Jan 12 2026 16:20:16 GMT+0000 (Coordinated Universal Time)",
+              "logo": "linear",
+              "backgroundPattern": "Line 1",
+              "heroVideoId": "xBV60h9_lbw",
+              "heroVideoPreviewLink": "<text:89 chars>",
+              "serverLabel": "mcp.linear.app",
+              "itemId": "68b0619018c80b507dbfc581",
+              "collectionId": "68b05e2de975b4de7dd02d9d",
+              "localeId": "68a44d4040f98a4adf2207b5",
+              "htmlContent": "<text:944 chars>",
+              "source": "auto-sync",
+              "visibility": [
+                "commercial"
+              ],
+              "added_at": "2025-11-12",
+              "sortOrder": 0
+            }
+          }
+        },
+        "<… 97 more items redacted …>",
+        {
+          "server": {
+            "name": "com.box.mcp/box",
+            "version": "1.0.0",
+            "description": "<text:234 chars>",
+            "title": "Box",
+            "remotes": [
+              {
+                "type": "streamable-http",
+                "url": "https://mcp.box.com"
+              }
+            ]
+          },
+          "_meta": {
+            "com.anthropic.api/mcp-registry": {
+              "uuid": "<masked:uuid>",
+              "type": "remote",
+              "toolNames": [
+                "who_am_i",
+                "search_folders_by_name",
+                "<… 17 more items redacted …>",
+                "get_folder_details"
+              ],
+              "promptNames": [],
+              "isAuthless": false,
+              "displayName": "Box",
+              "oneLiner": "Search, edit and get insights on your Box content",
+              "iconUrl": "https://www.box.com",
+              "documentation": "https://developer.box.com/guides/box-mcp",
+              "support": "mailto:<masked:email>",
+              "privacyPolicy": "https://www.box.com/legal/privacypolicy",
+              "url": "https://mcp.box.com",
+              "author": {
+                "name": "Box",
+                "url": "https://www.box.com/"
+              },
+              "slug": "box",
+              "directoryUrl": "https://claude.ai/directory/<masked:uuid>",
+              "permissions": "Read",
+              "useCases": [
+                "data",
+                "legal"
+              ],
+              "worksWith": [
+                "claude",
+                "claude-api",
+                "claude-code"
+              ],
+              "publishedOn": "Mon Jan 12 2026 16:21:41 GMT+0000 (Coordinated Universal Time)",
+              "createdOn": "Thu Aug 28 2025 14:02:54 GMT+0000 (Coordinated Universal Time)",
+              "updatedOn": "Mon Jan 12 2026 16:20:15 GMT+0000 (Coordinated Universal Time)",
+              "logo": "box",
+              "backgroundPattern": "Line 1",
+              "serverLabel": "mcp.box.com",
+              "itemId": "68b0618e694f26361d572d5c",
+              "collectionId": "68b05e2de975b4de7dd02d9d",
+              "localeId": "68a44d4040f98a4adf2207b5",
+              "htmlContent": "<text:1458 chars>",
+              "imageUrls": [
+                {
+                  "prompt": "Show me the team's technical analysis report on energy",
+                  "imageUrl": "<text:155 chars>"
+                },
+                {
+                  "prompt": "Pull up the pitch deck that Acme Corp shared",
+                  "imageUrl": "<text:155 chars>"
+                },
+                {
+                  "prompt": "Show me the latest draft of our client designs",
+                  "imageUrl": "<text:155 chars>"
+                }
+              ],
+              "hasMcpApp": true,
+              "source": "auto-sync",
+              "visibility": [
+                "commercial"
+              ],
+              "added_at": "2025-11-12",
+              "sortOrder": 1
+            },
+            "io.modelcontextprotocol.registry/official": {
+              "status": "active",
+              "isLatest": true
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "count": 100,
+        "nextCursor": "com.box.mcp/box:1.0.0"
+      }
+    }
+  }
+}

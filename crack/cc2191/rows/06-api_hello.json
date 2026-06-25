@@ -1,0 +1,34 @@
+{
+  "class": "api_hello",
+  "url": "https://api.anthropic.com/api/hello",
+  "method": "GET",
+  "status": 200,
+  "reqSize": 0,
+  "resSize": 20,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "user-agent": "claude-cli/2.1.191 (external, cli)",
+    "accept-encoding": "gzip, br",
+    "host": "api.anthropic.com",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "date": "Thu, 25 Jun 2026 07:06:14 GMT",
+    "content-type": "application/json",
+    "content-length": "20",
+    "connection": "close",
+    "server-timing": "x-originResponse;dur=",
+    "server": "cloudflare",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<masked>",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "x-robots-tag": "none",
+    "cf-ray": "<masked>"
+  },
+  "reqBody": null,
+  "resBody": {
+    "body": {
+      "message": "hello"
+    }
+  }
+}

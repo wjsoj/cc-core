@@ -27,7 +27,7 @@ const (
 // x-api-key which we always overwrite with the pool-supplied credential.
 //
 // Known intentional deviation: Accept-Encoding is set to "gzip, br" on
-// every request (matches real CC 2.1.183), not "identity". Wrap the
+// every request (matches real CC 2.1.191), not "identity". Wrap the
 // response with cc-core/stream.Decompress so internal handlers see plain
 // bytes.
 //

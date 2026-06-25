@@ -1,0 +1,40 @@
+{
+  "class": "releases",
+  "url": "https://downloads.claude.ai/claude-code-releases/latest",
+  "method": "GET",
+  "status": 200,
+  "reqSize": 0,
+  "resSize": 7,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "user-agent": "axios/1.15.2",
+    "accept-encoding": "gzip, br",
+    "host": "downloads.claude.ai",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "x-guploader-uploadid": "AJ5rDhFqzCpC5BAOssDciXxLnPybDc7MsRWu_rW5P6NhpLuJSZsPsbaxOv_6ye4A2yFmCygl",
+    "x-goog-generation": "1782338263152784",
+    "x-goog-metageneration": "1",
+    "x-goog-stored-content-encoding": "identity",
+    "x-goog-stored-content-length": "7",
+    "x-goog-hash": "crc32c=N9ua6Q==, md5=JlwCzS8a3N2/JP3ark2IRw==",
+    "x-goog-storage-class": "STANDARD",
+    "accept-ranges": "bytes",
+    "content-length": "7",
+    "server": "UploadServer",
+    "via": "1.1 google",
+    "date": "Thu, 25 Jun 2026 07:06:39 GMT",
+    "age": "0",
+    "last-modified": "Wed, 24 Jun 2026 21:57:43 GMT",
+    "etag": "\"265c02cd2f1adcddbf24fddaae4d8847\"",
+    "content-type": "text/plain",
+    "cache-control": "public,no-cache,max-age=0",
+    "alt-svc": "h3=\":443\"; ma=2592000",
+    "connection": "close"
+  },
+  "reqBody": null,
+  "resBody": {
+    "_raw": "2.1.191"
+  }
+}
