@@ -306,6 +306,10 @@ func finishAnthropicLogin(
 	buf, _ := json.Marshal(payload)
 
 	client := ClientFor(sess.ProxyURL, useUTLS)
+	// Replay the unauthenticated connectivity probes the official CLI fires
+	// before the token exchange, over the SAME proxy/uTLS client so they
+	// egress from the credential's eventual IP. Best-effort.
+	performPreLoginProbes(ctx, client)
 	resp, data, err := doAxiosOAuthRequest(ctx, client, http.MethodPost, anthropicTokenURL, buf)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
@@ -320,6 +324,11 @@ func finishAnthropicLogin(
 	if tr.AccessToken == "" || tr.RefreshToken == "" {
 		return nil, fmt.Errorf("token exchange returned empty tokens")
 	}
+
+	// Replay the authenticated post-exchange probes real CC makes right after
+	// getting the token (profile / roles / account-settings) so the login
+	// footprint matches the official client. Best-effort; same proxy client.
+	performPostLoginProbes(ctx, client, tr.AccessToken)
 
 	expires := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
 	email := tr.Account.EmailAddress
