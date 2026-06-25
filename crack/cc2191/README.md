@@ -1,9 +1,10 @@
 # crack/cc2191 — Claude Code 2.1.191 live capture
 
 Captured 2026-06-25 from a real `claude-cli/2.1.191` OAuth session (whistle dump,
-fresh login window, 36 sessions). **Supersedes crack/cc2183** (2.1.183) as the
-ground truth for the fingerprint constants. See `SPEC.md` for the 2.1.183 →
-2.1.191 diff and the edit checklist.
+fresh login window, 36 sessions). **The sole CC-version capture kept** — the
+ground truth for the fingerprint constants. Older per-version dirs (cc2183 /
+cc2170 / cc2167) were pruned; see `SPEC.md` for the 2.1.183 → 2.1.191 diff and
+the edit checklist, and git history for the earlier captures.
 
 This round **captured the OAuth login flow from scratch** (logout → `/login` →
 browser consent → token exchange → startup → chat), so `rows/` now includes the

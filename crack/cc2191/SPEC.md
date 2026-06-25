@@ -10,7 +10,8 @@ lacked. This is the authoritative reference for the fingerprint constants in
 `cc-core/mimicry` and `cc-core/sidecar`. hypitoken and CPA-Claude both consume
 these via the module dep — there is **no vendored copy** to keep in sync.
 
-Supersedes **crack/cc2183** (Claude Code 2.1.183).
+Supersedes (and replaces) all prior per-version captures — cc2183 / cc2170 /
+cc2167 were pruned once 2.1.191 landed; their diffs live in git history.
 
 Client env (from the `event_logging` / datadog telemetry bodies):
 
