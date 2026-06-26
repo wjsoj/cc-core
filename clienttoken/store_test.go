@@ -17,21 +17,31 @@ func TestSetUpstreamFallbackPersists(t *testing.T) {
 	if err := s.Add(Token{Token: "sk-fb", Name: "bob"}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	// Default must be false.
-	if tok, _ := s.Lookup("sk-fb"); tok.UpstreamFallback {
-		t.Fatal("new token should default UpstreamFallback=false")
+	// Default (unset) must be ON.
+	if tok, _ := s.Lookup("sk-fb"); !tok.UpstreamFallbackEnabled() {
+		t.Fatal("new token should default UpstreamFallbackEnabled()=true")
 	}
-	if err := s.SetUpstreamFallback("sk-fb", true); err != nil {
+	// Explicitly opt OUT and confirm it persists as an explicit false.
+	if err := s.SetUpstreamFallback("sk-fb", false); err != nil {
 		t.Fatalf("SetUpstreamFallback: %v", err)
 	}
-	// Reload from disk to confirm persistence.
 	s2, err := Open(path)
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
 	tok, ok := s2.Lookup("sk-fb")
-	if !ok || !tok.UpstreamFallback {
-		t.Fatalf("UpstreamFallback should persist true, got ok=%v val=%v", ok, tok.UpstreamFallback)
+	if !ok || tok.UpstreamFallback == nil || *tok.UpstreamFallback {
+		t.Fatalf("opt-out should persist explicit false, got ok=%v ptr=%v", ok, tok.UpstreamFallback)
+	}
+	if tok.UpstreamFallbackEnabled() {
+		t.Fatal("after opt-out, UpstreamFallbackEnabled() must be false")
+	}
+	// Re-enable and confirm.
+	if err := s2.SetUpstreamFallback("sk-fb", true); err != nil {
+		t.Fatalf("re-enable: %v", err)
+	}
+	if tok, _ := s2.Lookup("sk-fb"); !tok.UpstreamFallbackEnabled() {
+		t.Fatal("re-enable should make UpstreamFallbackEnabled()=true")
 	}
 	// Unknown token errors.
 	if err := s.SetUpstreamFallback("nope", true); err == nil {

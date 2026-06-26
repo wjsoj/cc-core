@@ -47,16 +47,30 @@ import (
 //
 // Use EffectiveGroups() to read whichever is populated.
 type Token struct {
-	Token            string    `json:"token"`
-	Name             string    `json:"name"`
-	WeeklyUSD        float64   `json:"weekly_usd,omitempty"`        // 0 = no per-token weekly cap
-	MaxConcurrent    int       `json:"max_concurrent,omitempty"`    // 0 = use global default
-	RPM              int       `json:"rpm,omitempty"`               // 0 = use global default
-	Group            string    `json:"group,omitempty"`             // legacy single-group; promoted to Groups when set alone
-	Groups           []string  `json:"groups,omitempty"`            // priority-ordered group fallthrough list
-	Providers        []string  `json:"providers,omitempty"`         // allow-list of canonical providers this token may use; empty = all
-	UpstreamFallback bool      `json:"upstream_fallback,omitempty"` // opt-in: when the self-run OAuth pool is exhausted, allow falling back to (marked-up) upstream API keys. Default false (SaaS-gated).
+	Token         string   `json:"token"`
+	Name          string   `json:"name"`
+	WeeklyUSD     float64  `json:"weekly_usd,omitempty"`     // 0 = no per-token weekly cap
+	MaxConcurrent int      `json:"max_concurrent,omitempty"` // 0 = use global default
+	RPM           int      `json:"rpm,omitempty"`            // 0 = use global default
+	Group         string   `json:"group,omitempty"`          // legacy single-group; promoted to Groups when set alone
+	Groups        []string `json:"groups,omitempty"`         // priority-ordered group fallthrough list
+	Providers     []string `json:"providers,omitempty"`      // allow-list of canonical providers this token may use; empty = all
+	// UpstreamFallback gates falling back to (marked-up) upstream API keys when
+	// the self-run OAuth pool is exhausted. Tri-state pointer: nil = unset =
+	// DEFAULT ON (enabled); &true = explicitly on; &false = user opted out.
+	// Read via UpstreamFallbackEnabled(). SaaS-gated (non-SaaS always falls back).
+	UpstreamFallback *bool     `json:"upstream_fallback,omitempty"`
 	CreatedAt        time.Time `json:"created_at,omitempty"`
+}
+
+// UpstreamFallbackEnabled returns the effective opt-in: requests may fall back
+// to upstream API keys unless the user has explicitly turned it off. Default
+// (nil / never set) is ON.
+func (t *Token) UpstreamFallbackEnabled() bool {
+	if t.UpstreamFallback == nil {
+		return true
+	}
+	return *t.UpstreamFallback
 }
 
 // AllowsProvider reports whether this token may route to the given provider.
@@ -249,7 +263,7 @@ func (s *Store) List() []View {
 			MaxConcurrent: t.MaxConcurrent, RPM: t.RPM,
 			Group: t.Group, Groups: append([]string(nil), t.Groups...),
 			Providers:        append([]string(nil), t.Providers...),
-			UpstreamFallback: t.UpstreamFallback,
+			UpstreamFallback: t.UpstreamFallbackEnabled(),
 			CreatedAt:        t.CreatedAt,
 		})
 	}
@@ -331,9 +345,9 @@ func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int
 	return fmt.Errorf("token not found")
 }
 
-// SetUpstreamFallback toggles the per-token opt-in that lets requests fall
-// back to (marked-up) upstream API keys when the self-run OAuth pool is
-// exhausted. Used by the user-facing self-service Wallet settings endpoint —
+// SetUpstreamFallback records the user's explicit choice for the upstream-
+// fallback opt-in (stored as a pointer so an explicit false is distinct from
+// the nil default-on). Used by the self-service Wallet settings endpoint —
 // kept as a dedicated setter (rather than another Update parameter) so the
 // self-service path doesn't depend on the operator-only Update signature.
 func (s *Store) SetUpstreamFallback(token string, v bool) error {
@@ -341,7 +355,8 @@ func (s *Store) SetUpstreamFallback(token string, v bool) error {
 	defer s.mu.Unlock()
 	for i := range s.tokens {
 		if s.tokens[i].Token == token {
-			s.tokens[i].UpstreamFallback = v
+			vv := v
+			s.tokens[i].UpstreamFallback = &vv
 			return s.saveLocked()
 		}
 	}
