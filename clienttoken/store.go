@@ -47,15 +47,16 @@ import (
 //
 // Use EffectiveGroups() to read whichever is populated.
 type Token struct {
-	Token         string    `json:"token"`
-	Name          string    `json:"name"`
-	WeeklyUSD     float64   `json:"weekly_usd,omitempty"`     // 0 = no per-token weekly cap
-	MaxConcurrent int       `json:"max_concurrent,omitempty"` // 0 = use global default
-	RPM           int       `json:"rpm,omitempty"`            // 0 = use global default
-	Group         string    `json:"group,omitempty"`          // legacy single-group; promoted to Groups when set alone
-	Groups        []string  `json:"groups,omitempty"`         // priority-ordered group fallthrough list
-	Providers     []string  `json:"providers,omitempty"`      // allow-list of canonical providers this token may use; empty = all
-	CreatedAt     time.Time `json:"created_at,omitempty"`
+	Token            string    `json:"token"`
+	Name             string    `json:"name"`
+	WeeklyUSD        float64   `json:"weekly_usd,omitempty"`        // 0 = no per-token weekly cap
+	MaxConcurrent    int       `json:"max_concurrent,omitempty"`    // 0 = use global default
+	RPM              int       `json:"rpm,omitempty"`               // 0 = use global default
+	Group            string    `json:"group,omitempty"`             // legacy single-group; promoted to Groups when set alone
+	Groups           []string  `json:"groups,omitempty"`            // priority-ordered group fallthrough list
+	Providers        []string  `json:"providers,omitempty"`         // allow-list of canonical providers this token may use; empty = all
+	UpstreamFallback bool      `json:"upstream_fallback,omitempty"` // opt-in: when the self-run OAuth pool is exhausted, allow falling back to (marked-up) upstream API keys. Default false (SaaS-gated).
+	CreatedAt        time.Time `json:"created_at,omitempty"`
 }
 
 // AllowsProvider reports whether this token may route to the given provider.
@@ -90,15 +91,16 @@ func (t *Token) EffectiveGroups() []string {
 
 // View is the API representation returned to the admin panel.
 type View struct {
-	Token         string    `json:"token"`
-	Name          string    `json:"name"`
-	WeeklyUSD     float64   `json:"weekly_usd,omitempty"`
-	MaxConcurrent int       `json:"max_concurrent,omitempty"`
-	RPM           int       `json:"rpm,omitempty"`
-	Group         string    `json:"group,omitempty"`
-	Groups        []string  `json:"groups,omitempty"`
-	Providers     []string  `json:"providers,omitempty"`
-	CreatedAt     time.Time `json:"created_at,omitempty"`
+	Token            string    `json:"token"`
+	Name             string    `json:"name"`
+	WeeklyUSD        float64   `json:"weekly_usd,omitempty"`
+	MaxConcurrent    int       `json:"max_concurrent,omitempty"`
+	RPM              int       `json:"rpm,omitempty"`
+	Group            string    `json:"group,omitempty"`
+	Groups           []string  `json:"groups,omitempty"`
+	Providers        []string  `json:"providers,omitempty"`
+	UpstreamFallback bool      `json:"upstream_fallback"`
+	CreatedAt        time.Time `json:"created_at,omitempty"`
 }
 
 type Store struct {
@@ -246,8 +248,9 @@ func (s *Store) List() []View {
 			Token: t.Token, Name: t.Name, WeeklyUSD: t.WeeklyUSD,
 			MaxConcurrent: t.MaxConcurrent, RPM: t.RPM,
 			Group: t.Group, Groups: append([]string(nil), t.Groups...),
-			Providers: append([]string(nil), t.Providers...),
-			CreatedAt: t.CreatedAt,
+			Providers:        append([]string(nil), t.Providers...),
+			UpstreamFallback: t.UpstreamFallback,
+			CreatedAt:        t.CreatedAt,
 		})
 	}
 	return out
@@ -322,6 +325,23 @@ func (s *Store) Update(token string, name *string, weekly *float64, maxConc *int
 			if providers != nil {
 				s.tokens[i].Providers = normalizeProviders(*providers)
 			}
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("token not found")
+}
+
+// SetUpstreamFallback toggles the per-token opt-in that lets requests fall
+// back to (marked-up) upstream API keys when the self-run OAuth pool is
+// exhausted. Used by the user-facing self-service Wallet settings endpoint —
+// kept as a dedicated setter (rather than another Update parameter) so the
+// self-service path doesn't depend on the operator-only Update signature.
+func (s *Store) SetUpstreamFallback(token string, v bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.tokens {
+		if s.tokens[i].Token == token {
+			s.tokens[i].UpstreamFallback = v
 			return s.saveLocked()
 		}
 	}

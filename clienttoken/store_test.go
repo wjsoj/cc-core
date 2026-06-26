@@ -6,6 +6,39 @@ import (
 	"testing"
 )
 
+// TestSetUpstreamFallbackPersists verifies the self-service opt-in toggle
+// round-trips through tokens.json and that an unknown token errors.
+func TestSetUpstreamFallbackPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := s.Add(Token{Token: "sk-fb", Name: "bob"}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	// Default must be false.
+	if tok, _ := s.Lookup("sk-fb"); tok.UpstreamFallback {
+		t.Fatal("new token should default UpstreamFallback=false")
+	}
+	if err := s.SetUpstreamFallback("sk-fb", true); err != nil {
+		t.Fatalf("SetUpstreamFallback: %v", err)
+	}
+	// Reload from disk to confirm persistence.
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	tok, ok := s2.Lookup("sk-fb")
+	if !ok || !tok.UpstreamFallback {
+		t.Fatalf("UpstreamFallback should persist true, got ok=%v val=%v", ok, tok.UpstreamFallback)
+	}
+	// Unknown token errors.
+	if err := s.SetUpstreamFallback("nope", true); err == nil {
+		t.Fatal("expected error setting unknown token")
+	}
+}
+
 func TestAddLookupDeleteRoundTrip(t *testing.T) {
 	s := OpenInMemory()
 	if !s.Empty() {

@@ -131,6 +131,15 @@ type Auth struct {
 	// credential files without it default to 0.
 	Order int
 
+	// PriceMultiplier overrides billing for API-key credentials: when > 0, a
+	// request served by this key is charged official_price × PriceMultiplier,
+	// bypassing the client's pricing-group multiplier entirely. This models
+	// upstream relay keys bought at near-official cost, which must NOT inherit
+	// the cheap OAuth-subscription discount. 0 = unset = fall back to the
+	// pricing-group multiplier (legacy behaviour). Ignored for OAuth. Append-
+	// only field — old credential files without it default to 0.
+	PriceMultiplier float64
+
 	// Source file for OAuth and file-backed APIKey credentials.
 	FilePath string
 
@@ -241,6 +250,7 @@ func (a *Auth) Snapshot() AuthInfo {
 		BaseURL:           a.BaseURL,
 		Group:             a.Group,
 		Order:             a.Order,
+		PriceMultiplier:   a.PriceMultiplier,
 		ModelMap:          mm,
 		CodexRateLimits:   rl,
 		CodexRateLimitsAt: a.CodexRateLimitsAt,
@@ -265,6 +275,7 @@ type AuthInfo struct {
 	BaseURL           string
 	Group             string
 	Order             int
+	PriceMultiplier   float64
 	ModelMap          map[string]string
 	CodexRateLimits   map[string]string
 	CodexRateLimitsAt time.Time
@@ -602,6 +613,26 @@ func (a *Auth) OrderValue() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.Order
+}
+
+// SetPriceMultiplier updates the per-key billing override (API-key only).
+// A value <= 0 clears the override so billing falls back to the client's
+// pricing-group multiplier. Persisting afterwards is the caller's job.
+func (a *Auth) SetPriceMultiplier(f float64) {
+	a.mu.Lock()
+	if f < 0 {
+		f = 0
+	}
+	a.PriceMultiplier = f
+	a.mu.Unlock()
+}
+
+// PriceMultiplierValue returns the per-key billing override under the lock.
+// 0 means unset (use the pricing-group multiplier).
+func (a *Auth) PriceMultiplierValue() float64 {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.PriceMultiplier
 }
 
 // SetGroup updates the credential's group. Empty string or "public" (case-

@@ -136,7 +136,31 @@ func (p *Pool) activeCountLocked(authID string, now time.Time) int {
 	return n
 }
 
-// Acquire picks an Auth for this client token and stamps the session.
+// AcquireOptions tunes credential selection beyond the positional arguments.
+type AcquireOptions struct {
+	// AllowAPIKeyFallback gates whether, when no OAuth credential in a tier is
+	// usable, the pool may fall back to an API-key credential in that tier.
+	// The plain Acquire wrapper sets this true (legacy behaviour); the SaaS
+	// fork sets it from the client token's opt-in so users who haven't enabled
+	// the upstream pool aren't silently served — and billed at a markup — by
+	// upstream API keys.
+	AllowAPIKeyFallback bool
+	// ExcludeIDs are credential IDs to skip because the current request already
+	// tried and failed them.
+	ExcludeIDs []string
+}
+
+// Acquire is the back-compat entry point: it allows API-key fallback (the
+// historical behaviour) and forwards excludeIDs. Callers that need to gate the
+// fallback (e.g. per-token opt-in) should use AcquireWithOptions instead.
+func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, clientModel, sessionID string, excludeIDs ...string) *Auth {
+	return p.AcquireWithOptions(ctx, provider, clientToken, clientGroup, clientModel, sessionID, AcquireOptions{
+		AllowAPIKeyFallback: true,
+		ExcludeIDs:          excludeIDs,
+	})
+}
+
+// AcquireWithOptions picks an Auth for this client token and stamps the session.
 // clientGroup scopes credential selection: group-matching credentials are
 // preferred, falling back to public ("") credentials when the group's
 // credentials are exhausted. clientGroup == "" means public-only.
@@ -155,11 +179,14 @@ func (p *Pool) activeCountLocked(authID string, now time.Time) int {
 // the current request, so a transient connection error on one credential
 // doesn't keep selecting the same one (the sticky-session logic would
 // otherwise pin the client to the failing auth until its session times out).
-func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, clientModel, sessionID string, excludeIDs ...string) *Auth {
+//
+// opts.AllowAPIKeyFallback gates the per-tier API-key fallback (see
+// AcquireOptions); opts.ExcludeIDs is the retry skip-list.
+func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, clientGroup, clientModel, sessionID string, opts AcquireOptions) *Auth {
 	provider = NormalizeProvider(provider)
 	clientGroup = NormalizeGroup(clientGroup)
-	excluded := make(map[string]bool, len(excludeIDs))
-	for _, id := range excludeIDs {
+	excluded := make(map[string]bool, len(opts.ExcludeIDs))
+	for _, id := range opts.ExcludeIDs {
 		excluded[id] = true
 	}
 	sessionKey := slotKey(provider, clientToken, sessionID)
@@ -260,6 +287,13 @@ func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, 
 			}
 			return chosen
 		}
+		// Per-token opt-in gate: when API-key fallback is disabled, never serve
+		// from an API key. continue to the next tier (whose OAuth may still be
+		// tried) rather than break — the gate re-applies there too, so no API
+		// key is ever selected. OAuth selection above is unaffected.
+		if !opts.AllowAPIKeyFallback {
+			continue
+		}
 		for _, k := range p.apikeys {
 			if NormalizeProvider(k.Provider) != provider {
 				continue
@@ -335,6 +369,33 @@ func (p *Pool) AcquireMulti(ctx context.Context, provider, clientToken string, c
 		}
 		// Acquire failed for this group; mark anything it sticky-rejected as
 		// tried so we don't loop. (No-op when Acquire returns nil cleanly.)
+	}
+	return "", nil
+}
+
+// AcquireMultiWithOptions is AcquireMulti with the AcquireOptions gate applied
+// to every group attempt (opts.ExcludeIDs seeds the cross-group skip-list).
+// Behaviour matches AcquireMulti when opts.AllowAPIKeyFallback is true.
+func (p *Pool) AcquireMultiWithOptions(ctx context.Context, provider, clientToken string, clientGroups []string, clientModel, sessionID string, opts AcquireOptions) (string, *Auth) {
+	if len(clientGroups) == 0 {
+		clientGroups = []string{""}
+	}
+	tried := make(map[string]bool, len(opts.ExcludeIDs))
+	for _, id := range opts.ExcludeIDs {
+		tried[id] = true
+	}
+	for _, g := range clientGroups {
+		ex := make([]string, 0, len(tried))
+		for id := range tried {
+			ex = append(ex, id)
+		}
+		a := p.AcquireWithOptions(ctx, provider, clientToken, g, clientModel, sessionID, AcquireOptions{
+			AllowAPIKeyFallback: opts.AllowAPIKeyFallback,
+			ExcludeIDs:          ex,
+		})
+		if a != nil {
+			return NormalizeGroup(g), a
+		}
 	}
 	return "", nil
 }

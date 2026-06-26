@@ -246,20 +246,25 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 	if v, ok := raw["order"].(float64); ok {
 		order = int(v)
 	}
+	priceMultiplier := 0.0
+	if v, ok := raw["price_multiplier"].(float64); ok && v > 0 {
+		priceMultiplier = v
+	}
 	return &Auth{
-		ID:            filepath.Base(path),
-		Kind:          KindAPIKey,
-		Provider:      provider,
-		Label:         label,
-		AccessToken:   apiKey,
-		ProxyURL:      proxyURL,
-		BaseURL:       baseURL,
-		FilePath:      path,
-		Disabled:      disabled,
-		Group:         NormalizeGroup(group),
-		ModelMap:      modelMap,
-		StripThinking: stripThinking,
-		Order:         order,
+		ID:              filepath.Base(path),
+		Kind:            KindAPIKey,
+		Provider:        provider,
+		Label:           label,
+		AccessToken:     apiKey,
+		ProxyURL:        proxyURL,
+		BaseURL:         baseURL,
+		FilePath:        path,
+		Disabled:        disabled,
+		Group:           NormalizeGroup(group),
+		ModelMap:        modelMap,
+		StripThinking:   stripThinking,
+		Order:           order,
+		PriceMultiplier: priceMultiplier,
 	}, nil
 }
 
@@ -508,6 +513,14 @@ func saveAuth(a *Auth) error {
 		raw["order"] = a.Order
 	} else {
 		delete(raw, "order")
+	}
+	// PriceMultiplier overrides billing for API-key credentials (official ×
+	// multiplier, bypassing the pricing-group discount). Default 0 = unset,
+	// not written, so files stay clean and OAuth never carries it.
+	if a.PriceMultiplier > 0 {
+		raw["price_multiplier"] = a.PriceMultiplier
+	} else {
+		delete(raw, "price_multiplier")
 	}
 	// Drop any legacy per-credential billing_rate that old downstream
 	// forks may have written into the credential file. Keeping the key
