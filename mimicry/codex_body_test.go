@@ -267,3 +267,29 @@ func TestEnsureImageGenerationTool(t *testing.T) {
 		}
 	})
 }
+
+func TestJoinCodexAPIKeyUpstreamURL(t *testing.T) {
+	cases := []struct {
+		name, baseURL, path, want string
+	}{
+		// Bare-origin relay (new-api / one-api) — the bug report: must keep /v1.
+		{"bare origin responses", "https://zz1cc.cc.cd", "/v1/responses", "https://zz1cc.cc.cd/v1/responses"},
+		{"bare origin chat", "https://relay.example", "/v1/chat/completions", "https://relay.example/v1/chat/completions"},
+		{"bare origin models", "https://relay.example", "/v1/models", "https://relay.example/v1/models"},
+		{"bare origin trailing slash", "https://relay.example/", "/v1/responses", "https://relay.example/v1/responses"},
+		{"bare origin with port", "https://relay.example:8080", "/v1/responses", "https://relay.example:8080/v1/responses"},
+		// BaseURL already carries /v1 — strip inbound /v1, no doubling.
+		{"openai v1", "https://api.openai.com/v1", "/v1/responses", "https://api.openai.com/v1/responses"},
+		{"openai v1 models", "https://api.openai.com/v1", "/v1/models", "https://api.openai.com/v1/models"},
+		// Custom gateway path — authoritative, strip /v1.
+		{"gateway codex", "https://gateway.io/codex", "/v1/responses", "https://gateway.io/codex/responses"},
+		{"gateway codex compact", "https://gateway.io/codex", "/v1/responses/compact", "https://gateway.io/codex/responses/compact"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := JoinCodexAPIKeyUpstreamURL(c.baseURL, c.path); got != c.want {
+				t.Fatalf("JoinCodexAPIKeyUpstreamURL(%q, %q) = %q, want %q", c.baseURL, c.path, got, c.want)
+			}
+		})
+	}
+}

@@ -16,8 +16,51 @@ package mimicry
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 )
+
+// JoinCodexAPIKeyUpstreamURL joins an API-key credential's BaseURL with an
+// inbound OpenAI-style path ("/v1/responses", "/v1/chat/completions",
+// "/v1/models") for the passthrough (non-OAuth) Codex forwarder.
+//
+// The rule resolves a long-standing footgun where the two forks disagreed and
+// each only handled one BaseURL shape:
+//
+//   - BaseURL carries its own path segment (".../v1", ".../codex", …): it is
+//     authoritative. The inbound "/v1" prefix is stripped and the bare
+//     endpoint appended.
+//     api.openai.com/v1 + /v1/responses → https://api.openai.com/v1/responses
+//     gateway.io/codex  + /v1/responses → https://gateway.io/codex/responses
+//   - BaseURL is a bare origin (no path, e.g. "https://relay.example"): the
+//     FULL inbound path including "/v1" is appended, because virtually every
+//     OpenAI-compatible relay (new-api / one-api / official) serves its API
+//     under "/v1". Stripping it sent the request to the gateway's HTML
+//     homepage, which the SSE reader surfaced as
+//     "stream disconnected before completion".
+//     relay.example + /v1/responses → https://relay.example/v1/responses
+//
+// This is backward-compatible for both forks: any BaseURL that already carries
+// a path is unchanged, and a bare-origin BaseURL — which previously 404'd on
+// the strip-/v1 fork and only worked on the keep-/v1 fork — now works on both.
+func JoinCodexAPIKeyUpstreamURL(baseURL, clientPath string) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURLHasPath(baseURL) {
+		return baseURL + strings.TrimPrefix(clientPath, "/v1")
+	}
+	return baseURL + clientPath
+}
+
+// baseURLHasPath reports whether baseURL carries a path segment after the host
+// (e.g. "/v1", "/codex"). A parse failure is treated as "has path" so we fall
+// back to the conservative strip-/v1 behavior rather than risk doubling it.
+func baseURLHasPath(baseURL string) bool {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return true
+	}
+	return strings.Trim(u.Path, "/") != ""
+}
 
 // CodexOAuthPath maps a client-facing path under /v1 to the corresponding
 // suffix on the ChatGPT Codex backend (mounted under /codex). The backend
