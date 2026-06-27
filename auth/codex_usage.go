@@ -31,10 +31,14 @@ type CodexUsageInfo struct {
 	RateLimit *CodexUsageRateLimit    `json:"rate_limit,omitempty"`
 	Credits   *CodexUsageCredits      `json:"credits,omitempty"`
 	Spend     *CodexUsageSpendControl `json:"spend_control,omitempty"`
-	// RateLimitReachedType is set when one of the windows is exhausted —
-	// observed values include "primary"/"secondary"; we keep the raw string
-	// so future variants pass through unchanged.
-	RateLimitReachedType string `json:"rate_limit_reached_type,omitempty"`
+	// RateLimitReachedType is set when one of the windows is exhausted.
+	// Originally a bare string ("primary"/"secondary"), but the wham/usage
+	// backend now sometimes returns an OBJECT here (observed:
+	// {"type":...,"resets_at":...}-shaped payloads), which made the whole
+	// snapshot fail to decode ("cannot unmarshal object into ... string").
+	// Keep it as raw JSON so any shape — string, null, or object — passes
+	// through unchanged instead of aborting the decode.
+	RateLimitReachedType json.RawMessage `json:"rate_limit_reached_type,omitempty"`
 
 	// Fields added with the codex-tui/0.135.0 capture (crack/codex/SPEC.md).
 	// CodeReviewRateLimit is a top-level sibling of rate_limit (typically null);
