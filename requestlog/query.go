@@ -2,6 +2,7 @@ package requestlog
 
 import (
 	"bufio"
+	"container/heap"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -74,6 +75,14 @@ type Filter struct {
 	UserID int64
 	Limit  int // page size for Entries (0 = 50)
 	Offset int // number of newest-first records to skip before Limit
+	// PageOnly turns the query into a cheap table/list lookup: it skips the
+	// Summary/ByClient/ByModel/ByDay aggregates AND stops scanning as soon
+	// as Offset+Limit matching entries have been collected from the newest
+	// log files. A full-archive scan (all retained days) collapses to a
+	// newest-files-only scan — the common case reads one file. Use ONLY for
+	// callers that render Entries alone and never read the aggregate maps or
+	// Summary.Count (those are left zero/empty when PageOnly is set).
+	PageOnly bool
 }
 
 // Result is the Query return value.
@@ -227,6 +236,9 @@ func Query(f Filter) (*Result, error) {
 	if f.Offset < 0 {
 		f.Offset = 0
 	}
+	// keep is the most newest-first entries we could ever return; collecting
+	// beyond it is wasted memory since Query only returns [Offset, Offset+Limit).
+	keep := f.Offset + f.Limit
 	files, err := listLogFiles(f.Dir)
 	if err != nil {
 		return nil, err
@@ -238,30 +250,45 @@ func Query(f Filter) (*Result, error) {
 		ByModel:  make(map[string]Aggregate),
 		ByDay:    make(map[string]Aggregate),
 	}
+	// top is a min-heap (root = oldest kept) bounded to `keep` entries, so
+	// memory stays O(page) regardless of how many records match — a
+	// full-archive scan no longer materializes every matching row.
+	top := &entryHeap{}
 	for _, path := range files {
 		day := extractDay(path)
 		if !dayInRange(day, f.From, f.To) {
 			continue
 		}
-		if err := scanFile(path, f, res); err != nil {
+		if err := scanFile(path, f, res, top, keep); err != nil {
 			return nil, err
 		}
+		// PageOnly skips the aggregates, so once the newest `keep` matches
+		// are in hand no older file can contribute to the returned page
+		// (files are processed newest-day-first and a day's records are all
+		// older than any record in a newer day). Stop early.
+		if f.PageOnly && keep > 0 && top.Len() >= keep {
+			break
+		}
 	}
-	sort.Slice(res.Entries, func(i, j int) bool {
-		return res.Entries[i].TS.After(res.Entries[j].TS)
-	})
-	if f.Offset >= len(res.Entries) {
-		res.Entries = nil
+	// Drain the min-heap into newest-first order: successive Pop() yields the
+	// oldest kept first, so fill the slice back-to-front.
+	ents := make([]Record, top.Len())
+	for i := len(ents) - 1; i >= 0; i-- {
+		ents[i] = heap.Pop(top).(Record)
+	}
+	if f.Offset >= len(ents) {
+		ents = nil
 	} else {
-		res.Entries = res.Entries[f.Offset:]
+		ents = ents[f.Offset:]
 	}
-	if len(res.Entries) > f.Limit {
-		res.Entries = res.Entries[:f.Limit]
+	if len(ents) > f.Limit {
+		ents = ents[:f.Limit]
 	}
+	res.Entries = ents
 	return res, nil
 }
 
-func scanFile(path string, f Filter, res *Result) error {
+func scanFile(path string, f Filter, res *Result, top *entryHeap, keep int) error {
 	fh, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -281,24 +308,63 @@ func scanFile(path string, f Filter, res *Result) error {
 		if !matches(r, f) {
 			continue
 		}
-		res.Summary.add(r)
-		ckey := r.ClientToken
-		if ckey == "" {
-			ckey = r.Client
+		// Aggregates require a full scan of every match, so they're only
+		// computed when the caller actually reads them (PageOnly == false).
+		if !f.PageOnly {
+			res.Summary.add(r)
+			ckey := r.ClientToken
+			if ckey == "" {
+				ckey = r.Client
+			}
+			by := res.ByClient[ckey]
+			by.add(r)
+			res.ByClient[ckey] = by
+			bm := res.ByModel[r.Model]
+			bm.add(r)
+			res.ByModel[r.Model] = bm
+			dayKey := r.TS.In(bucketLoc).Format("2006-01-02")
+			bd := res.ByDay[dayKey]
+			bd.add(r)
+			res.ByDay[dayKey] = bd
 		}
-		by := res.ByClient[ckey]
-		by.add(r)
-		res.ByClient[ckey] = by
-		bm := res.ByModel[r.Model]
-		bm.add(r)
-		res.ByModel[r.Model] = bm
-		dayKey := r.TS.In(bucketLoc).Format("2006-01-02")
-		bd := res.ByDay[dayKey]
-		bd.add(r)
-		res.ByDay[dayKey] = bd
-		res.Entries = append(res.Entries, r)
+		pushBounded(top, r, keep)
 	}
 	return sc.Err()
+}
+
+// pushBounded keeps `top` to at most `keep` records, retaining the newest
+// (largest TS). It is the streaming equivalent of "collect all matches, sort
+// newest-first, take the first keep" — same result, O(keep) memory.
+func pushBounded(top *entryHeap, r Record, keep int) {
+	if keep <= 0 {
+		return
+	}
+	if top.Len() < keep {
+		heap.Push(top, r)
+		return
+	}
+	// Heap full: replace the oldest kept only if this record is newer.
+	if r.TS.After((*top)[0].TS) {
+		(*top)[0] = r
+		heap.Fix(top, 0)
+	}
+}
+
+// entryHeap is a min-heap of Records ordered by timestamp (root = oldest),
+// used to retain the newest N matches during a scan without buffering all of
+// them.
+type entryHeap []Record
+
+func (e entryHeap) Len() int           { return len(e) }
+func (e entryHeap) Less(i, j int) bool { return e[i].TS.Before(e[j].TS) }
+func (e entryHeap) Swap(i, j int)      { e[i], e[j] = e[j], e[i] }
+func (e *entryHeap) Push(x any)        { *e = append(*e, x.(Record)) }
+func (e *entryHeap) Pop() any {
+	old := *e
+	n := len(old)
+	x := old[n-1]
+	*e = old[:n-1]
+	return x
 }
 
 func matches(r Record, f Filter) bool {

@@ -292,7 +292,11 @@ func (s *Store) Flush() error {
 		s.mu.Unlock()
 		return nil
 	}
-	data, err := json.MarshalIndent(s.state, "", "  ")
+	// Marshal (not MarshalIndent) runs while holding the lock, which blocks
+	// every request-path Record()/RecordClient() call for its duration.
+	// Compact encoding roughly halves that stall and the on-disk size; the
+	// file is machine-read state, not meant for human editing.
+	data, err := json.Marshal(s.state)
 	s.dirty = false
 	s.mu.Unlock()
 	if err != nil {

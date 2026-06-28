@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -75,6 +76,11 @@ type Writer struct {
 	stopCh        chan struct{}
 	doneCh        chan struct{}
 
+	// dropped counts records discarded because the buffer was full (slow
+	// disk / sustained burst). Exposed via Dropped() so the host can surface
+	// it as a health metric instead of losing log lines silently.
+	dropped atomic.Int64
+
 	mu      sync.Mutex
 	curFile *os.File
 	curDay  string
@@ -92,7 +98,7 @@ func Open(dir string, retentionDays int) (*Writer, error) {
 	w := &Writer{
 		dir:           dir,
 		retentionDays: retentionDays,
-		ch:            make(chan Record, 1024),
+		ch:            make(chan Record, 4096),
 		stopCh:        make(chan struct{}),
 		doneCh:        make(chan struct{}),
 	}
@@ -113,15 +119,29 @@ func (w *Writer) Log(r Record) {
 	select {
 	case w.ch <- r:
 	default:
+		// Buffer full: drop the oldest pending entry to make room for the
+		// newer one, and count the loss. Never block the hot path.
 		select {
 		case <-w.ch:
+			w.dropped.Add(1)
 		default:
 		}
 		select {
 		case w.ch <- r:
 		default:
+			w.dropped.Add(1)
 		}
 	}
+}
+
+// Dropped returns the cumulative number of records discarded because the
+// write buffer was full. A non-zero, growing value means the disk can't keep
+// up with the request rate (or the buffer needs raising).
+func (w *Writer) Dropped() int64 {
+	if w == nil {
+		return 0
+	}
+	return w.dropped.Load()
 }
 
 // Close flushes pending entries, fsyncs and closes the current file.

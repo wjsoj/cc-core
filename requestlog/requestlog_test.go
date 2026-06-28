@@ -178,3 +178,71 @@ func TestBucketLocationDayBoundary(t *testing.T) {
 		t.Fatalf("Shanghai: did not expect ByDay[2026-06-18], got %v", res.ByDay)
 	}
 }
+
+// TestQueryBoundedPaginationAndPageOnly verifies (a) the bounded min-heap
+// collector returns the exact same newest-first page as the old "collect all,
+// sort, slice" path across Offset/Limit, and (b) PageOnly returns that same
+// page of Entries while leaving the aggregates empty.
+func TestQueryBoundedPaginationAndPageOnly(t *testing.T) {
+	dir := t.TempDir()
+	w, _ := Open(dir, 0)
+	base := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+	// 6 records spanning 3 day-files, strictly increasing TS so newest-first
+	// order is deterministic (r5 newest ... r0 oldest).
+	for i := 0; i < 6; i++ {
+		w.Log(Record{
+			TS:          base.AddDate(0, 0, i/2).Add(time.Duration(i) * time.Minute),
+			ClientToken: "sk-mask",
+			Model:       "m",
+			Input:       int64(i),
+			Status:      200,
+		})
+	}
+	w.Close()
+
+	// Full query, newest-first: expect Input sequence 5,4,3,2,1,0.
+	full, err := Query(Filter{Dir: dir, Limit: 100})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(full.Entries) != 6 {
+		t.Fatalf("full entries=%d want 6", len(full.Entries))
+	}
+	for i, want := range []int64{5, 4, 3, 2, 1, 0} {
+		if full.Entries[i].Input != want {
+			t.Fatalf("full[%d].Input=%d want %d", i, full.Entries[i].Input, want)
+		}
+	}
+	if full.Summary.Count != 6 {
+		t.Fatalf("Summary.Count=%d want 6 (full scan keeps aggregates)", full.Summary.Count)
+	}
+
+	// Paginated: Offset 1, Limit 2 -> the 2nd and 3rd newest -> Input 4,3.
+	// Bounded heap (keep=Offset+Limit=3) must yield the identical slice.
+	page, _ := Query(Filter{Dir: dir, Limit: 2, Offset: 1})
+	if len(page.Entries) != 2 || page.Entries[0].Input != 4 || page.Entries[1].Input != 3 {
+		t.Fatalf("paginated page wrong: %+v", page.Entries)
+	}
+	// Aggregates still full even when only a page of entries is returned.
+	if page.Summary.Count != 6 {
+		t.Fatalf("paginated Summary.Count=%d want 6", page.Summary.Count)
+	}
+
+	// PageOnly returns the same Entries page but skips aggregates.
+	po, _ := Query(Filter{Dir: dir, Limit: 2, Offset: 1, PageOnly: true})
+	if len(po.Entries) != 2 || po.Entries[0].Input != 4 || po.Entries[1].Input != 3 {
+		t.Fatalf("PageOnly page mismatch: %+v", po.Entries)
+	}
+	if po.Summary.Count != 0 || len(po.ByModel) != 0 {
+		t.Fatalf("PageOnly should leave aggregates empty: count=%d byModel=%d", po.Summary.Count, len(po.ByModel))
+	}
+
+	// PageOnly first page (Limit 3) must equal full's first 3 newest entries,
+	// proving early-stop doesn't drop newer records.
+	po1, _ := Query(Filter{Dir: dir, Limit: 3, PageOnly: true})
+	for i, want := range []int64{5, 4, 3} {
+		if po1.Entries[i].Input != want {
+			t.Fatalf("PageOnly p1[%d].Input=%d want %d", i, po1.Entries[i].Input, want)
+		}
+	}
+}
