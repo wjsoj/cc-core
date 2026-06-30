@@ -293,6 +293,26 @@ func DialTLSConn(ctx context.Context, host, addr, proxyURL string, useUTLS bool,
 	}
 	if useUTLS {
 		uc := utls.UClient(rawConn, &utls.Config{ServerName: host, NextProtos: nextProtos}, utls.HelloChrome_Auto)
+		// Preset Chrome fingerprints hardcode ALPN=[h2,http/1.1] in their spec and
+		// IGNORE utls.Config.NextProtos. That breaks callers that must pin a single
+		// protocol — notably the Codex WebSocket dial, which passes ["http/1.1"]
+		// because a WS Upgrade cannot run over h2: the server would otherwise select
+		// h2 and answer with an HTTP/2 SETTINGS frame the WS client can't parse
+		// ("malformed HTTP response"). Build the handshake state, then override the
+		// ALPN extension in place so the wire ClientHello actually advertises only
+		// nextProtos. Default HTTP callers pass ["h2","http/1.1"] (== Chrome's own
+		// list and order), so this is a no-op for the fingerprint there.
+		if len(nextProtos) > 0 {
+			if err := uc.BuildHandshakeState(); err != nil {
+				_ = rawConn.Close()
+				return nil, fmt.Errorf("utls build handshake %s: %w", host, err)
+			}
+			for _, ext := range uc.Extensions {
+				if alpn, ok := ext.(*utls.ALPNExtension); ok {
+					alpn.AlpnProtocols = nextProtos
+				}
+			}
+		}
 		if err := uc.HandshakeContext(ctx); err != nil {
 			_ = rawConn.Close()
 			return nil, fmt.Errorf("utls handshake %s: %w", host, err)
