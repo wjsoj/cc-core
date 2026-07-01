@@ -275,6 +275,16 @@ var builtIn = map[string]ModelPrice{
 		CacheReadPer1M:   0.30,
 		CacheCreatePer1M: 3.75,
 	},
+	// claude-sonnet-5 launched 2026-07-01 at 2/3 of sonnet-4-6's rate (input
+	// $3→$2, output $15→$10, cache_read $0.30→$0.20, cache_write $3.75→$2.50 —
+	// still Anthropic's standard 0.1×/1.25× cache ratios). One undated entry;
+	// Lookup's prefix-fallback maps dated variants (claude-sonnet-5-2026…) here.
+	ProviderAnthropic + "/claude-sonnet-5": {
+		InputPer1M:       2.00,
+		OutputPer1M:      10.00,
+		CacheReadPer1M:   0.20,
+		CacheCreatePer1M: 2.50,
+	},
 
 	// ─── OpenAI / Codex (subscription tier labels) ─────────────────────
 	// Official OpenAI API per-1M-token rates (input / cached-input / output),
