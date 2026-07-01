@@ -26,21 +26,21 @@ import (
 	"strings"
 )
 
-// Header values pinned to Claude Code 2.1.191 / @anthropic-ai/sdk 0.94.0.
-// Values verified against a live CC 2.1.191 OAuth session capture
-// (whistle dump 2026-06-25 — see crack/cc2191/SPEC.md).
+// Header values pinned to Claude Code 2.1.197 / @anthropic-ai/sdk 0.94.0.
+// Values verified against a live CC 2.1.197 OAuth session capture
+// (whistle dump 2026-07-01 — see crack/cc2197/SPEC.md).
 // CLICurrentVersion MUST match the version baked into ClaudeCLIUserAgent;
 // any drift will cause the cc_version=X.Y.Z.{fp} billing block to disagree
 // with the User-Agent and trigger Anthropic's third-party detection.
 const (
-	CLICurrentVersion       = "2.1.191"
-	ClaudeCLIUserAgent      = "claude-cli/2.1.191 (external, cli)"
+	CLICurrentVersion       = "2.1.197"
+	ClaudeCLIUserAgent      = "claude-cli/2.1.197 (external, cli)"
 	ClaudeStainlessLang     = "js"
 	ClaudeStainlessRuntime  = "node"
 	// 2.1.191 jumped the bundled Node runtime v24.3.0 → v26.3.0. This single
 	// constant feeds BOTH the X-Stainless-Runtime-Version request header and the
 	// telemetry env.node_version (sidecar), which the live capture confirms move
-	// together. (crack/cc2191/SPEC.md §1.)
+	// together. UNCHANGED at 2.1.197 (still v26.3.0). (crack/cc2197/SPEC.md §1.)
 	ClaudeStainlessRuntimeV = "v26.3.0"
 	ClaudeStainlessPackageV = "0.94.0"
 	ClaudeStainlessOS       = "Linux"
@@ -49,15 +49,19 @@ const (
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"
 	// ClaudeAnthropicBetaFull is the Anthropic-Beta REQUEST HEADER captured
-	// from real CC 2.1.191 — exact value, exact order (13 items). Any beta we
+	// from real CC 2.1.197 — exact value, exact order (14 items). Any beta we
 	// drop that real CLI sends will downgrade us to "extra usage" billing; any
 	// extra beta we add that real CLI doesn't send is also a fingerprint signal.
-	// 2.1.183→2.1.191 diff: UNCHANGED (13-item list byte-identical in the live
-	// capture). History: 2.1.170 had added server-side-fallback / fallback-credit
-	// then dropped them again by 2.1.183. context-1m-2025-08-07 stays absent from
-	// the request header (still present in ClaudeReportedBetas below — the two
-	// lists remain DIVERGED). (crack/cc2191/SPEC.md §1.)
-	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	// 2.1.191→2.1.197 diff: real CC now ALSO carries context-1m-2025-08-07 on the
+	// wire (inserted at position 3, right after oauth-2025-04-20) — the request
+	// header and telemetry ClaudeReportedBetas have partially CONVERGED (both
+	// now include context-1m), though BetaFull still keeps the longer
+	// advisor/advanced-tool/effort/extended-cache-ttl/cache-diagnosis tail that
+	// ReportedBetas lacks. Verified against the live opus-4-8 /v1/messages?beta=true
+	// business request (crack/cc2197/SPEC.md §1). NOTE: only injected on OAuth
+	// requests that arrive WITHOUT their own beta list (headers.go) — real CC
+	// passthrough keeps the client's own list untouched.
+	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
 	// ClaudeReportedBetas is the SHORTER beta list real CC 2.1.191 reports in
 	// its telemetry bodies (event_logging `betas`, datadog `betas`/ddtags) — 9
 	// items, stopping at mid-conversation-system. This is NOT the
@@ -66,10 +70,12 @@ const (
 	// `[1m]` model variant (1M-context active → context-1m beta reported);
 	// plain-model events carry an 8-item variant without context-1m. Our sidecar
 	// heartbeat emits the `[1m]` + 9-item pair, so this stays the 9-item list.
-	// Verified unchanged 2.1.156→2.1.191 — the live 2.1.191 capture shows the
-	// `claude-opus-4-8[1m]` events carrying exactly this 247-char list
-	// (crack/cc2191/SPEC.md §3). Do NOT regenerate this from
-	// ClaudeAnthropicBetaFull — they have diverged.
+	// Verified unchanged 2.1.156→2.1.197 — the live 2.1.197 capture shows the
+	// `claude-opus-4-8[1m]` event_logging + datadog telemetry carrying exactly
+	// this 9-item list (crack/cc2197/SPEC.md §3). Do NOT regenerate this from
+	// ClaudeAnthropicBetaFull — the two remain distinct (BetaFull keeps the
+	// advisor/effort/cache-diagnosis tail this list omits), even though at
+	// 2.1.197 BetaFull picked up the context-1m token this list already had.
 	ClaudeReportedBetas = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07"
 
 	// ClaudeAnthropicBetaApikey is the Anthropic-Beta REQUEST HEADER real CC

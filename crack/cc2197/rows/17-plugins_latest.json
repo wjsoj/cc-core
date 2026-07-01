@@ -1,0 +1,18 @@
+{
+  "class": "plugins_latest",
+  "url": "https://downloads.claude.ai/claude-code-releases/plugins/claude-plugins-official/latest",
+  "method": "GET",
+  "status": "aborted",
+  "reqSize": 0,
+  "resSize": null,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "user-agent": "axios/1.15.2",
+    "accept-encoding": "gzip, br",
+    "host": "downloads.claude.ai",
+    "connection": "close"
+  },
+  "resHeaders": {},
+  "reqBody": null,
+  "resBody": null
+}
