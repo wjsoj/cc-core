@@ -1,0 +1,74 @@
+[
+  {
+    "idx": 1,
+    "class": "startup_bootstrap",
+    "file": "01-startup_bootstrap.json",
+    "url": "https://api.anthropic.com/api/claude_cli/bootstrap?entrypoint=cli&model=claude-fable-5",
+    "status": 200,
+    "reqSize": 0
+  },
+  {
+    "idx": 2,
+    "class": "startup_penguin",
+    "file": "02-startup_penguin.json",
+    "url": "https://api.anthropic.com/api/claude_code_penguin_mode",
+    "status": 200,
+    "reqSize": 0
+  },
+  {
+    "idx": 3,
+    "class": "mcp_registry",
+    "file": "03-mcp_registry.json",
+    "url": "https://api.anthropic.com/mcp-registry/v0/servers?version=latest&limit=100&visibility=commercial%2Cgsuite%2Centerprise%2Chealth",
+    "status": 200,
+    "reqSize": 0
+  },
+  {
+    "idx": 4,
+    "class": "v1_messages",
+    "file": "04-v1_messages.json",
+    "url": "https://api.anthropic.com/v1/messages?beta=true",
+    "status": 200,
+    "reqSize": 3229357
+  },
+  {
+    "idx": 5,
+    "class": "event_logging_startup",
+    "file": "05-event_logging_startup.json",
+    "url": "https://api.anthropic.com/api/event_logging/v2/batch",
+    "status": 200,
+    "reqSize": 607217
+  },
+  {
+    "idx": 6,
+    "class": "event_logging_steady",
+    "file": "06-event_logging_steady.json",
+    "url": "https://api.anthropic.com/api/event_logging/v2/batch",
+    "status": 200,
+    "reqSize": 2025
+  },
+  {
+    "idx": 7,
+    "class": "datadog",
+    "file": "07-datadog.json",
+    "url": "https://http-intake.logs.us5.datadoghq.com/api/v2/logs",
+    "status": 202,
+    "reqSize": 87086
+  },
+  {
+    "idx": 8,
+    "class": "releases",
+    "file": "08-releases.json",
+    "url": "https://downloads.claude.ai/claude-code-releases/latest",
+    "status": 200,
+    "reqSize": 0
+  },
+  {
+    "idx": 9,
+    "class": "plugins_latest",
+    "file": "09-plugins_latest.json",
+    "url": "https://downloads.claude.ai/claude-code-releases/plugins/claude-plugins-official/latest",
+    "status": 200,
+    "reqSize": 0
+  }
+]
