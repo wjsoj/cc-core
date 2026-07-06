@@ -26,21 +26,21 @@ import (
 	"strings"
 )
 
-// Header values pinned to Claude Code 2.1.198 / @anthropic-ai/sdk 0.94.0.
-// Values verified against a live CC 2.1.198 OAuth session capture
-// (whistle dump 2026-07-02 — see crack/cc2198/SPEC.md).
+// Header values pinned to Claude Code 2.1.201 / @anthropic-ai/sdk 0.94.0.
+// Values verified against a live CC 2.1.201 OAuth session capture
+// (whistle dump 2026-07-06 — see crack/cc2201/SPEC.md).
 // CLICurrentVersion MUST match the version baked into ClaudeCLIUserAgent;
 // any drift will cause the cc_version=X.Y.Z.{fp} billing block to disagree
 // with the User-Agent and trigger Anthropic's third-party detection.
 const (
-	CLICurrentVersion       = "2.1.198"
-	ClaudeCLIUserAgent      = "claude-cli/2.1.198 (external, cli)"
+	CLICurrentVersion       = "2.1.201"
+	ClaudeCLIUserAgent      = "claude-cli/2.1.201 (external, cli)"
 	ClaudeStainlessLang     = "js"
 	ClaudeStainlessRuntime  = "node"
 	// 2.1.191 jumped the bundled Node runtime v24.3.0 → v26.3.0. This single
 	// constant feeds BOTH the X-Stainless-Runtime-Version request header and the
 	// telemetry env.node_version (sidecar), which the live capture confirms move
-	// together. UNCHANGED at 2.1.198 (still v26.3.0). (crack/cc2198/SPEC.md §1.)
+	// together. UNCHANGED at 2.1.201 (still v26.3.0). (crack/cc2201/SPEC.md §1.)
 	ClaudeStainlessRuntimeV = "v26.3.0"
 	ClaudeStainlessPackageV = "0.94.0"
 	ClaudeStainlessOS       = "Linux"
@@ -49,16 +49,15 @@ const (
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"
 	// ClaudeAnthropicBetaFull is the Anthropic-Beta REQUEST HEADER captured
-	// from real CC 2.1.198 — exact value, exact order (13 items). Any beta we
+	// from real CC 2.1.201 — exact value, exact order (13 items). Any beta we
 	// drop that real CLI sends will downgrade us to "extra usage" billing; any
 	// extra beta we add that real CLI doesn't send is also a fingerprint signal.
-	// 2.1.197→2.1.198 diff: DROPPED context-1m-2025-08-07 from the request
-	// header. The 2.1.197 target had added it from a single 1M-context capture,
-	// but context-1m on the wire is REQUEST-conditional (only when the 1M window
-	// is active) — all six 2.1.198 business /v1/messages requests (3.1 MB each)
-	// carried the 13-item list WITHOUT it, so the correct synthetic default is
-	// the 13-item list (identical to 2.1.191). context-1m still lives in
-	// telemetry ClaudeReportedBetas below. Verified crack/cc2198/SPEC.md §1.
+	// UNCHANGED 2.1.198→2.1.201: DROPS context-1m-2025-08-07 from the request
+	// header. context-1m on the wire is REQUEST-conditional (only when the 1M
+	// window is active) — the 2.1.201 capture's /v1/messages requests carried
+	// the 13-item list WITHOUT it, so the correct synthetic default is the
+	// 13-item list (identical to 2.1.191). context-1m still lives in telemetry
+	// ClaudeReportedBetas below. Verified crack/cc2201/SPEC.md §1.
 	// NOTE: only injected on OAuth requests that arrive WITHOUT their own beta
 	// list (headers.go) — real CC passthrough keeps the client's own list.
 	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
@@ -70,9 +69,11 @@ const (
 	// `[1m]` model variant (1M-context active → context-1m beta reported);
 	// plain-model events carry an 8-item variant without context-1m. Our sidecar
 	// heartbeat emits the `[1m]` + 9-item pair, so this stays the 9-item list.
-	// Verified unchanged 2.1.156→2.1.198 — the live 2.1.198 capture shows the
-	// `claude-opus-4-8[1m]` event_logging + datadog telemetry carrying exactly
-	// this 9-item list (crack/cc2198/SPEC.md §3). Do NOT regenerate this from
+	// Verified unchanged 2.1.156→2.1.198. The 2.1.201 capture session ran
+	// WITHOUT 1M context, so its telemetry shows the plain 8-item variant (no
+	// context-1m, no `[1m]` model) — config-dependent, so it neither confirms
+	// nor contradicts this 9-item `[1m]` pairing (crack/cc2201/SPEC.md §3). Our
+	// sidecar keeps emitting the `[1m]` + 9-item pair. Do NOT regenerate this from
 	// ClaudeAnthropicBetaFull — the two are distinct: this telemetry list keeps
 	// context-1m (1M-context active) while the request-header BetaFull does not,
 	// and BetaFull keeps the advisor/effort/cache-diagnosis tail this list omits.
