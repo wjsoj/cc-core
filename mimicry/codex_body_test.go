@@ -67,6 +67,7 @@ func TestSanitizeCodexRequestBody_Regular(t *testing.T) {
 		"user": "alice",
 		"max_output_tokens": 100,
 		"context_management": {"foo": "bar"},
+		"parallel_tool_calls": false,
 		"previous_response_id": "resp_123",
 		"stream": false
 	}`
@@ -89,8 +90,11 @@ func TestSanitizeCodexRequestBody_Regular(t *testing.T) {
 	if m["store"] != false {
 		t.Errorf("store = %v, want false", m["store"])
 	}
-	if m["parallel_tool_calls"] != true {
-		t.Errorf("parallel_tool_calls = %v, want true", m["parallel_tool_calls"])
+	// parallel_tool_calls is passed through verbatim (not force-injected):
+	// the client's false — what real codex-tui sends for gpt-5.6's
+	// Responses-Lite mode — must survive.
+	if m["parallel_tool_calls"] != false {
+		t.Errorf("parallel_tool_calls = %v, want false (client value preserved)", m["parallel_tool_calls"])
 	}
 	include, ok := m["include"].([]any)
 	if !ok || len(include) != 1 || include[0] != "reasoning.encrypted_content" {
@@ -162,6 +166,7 @@ func TestSanitizeCodexRequestBody_Compact(t *testing.T) {
 		"instructions": "compact this",
 		"previous_response_id": "resp_999",
 		"tools": [{"type": "image_generation"}],
+		"parallel_tool_calls": false,
 		"stream": true,
 		"include": ["reasoning.encrypted_content"],
 		"store": false,
@@ -176,11 +181,12 @@ func TestSanitizeCodexRequestBody_Compact(t *testing.T) {
 	}
 	m := decode(t, out)
 
-	// Only whitelisted fields retained, model stripped.
+	// Whitelisted scalar fields retained, model stripped.
 	want := map[string]any{
 		"model":                "gpt-5.3-codex",
 		"instructions":         "compact this",
 		"previous_response_id": "resp_999",
+		"parallel_tool_calls":  false,
 	}
 	for k, v := range want {
 		if m[k] != v {
@@ -190,8 +196,12 @@ func TestSanitizeCodexRequestBody_Compact(t *testing.T) {
 	if _, ok := m["input"]; !ok {
 		t.Errorf("compact must retain input")
 	}
-	// Everything else dropped.
-	for _, k := range []string{"tools", "stream", "include", "store", "temperature", "parallel_tool_calls"} {
+	// tools is whitelisted (sub2api parity) and must survive.
+	if _, ok := m["tools"]; !ok {
+		t.Errorf("compact must retain tools")
+	}
+	// Request-scoped fields still dropped.
+	for _, k := range []string{"stream", "include", "store", "temperature"} {
 		if _, present := m[k]; present {
 			t.Errorf("compact field %q should have been dropped", k)
 		}

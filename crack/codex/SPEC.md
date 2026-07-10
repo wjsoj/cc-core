@@ -31,7 +31,30 @@ OpenRouter's live models API (`openrouter.ai/api/v1/models`), the official per-t
 cache-write is a clean 1.25× input across all three. (An earlier draft priced all three at the
 sol/gpt-5.5 rate — that overcharged terra 2× and luna 5×; corrected here.)
 
+### §5 — `parallel_tool_calls` must be passed through, not forced (gpt-5.6 Responses-Lite)
+
+The gpt-5.6 line runs the backend's **Responses-Lite** mode (`X-OpenAI-Internal-Codex-Responses-Lite`,
+set by the OpenAI edge for this model family). That mode HARD-rejects any request whose
+`parallel_tool_calls` is not `false`:
+
+```
+invalid_request_error: X-OpenAI-Internal-Codex-Responses-Lite requires `parallel_tool_calls` to be false.
+```
+
+Real `codex-tui` 0.144.1 sends `parallel_tool_calls: false` for gpt-5.6. cc-core's
+`SanitizeCodexRequestBody` used to hard-code `parallel_tool_calls = true` on the `/responses`
+path (and the `/compact` whitelist dropped the field entirely), which clobbered that `false` and
+triggered the error. **Fix: pass the client's value through verbatim** on both paths — matching
+sub2api (origin/main `ad8afc8a` "Add parallel_tool_calls compatibility mapping" preserves the
+client value through Chat-Completions↔Responses conversion instead of forcing a default). The
+`/compact` whitelist was also widened from 4 → 8 fields (adds `tools`, `parallel_tool_calls`,
+`reasoning`, `text`) to mirror sub2api's current `normalizeOpenAICompactRequestBody`.
+
+sub2api confirms the 0.144.1 target too: `657c4f97` "升级 Codex 客户端版本至 0.144.1，修复
+gpt-5.6-luna 404".
+
 ---
+
 
 ## Original 0.135.0 capture
 

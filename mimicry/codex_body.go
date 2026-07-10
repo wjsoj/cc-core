@@ -117,7 +117,13 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 
 	// Required fields for the Codex backend.
 	raw["store"] = false
-	raw["parallel_tool_calls"] = true
+	// parallel_tool_calls: pass the client's value through UNTOUCHED. We used
+	// to hard-code `true` here, which clobbered the `false` that real codex-tui
+	// 0.144.1 sends for the gpt-5.6 line — the backend's "Responses-Lite" mode
+	// (X-OpenAI-Internal-Codex-Responses-Lite) then rejects the request with
+	// invalid_request_error ("requires parallel_tool_calls to be false"). Like
+	// sub2api, we now preserve whatever the client sent (present → kept as-is,
+	// absent → left absent). See crack/codex/SPEC.md §5.
 	raw["include"] = []any{"reasoning.encrypted_content"}
 
 	// Fields the backend rejects or that leak through from openai.com-
@@ -186,13 +192,13 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 	return out, baseModel, err
 }
 
-// sanitizeCodexCompactRequestBody is the strict whitelist for the
-// /codex/responses/compact endpoint. Mirrors sub2api's
-// normalizeOpenAICompactRequestBody: the backend rejects everything except
-// these four fields, so we drop the rest entirely (in particular
-// `include`, `context_management`, `tools`, `store`, `stream`,
-// `parallel_tool_calls` — all of which SanitizeCodexRequestBody force-
-// injects for the regular /responses path and which would 400 here).
+// sanitizeCodexCompactRequestBody is the whitelist for the
+// /codex/responses/compact endpoint. Mirrors sub2api's current
+// normalizeOpenAICompactRequestBody (origin/main): the backend rejects
+// request-scoped fields like prompt_cache_key/store/stream, so we keep only
+// this 8-field set and drop the rest. `parallel_tool_calls` is included and
+// passed through verbatim — the gpt-5.6 "Responses-Lite" mode needs the
+// client's `false` to survive here too, exactly as on the main path.
 //
 // The model field still has its CLIProxyAPI thinking-suffix stripped so
 // `gpt-5.3-codex(high)` → `gpt-5.3-codex` for billing/upstream consistency.
@@ -206,7 +212,16 @@ func sanitizeCodexCompactRequestBody(body []byte) ([]byte, string, error) {
 		baseModel = StripThinkingSuffix(m)
 	}
 	out := map[string]any{}
-	for _, k := range []string{"model", "input", "instructions", "previous_response_id"} {
+	for _, k := range []string{
+		"model",
+		"input",
+		"instructions",
+		"tools",
+		"parallel_tool_calls",
+		"reasoning",
+		"text",
+		"previous_response_id",
+	} {
 		v, ok := raw[k]
 		if !ok {
 			continue
