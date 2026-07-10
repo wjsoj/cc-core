@@ -1,0 +1,303 @@
+{
+  "class": "v1_messages",
+  "url": "https://api.anthropic.com/v1/messages?beta=true",
+  "method": "POST",
+  "status": 200,
+  "reqSize": 131359,
+  "resSize": 763,
+  "reqHeaders": {
+    "accept": "application/json",
+    "authorization": "<masked>",
+    "content-type": "application/json",
+    "user-agent": "claude-cli/2.1.206 (external, cli)",
+    "x-claude-code-session-id": "<masked>",
+    "x-stainless-arch": "x64",
+    "x-stainless-lang": "js",
+    "x-stainless-os": "Linux",
+    "x-stainless-package-version": "0.94.0",
+    "x-stainless-retry-count": "0",
+    "x-stainless-runtime": "node",
+    "x-stainless-runtime-version": "v26.3.0",
+    "x-stainless-timeout": "600",
+    "anthropic-beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,server-side-fallback-2026-06-01,fallback-credit-2026-06-01,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "anthropic-version": "2023-06-01",
+    "x-app": "cli",
+    "x-client-request-id": "<masked>",
+    "connection": "keep-alive",
+    "host": "api.anthropic.com",
+    "accept-encoding": "gzip, br",
+    "content-length": "131359"
+  },
+  "resHeaders": {
+    "date": "Fri, 10 Jul 2026 03:51:18 GMT",
+    "content-type": "text/event-stream; charset=utf-8",
+    "transfer-encoding": "chunked",
+    "connection": "keep-alive",
+    "cache-control": "no-cache",
+    "anthropic-ratelimit-unified-status": "allowed",
+    "anthropic-ratelimit-unified-5h-status": "allowed",
+    "anthropic-ratelimit-unified-5h-reset": "1783666800",
+    "anthropic-ratelimit-unified-5h-utilization": "0.04",
+    "anthropic-ratelimit-unified-7d-status": "allowed",
+    "anthropic-ratelimit-unified-7d-reset": "1783746000",
+    "anthropic-ratelimit-unified-7d-utilization": "0.01",
+    "anthropic-ratelimit-unified-7d_oi-status": "allowed",
+    "anthropic-ratelimit-unified-7d_oi-reset": "1783746000",
+    "anthropic-ratelimit-unified-7d_oi-utilization": "0.0",
+    "anthropic-ratelimit-unified-representative-claim": "five_hour",
+    "anthropic-ratelimit-unified-fallback-percentage": "0.5",
+    "anthropic-ratelimit-unified-reset": "1783666800",
+    "anthropic-ratelimit-unified-overage-disabled-reason": "org_level_disabled",
+    "anthropic-ratelimit-unified-overage-status": "rejected",
+    "request-id": "<masked>",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "anthropic-organization-id": "<masked>",
+    "traceresponse": "00-1a0a5df7649c8769d22fe747f301589b-07945bcdf94690a3-01",
+    "server": "cloudflare",
+    "content-encoding": "gzip",
+    "vary": "Accept-Encoding",
+    "x-robots-tag": "none",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "<masked>"
+  },
+  "reqBody": {
+    "body": {
+      "model": "claude-fable-5",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<text:11271 chars>"
+            },
+            {
+              "type": "text",
+              "text": "你好 你是谁开发的什么模型"
+            }
+          ]
+        },
+        {
+          "role": "system",
+          "content": "<text:29342 chars>"
+        },
+        "<… 12 more items redacted …>",
+        {
+          "role": "user",
+          "content": "<text:1363 chars>"
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "x-anthropic-billing-header: cc_version=2.1.206.a02; cc_entrypoint=cli; cch=5c449; cc_prev_req=req_011CcshLnN6fBJgCwj6U87Q2;"
+        },
+        {
+          "type": "text",
+          "text": "You are Claude Code, Anthropic's official CLI for Claude."
+        },
+        {
+          "type": "text",
+          "text": "<text:1152 chars>",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h",
+            "scope": "global"
+          }
+        },
+        {
+          "type": "text",
+          "text": "<text:11525 chars>",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "Agent",
+          "description": "<text:1611 chars>",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "description": {
+                "description": "A short (3-5 word) description of the task",
+                "type": "string"
+              },
+              "prompt": {
+                "description": "The task for the agent to perform",
+                "type": "string"
+              },
+              "subagent_type": {
+                "description": "The type of specialized agent to use for this task",
+                "type": "string"
+              },
+              "model": {
+                "description": "<text:254 chars>",
+                "type": "string",
+                "enum": [
+                  "sonnet",
+                  "opus",
+                  "haiku",
+                  "fable"
+                ]
+              },
+              "isolation": {
+                "description": "<text:221 chars>",
+                "type": "string",
+                "enum": [
+                  "worktree",
+                  "remote"
+                ]
+              }
+            },
+            "required": [
+              "description",
+              "prompt"
+            ],
+            "additionalProperties": false
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Artifact",
+          "description": "<text:3446 chars>",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "action": {
+                "description": "<text:122 chars>",
+                "type": "string",
+                "enum": [
+                  "publish",
+                  "list"
+                ]
+              },
+              "file_path": {
+                "description": "<text:170 chars>",
+                "type": "string"
+              },
+              "favicon": {
+                "description": "<text:143 chars>",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "limit": {
+                "description": "list only: maximum artifacts to return (default 25).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 50
+              },
+              "description": {
+                "description": "One-sentence subtitle shown on the gallery card. Say what the page is or does.",
+                "type": "string",
+                "maxLength": 1000
+              },
+              "label": {
+                "description": "<text:156 chars>",
+                "type": "string",
+                "maxLength": 60
+              },
+              "url": {
+                "description": "<text:432 chars>",
+                "type": "string"
+              },
+              "force": {
+                "description": "<text:240 chars>",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "eager_input_streaming": true
+        },
+        "<… 9 more items redacted …>",
+        {
+          "name": "Write",
+          "description": "<text:240 chars>",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "description": "The absolute path to the file to write (must be absolute, not relative)",
+                "type": "string"
+              },
+              "content": {
+                "description": "The content to write to the file",
+                "type": "string"
+              }
+            },
+            "required": [
+              "file_path",
+              "content"
+            ],
+            "additionalProperties": false
+          },
+          "eager_input_streaming": true
+        }
+      ],
+      "metadata": {
+        "user_id": "<masked:user_id>"
+      },
+      "max_tokens": 64000,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      },
+      "fallbacks": [
+        {
+          "model": "claude-opus-4-8"
+        }
+      ],
+      "output_config": {
+        "effort": "medium"
+      },
+      "stream": true
+    },
+    "_notes": {
+      "message_count": 15,
+      "roles": {
+        "user": 7,
+        "system": 2,
+        "assistant": 6
+      },
+      "system_cache_pattern": [
+        null,
+        null,
+        true,
+        false
+      ],
+      "tool_names": [
+        "Agent",
+        "Artifact",
+        "AskUserQuestion",
+        "Bash",
+        "Edit",
+        "Read",
+        "ReportFindings",
+        "ScheduleWakeup",
+        "Skill",
+        "ToolSearch",
+        "Workflow",
+        "Write"
+      ]
+    }
+  },
+  "resBody": {
+    "_raw": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"m"
+  }
+}

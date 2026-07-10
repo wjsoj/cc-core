@@ -11,7 +11,8 @@ carry a `crack/`.
 
 | dir | provider / client | capture target | status |
 |---|---|---|---|
-| `cc2191/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.191`, 2026-06-25 | **current Claude target — the only CC version capture kept.** Read `cc2191/SPEC.md` first. Includes the full OAuth login flow (hello/token/profile/roles + new api_hello/account_settings probes) and the startup burst (eval_sdk/grove/bootstrap/penguin/mcp). Older per-version dirs (cc2167/cc2170/cc2183) were pruned — see git history for them. |
+| `cc2206/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.206`, 2026-07-10 | **current Claude target — read `cc2206/SPEC.md` first.** Chat-path diff vs cc2201: `anthropic-beta` grows 13→15 items (+server-side-fallback, +fallback-credit); `[1m]` telemetry pairing re-confirmed. Later SPECs are incremental diffs — the full OAuth login flow + startup burst rows still live in `cc2191/`. |
+| `cc2191/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.191`, 2026-06-25 | Login-flow + startup-burst baseline (kept because later captures roll those rows out of whistle's buffer). Full OAuth login flow (hello/token/profile/roles + api_hello/account_settings probes) and startup burst (eval_sdk/grove/bootstrap/penguin/mcp). Older per-version dirs (cc2167/cc2170/cc2183) were pruned — see git history. Later diffs: cc2197/cc2198/cc2201/cc2206. |
 | `codex/` | OpenAI ChatGPT backend / Codex CLI | `codex-tui/0.135.0`, 2026-05-30 | **current Codex target** |
 | `kiro/` | Amazon Q / Kiro CLI | 2026-05/06 sessions + image-tool flow + PKCE login | **current Kiro target** |
 | `oauth/` | Anthropic / Claude Code 2.1.126-era benign OAuth session | historical | beta-list / body-shape provenance |

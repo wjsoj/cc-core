@@ -31,7 +31,7 @@ func maskClientToken(t string) string {
 	return t[:7] + "***"
 }
 
-// Sidecar emulates the auxiliary traffic real Claude Code 2.1.201 fires
+// Sidecar emulates the auxiliary traffic real Claude Code 2.1.206 fires
 // alongside /v1/messages. Three phases:
 //
 //   - Phase A (always): quota probe (Haiku "quota") at session start.
@@ -49,7 +49,7 @@ func maskClientToken(t string) string {
 //   - Phase C (heartbeat): a goroutine that POSTs
 //     /api/event_logging/v2/batch every ~18s ±40% with a realistic
 //     ClaudeCodeInternalEvent payload (env block matches our pinned
-//     2.1.201 / Linux / x64 / Node v26.3.0 fingerprint). Stops 5 min
+//     2.1.206 / Linux / x64 / Node v26.3.0 fingerprint). Stops 5 min
 //     after the session goes idle — mirrors a real CLI process exit.
 //
 // A virtual session is identified by accountKey alone. Multiple downstream
@@ -146,7 +146,7 @@ const (
 	quotaProbeModel = "claude-haiku-4-5-20251001"
 )
 
-// User-Agent strings used across sidecar endpoints. Real CC 2.1.201 uses
+// User-Agent strings used across sidecar endpoints. Real CC 2.1.206 uses
 // FOUR distinct HTTP clients: Bun fetch (GrowthBook only), axios 1.15.2
 // (penguin / mcp-registry / mcp_servers / downloads), claude-code/<ver>
 // (oauth/account/settings, bootstrap, event_logging), and the main
@@ -166,10 +166,10 @@ const (
 // advertise one identical host. platform/arch/node_version/is_running_with_bun
 // stay fixed (one ground-truth capture; runtime bundle moves with the release).
 const (
-	// build_time moves with each CC release; read from the live 2.1.201
-	// event_logging/datadog telemetry env (crack/cc2201/SPEC.md §3).
-	// Was 2026-07-01T06:09:31Z @ 2.1.198.
-	ccBuildTime      = "2026-07-03T19:53:38Z"
+	// build_time moves with each CC release; read from the live 2.1.206
+	// event_logging/datadog telemetry env (crack/cc2206/SPEC.md §3).
+	// Was 2026-07-03T19:53:38Z @ 2.1.201.
+	ccBuildTime      = "2026-07-09T01:39:20Z"
 	ccTelemetryModel = "claude-opus-4-8[1m]" // event_logging event_data.model
 	ccDatadogModel   = "claude-opus-4-8"     // datadog model field + ddtags (no [1m])
 )
@@ -913,7 +913,7 @@ func (m *Manager) sendHeartbeat(parent context.Context, a *auth.Auth, sessionID 
 
 // buildHeartbeatBody constructs a single-event batch shaped like row 14.
 // Volatile fields (timestamps, event_id, process metric) are refreshed
-// each tick; the env block stays fixed at our pinned 2.1.201 / Linux /
+// each tick; the env block stays fixed at our pinned 2.1.206 / Linux /
 // x64 / Node v26.3.0 fingerprint so it matches the X-Stainless headers.
 //
 // Event name `tengu_dir_search` is what real CC emits most frequently
