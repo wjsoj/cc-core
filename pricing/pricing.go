@@ -299,7 +299,7 @@ var builtIn = map[string]ModelPrice{
 	ProviderOpenAI + "/gpt-5.4":              {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25},
 	ProviderOpenAI + "/gpt-5.4-mini":         {InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075},
 	ProviderOpenAI + "/gpt-5.5":              {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
-	// gpt-5.6-{sol,terra,luna} (codex-tui 0.141.0 catalog). The three tiers are a
+	// gpt-5.6-{sol,terra,luna} (codex-tui 0.144.1 catalog). The three tiers are a
 	// price ladder, NOT one shared rate — verified 2026-07-10 against OpenRouter's
 	// live models API (openrouter.ai/api/v1/models), the official per-token
 	// standard: sol = flagship (== gpt-5.5), terra = mid (== gpt-5.4), luna =

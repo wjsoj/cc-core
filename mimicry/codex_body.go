@@ -8,7 +8,7 @@ package mimicry
 //
 // This is the request-body counterpart to mimicry/codex.go's header mimicry:
 // codex.go pins the upstream request headers (Originator / User-Agent /
-// Version / OpenAI-Beta / Chatgpt-Account-Id) to codex-tui/0.141.0, while this
+// Version / OpenAI-Beta / Chatgpt-Account-Id) to codex-tui/0.144.1, while this
 // file normalizes the request body shape. The two are complementary halves of
 // the same Codex-CLI emulation. Behavior is modeled on CLIProxyAPI's codex
 // translator/executor and sub2api's compact-request normalizer — see the

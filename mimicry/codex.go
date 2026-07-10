@@ -2,20 +2,20 @@ package mimicry
 
 import "net/http"
 
-// Codex CLI fingerprint, pinned to codex-tui/0.141.0. The identity template
+// Codex CLI fingerprint, pinned to codex-tui/0.144.1. The identity template
 // (Originator / UA shape / Version header) was verified against a live ChatGPT
 // Pro `codex` (Rust TUI) session capture at 0.135.0 — see crack/codex/SPEC.md
-// (whistle dump 2026-05-30). Bumped to 0.141.0 (current shipping Codex CLI, the
-// release line that exposes the gpt-5.6-{sol,terra,luna} models) tracking
-// sub2api's min_codex_version; the UA/Version format is unchanged from 0.135.0
-// (real 0.141.0 UAs are byte-identical modulo the version and the OS/terminal
-// segment, which is our synthetic Arch/Konsole identity anyway).
+// (whistle dump 2026-05-30). Bumped to 0.144.1 (latest stable Codex CLI release
+// per github.com/openai/codex — 0.145 is alpha-only — the line that exposes the
+// gpt-5.6-{sol,terra,luna} models). The UA/Version format is unchanged from
+// 0.135.0 (real 0.144.x UAs are byte-identical modulo the version and the
+// OS/terminal segment, which is our synthetic Arch/Konsole identity anyway).
 //
 // Transport note: real codex-tui streams a turn over a WebSocket
 // (OpenAI-Beta: responses_websockets=2026-02-06, wss://chatgpt.com/backend-api/
 // codex/responses). We forward over the legacy HTTP POST /backend-api/codex/
 // responses path (OpenAI-Beta: responses=experimental) — still accepted by the
-// backend and what an HTTP-API proxy needs. We mimic the 0.141.0 *identity*
+// backend and what an HTTP-API proxy needs. We mimic the 0.144.1 *identity*
 // (Originator / User-Agent / Version) over that path.
 //
 // We deliberately do NOT replicate the WS/TUI-only headers the capture shows
@@ -29,8 +29,8 @@ import "net/http"
 // crack/codex/) and updating these constants together; CodexCLIVersion must
 // match the version baked into CodexCLIUserAgent.
 const (
-	CodexCLIVersion   = "0.141.0"
-	CodexCLIUserAgent = "codex-tui/0.141.0 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.141.0)"
+	CodexCLIVersion   = "0.144.1"
+	CodexCLIUserAgent = "codex-tui/0.144.1 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.144.1)"
 	CodexOriginator   = "codex-tui"
 	// CodexOpenAIBeta is the HTTP-POST beta marker. The WS handshake uses
 	// responses_websockets=2026-02-06; the HTTP /responses endpoint reads

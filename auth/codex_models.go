@@ -15,7 +15,7 @@ package auth
 // 2026-05-30): default model gpt-5.5, plus the metered gpt-5.3-codex-spark —
 // both already present in the Pro/Plus lists.
 //
-// The gpt-5.6-{sol,terra,luna} family was added tracking codex-tui 0.141.0's
+// The gpt-5.6-{sol,terra,luna} family was added tracking codex-tui 0.144.1's
 // client catalog (mirrors sub2api's openai DefaultModels — the three tiers ARE
 // the model variants, there is no -high/-codex sub-variant). They follow gpt-5.5's
 // tier placement: exposed on plus/pro/team, withheld from free.

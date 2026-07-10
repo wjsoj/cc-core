@@ -1,20 +1,20 @@
-# Codex CLI fingerprint — capture target `codex-tui/0.135.0` (identity bumped to `0.141.0`)
+# Codex CLI fingerprint — capture target `codex-tui/0.135.0` (identity bumped to `0.144.1`)
 
 Ground truth captured 2026-05-30 via Whistle from a live `codex` (Rust TUI) session on a
 ChatGPT **Pro** subscription. All secrets (Bearer JWT, cookies, account UUID, user id, email,
 workspace path, git origin) are redacted in `rows/`. Non-secret fingerprint values are kept verbatim.
 
-## 2026-07-10 — identity bumped `0.135.0` → `0.141.0` + gpt-5.6 models
+## 2026-07-10 — identity bumped `0.135.0` → `0.144.1` + gpt-5.6 models
 
-No fresh capture; the version target was advanced to `0.141.0` (current shipping Codex
-CLI, tracking sub2api's `min_codex_version`). Real 0.141.0 UAs are byte-identical to the
-0.135.0 template modulo the version number and the OS/terminal segment (which is our
-synthetic `Arch Linux Rolling Release … Konsole` identity), e.g. sub2api sees
-`codex-tui/0.141.0 (Mac OS 15.5.0; arm64) ghostty/1.3.1 (codex-tui; 0.141.0)`. So the bump is
-purely `CodexCLIVersion`/`CodexCLIUserAgent` `0.135.0`→`0.141.0` in `mimicry/codex.go`; the
-transport, `OpenAI-Beta`, and body shape are unchanged.
+No fresh capture; the version target was advanced to `0.144.1` — the **latest stable Codex
+CLI release** per `github.com/openai/codex` (tag `rust-v0.144.1`; 0.145 is alpha-only). Real
+0.144.x UAs are byte-identical to the 0.135.0 template modulo the version number and the
+OS/terminal segment (which is our synthetic `Arch Linux Rolling Release … Konsole` identity),
+e.g. a real UA looks like `codex-tui/0.144.1 (Mac OS 15.5.0; arm64) ghostty/1.3.1 (codex-tui;
+0.144.1)`. So the bump is purely `CodexCLIVersion`/`CodexCLIUserAgent` `0.135.0`→`0.144.1` in
+`mimicry/codex.go`; the transport, `OpenAI-Beta`, and body shape are unchanged.
 
-The `0.141.0` line exposes the **gpt-5.6-{sol,terra,luna}** family (the three tiers ARE the
+The `0.144.1` line exposes the **gpt-5.6-{sol,terra,luna}** family (the three tiers ARE the
 variants — no `-high`/`-codex` sub-variant; reasoning effort is a request field). Added to
 `auth.CodexModelCatalog` on plus/pro/team (following gpt-5.5's placement, withheld from free)
 and to `pricing.builtIn`.
