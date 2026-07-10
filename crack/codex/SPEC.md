@@ -17,9 +17,19 @@ transport, `OpenAI-Beta`, and body shape are unchanged.
 The `0.141.0` line exposes the **gpt-5.6-{sol,terra,luna}** family (the three tiers ARE the
 variants — no `-high`/`-codex` sub-variant; reasoning effort is a request field). Added to
 `auth.CodexModelCatalog` on plus/pro/team (following gpt-5.5's placement, withheld from free)
-and to `pricing.builtIn` at the gpt-5.5 rate **$5 in / $30 out / $0.50 cache-read per 1M** —
-the value LiteLLM's authoritative `model_prices` JSON (what sub2api loads) assigns all three.
-(sub2api's Go static fallback maps them to gpt-5.4, but that only fires on a JSON cache miss.)
+and to `pricing.builtIn`.
+
+**Pricing is a per-tier ladder, not one shared rate** — verified 2026-07-10 against
+OpenRouter's live models API (`openrouter.ai/api/v1/models`), the official per-token standard:
+
+| model | input /1M | output /1M | cache-read /1M | cache-write /1M | equals |
+|---|---|---|---|---|---|
+| gpt-5.6-sol   | $5.00 | $30.00 | $0.50 | $6.25  | gpt-5.5 (flagship) |
+| gpt-5.6-terra | $2.50 | $15.00 | $0.25 | $3.125 | gpt-5.4 (mid) |
+| gpt-5.6-luna  | $1.00 | $6.00  | $0.10 | $1.25  | light tier |
+
+cache-write is a clean 1.25× input across all three. (An earlier draft priced all three at the
+sol/gpt-5.5 rate — that overcharged terra 2× and luna 5×; corrected here.)
 
 ---
 
