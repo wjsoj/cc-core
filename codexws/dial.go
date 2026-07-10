@@ -1,5 +1,5 @@
 // Package codexws is the Codex-over-WebSocket upstream transport. Real
-// codex-tui 0.135.0 streams a turn over a WebSocket
+// codex-tui 0.141.0 streams a turn over a WebSocket
 // (OpenAI-Beta: responses_websockets=2026-02-06,
 // wss://chatgpt.com/backend-api/codex/responses) rather than the legacy HTTP
 // POST /responses SSE path. A long-lived WebSocket carries protocol-level

@@ -299,6 +299,15 @@ var builtIn = map[string]ModelPrice{
 	ProviderOpenAI + "/gpt-5.4":              {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25},
 	ProviderOpenAI + "/gpt-5.4-mini":         {InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075},
 	ProviderOpenAI + "/gpt-5.5":              {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
+	// gpt-5.6-{sol,terra,luna} (codex-tui 0.141.0 catalog). LiteLLM's
+	// model_prices JSON — the authoritative table sub2api loads — cards all
+	// three identically to gpt-5.5: $5 in / $30 out / $0.50 cache-read per 1M
+	// (its Go static fallback maps them to gpt-5.4, but that only fires on a
+	// JSON cache miss). We mirror the authoritative gpt-5.5 rate. Reasoning
+	// effort is a request field, not a name suffix, so no per-tier variants.
+	ProviderOpenAI + "/gpt-5.6-sol":          {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
+	ProviderOpenAI + "/gpt-5.6-terra":        {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
+	ProviderOpenAI + "/gpt-5.6-luna":         {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
 
 	// ─── OpenAI BYOK API models ────────────────────────────────────────
 	ProviderOpenAI + "/gpt-5":      {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},

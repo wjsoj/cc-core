@@ -13,7 +13,12 @@ package auth
 //
 // Verified against a live codex-tui/0.135.0 Pro session (crack/codex/SPEC.md,
 // 2026-05-30): default model gpt-5.5, plus the metered gpt-5.3-codex-spark —
-// both already present in the Pro/Plus lists. No new model names observed.
+// both already present in the Pro/Plus lists.
+//
+// The gpt-5.6-{sol,terra,luna} family was added tracking codex-tui 0.141.0's
+// client catalog (mirrors sub2api's openai DefaultModels — the three tiers ARE
+// the model variants, there is no -high/-codex sub-variant). They follow gpt-5.5's
+// tier placement: exposed on plus/pro/team, withheld from free.
 var CodexModelCatalog = map[string][]string{
 	CodexPlanFree: {
 		"gpt-5.2",
@@ -28,6 +33,9 @@ var CodexModelCatalog = map[string][]string{
 		"gpt-5.4",
 		"gpt-5.4-mini",
 		"gpt-5.5",
+		"gpt-5.6-sol",
+		"gpt-5.6-terra",
+		"gpt-5.6-luna",
 	},
 	CodexPlanPro: {
 		"gpt-5.2",
@@ -36,6 +44,9 @@ var CodexModelCatalog = map[string][]string{
 		"gpt-5.4",
 		"gpt-5.4-mini",
 		"gpt-5.5",
+		"gpt-5.6-sol",
+		"gpt-5.6-terra",
+		"gpt-5.6-luna",
 	},
 	CodexPlanTeam: {
 		"gpt-5.2",
@@ -43,6 +54,9 @@ var CodexModelCatalog = map[string][]string{
 		"gpt-5.4",
 		"gpt-5.4-mini",
 		"gpt-5.5",
+		"gpt-5.6-sol",
+		"gpt-5.6-terra",
+		"gpt-5.6-luna",
 	},
 }
 
