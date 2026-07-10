@@ -276,6 +276,57 @@ func TestEnsureImageGenerationTool(t *testing.T) {
 			t.Errorf("existing tool should be preserved, output_format = %v", tm["output_format"])
 		}
 	})
+
+	// gpt-5.6 runs Responses-Lite, which rejects the image_generation built-in.
+	t.Run("gpt-5.6-no-inject-nil", func(t *testing.T) {
+		for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+			got := ensureImageGenerationTool(nil, model)
+			if arr, ok := got.([]any); !ok || len(arr) != 0 {
+				t.Fatalf("%s nil tools = %v, want empty array (no injection)", model, got)
+			}
+		}
+	})
+
+	t.Run("gpt-5.6-passthrough", func(t *testing.T) {
+		existing := []any{map[string]any{"type": "function", "name": "do_thing"}}
+		got := ensureImageGenerationTool(existing, "gpt-5.6-sol")
+		if imageType(got) {
+			t.Fatalf("gpt-5.6 must not inject image_generation, got %v", got)
+		}
+		if arr, _ := got.([]any); len(arr) != 1 {
+			t.Fatalf("gpt-5.6 should pass tools through unchanged, got %v", got)
+		}
+	})
+}
+
+// TestSanitizeCodexRequestBody_ResponsesLite locks in the two gpt-5.6
+// Responses-Lite constraints end-to-end: parallel_tool_calls is passed through
+// verbatim (not forced true) and the image_generation built-in is NOT injected.
+func TestSanitizeCodexRequestBody_ResponsesLite(t *testing.T) {
+	in := `{
+		"model": "gpt-5.6-sol",
+		"input": "draw nothing, just answer",
+		"parallel_tool_calls": false,
+		"tools": [{"type": "function", "name": "get_weather"}]
+	}`
+	out, baseModel, err := SanitizeCodexRequestBody([]byte(in), "/v1/responses")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if baseModel != "gpt-5.6-sol" {
+		t.Fatalf("baseModel = %q, want gpt-5.6-sol", baseModel)
+	}
+	m := decode(t, out)
+	if m["parallel_tool_calls"] != false {
+		t.Errorf("parallel_tool_calls = %v, want false (client value preserved)", m["parallel_tool_calls"])
+	}
+	tools, _ := m["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("tools = %v, want the single client function tool (no image_generation injected)", m["tools"])
+	}
+	if tm, _ := tools[0].(map[string]any); tm["type"] != "function" {
+		t.Errorf("tool[0] type = %v, want function", tools[0])
+	}
 }
 
 func TestJoinCodexAPIKeyUpstreamURL(t *testing.T) {

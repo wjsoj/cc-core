@@ -53,7 +53,21 @@ client value through Chat-Completions↔Responses conversion instead of forcing 
 sub2api confirms the 0.144.1 target too: `657c4f97` "升级 Codex 客户端版本至 0.144.1，修复
 gpt-5.6-luna 404".
 
+**Second Responses-Lite constraint — `tools`.** Lite also 400s on server built-in tools:
+
+```
+invalid_request_error: X-OpenAI-Internal-Codex-Responses-Lite only supports function tools,
+custom tools, and client-executed tool search.
+```
+
+cc-core's `ensureImageGenerationTool` blanket-injects an `image_generation` built-in on every
+non-spark model — that trips this on gpt-5.6. Fix: skip the injection for the gpt-5.6 family
+(predicate `codexResponsesLiteModel`), passing the client's tools through untouched — same as
+sub2api, which never injects `image_generation` into outbound Codex requests (it gates image gen
+via a separate group permission, not a forced tool). Older models keep the injection.
+
 ---
+
 
 
 ## Original 0.135.0 capture

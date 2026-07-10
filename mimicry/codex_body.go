@@ -288,13 +288,27 @@ func StripThinkingSuffix(model string) string {
 	return model[:i]
 }
 
+// codexResponsesLiteModel reports whether baseModel runs the ChatGPT backend's
+// "Responses-Lite" mode (X-OpenAI-Internal-Codex-Responses-Lite), currently the
+// gpt-5.6 family (sol/terra/luna). That mode is strict about the request shape:
+// it requires parallel_tool_calls=false and only accepts function / custom /
+// client-executed-search tools — it rejects server built-ins like
+// image_generation. Callers use this to avoid injecting anything the Lite path
+// would 400 on. See crack/codex/SPEC.md §5.
+func codexResponsesLiteModel(baseModel string) bool {
+	return strings.HasPrefix(baseModel, "gpt-5.6")
+}
+
 // ensureImageGenerationTool guarantees the tools array has an entry of
 // type=image_generation. The ChatGPT backend injects this server-side on
 // the vendor CLI's requests; if we strip it (or the client omits it)
 // responses with image-generation prompts fail. Skipped for "*-spark"
-// models the backend rejects the tool on (matches CLIProxyAPI).
+// models (the backend rejects the tool there) and for the gpt-5.6
+// Responses-Lite family (which only accepts function/custom/search tools and
+// 400s on the image_generation built-in). In both skip cases we pass the
+// client's tools through untouched.
 func ensureImageGenerationTool(current any, baseModel string) any {
-	if strings.HasSuffix(baseModel, "spark") {
+	if strings.HasSuffix(baseModel, "spark") || codexResponsesLiteModel(baseModel) {
 		if current == nil {
 			return []any{}
 		}
