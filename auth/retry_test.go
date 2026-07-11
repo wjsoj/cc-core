@@ -22,6 +22,8 @@ func TestIsTransientNetErr(t *testing.T) {
 		{"h2-protocol-error", errors.New(`stream error: stream ID 23; PROTOCOL_ERROR; received from peer`), true},
 		{"h2-refused-stream", errors.New("stream error: stream ID 5; REFUSED_STREAM; received from peer"), true},
 		{"goaway", errors.New("http2: server sent GOAWAY and closed the connection"), true},
+		{"h2-client-conn-unusable", errors.New("http2: client conn not usable"), true},
+		{"h2-no-cached-conn", errors.New("http2: no cached connection was available"), true},
 		{"broken-pipe", errors.New("write tcp: broken pipe"), true},
 		{"eof-sentinel", io.EOF, true},
 		{"unexpected-eof", errors.New("unexpected EOF"), true},

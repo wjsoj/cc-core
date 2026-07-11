@@ -43,6 +43,18 @@ var transientErrFragments = []string{
 	// code; PROTOCOL_ERROR is what CF returns when it tears a stream down.
 	"PROTOCOL_ERROR",
 	"REFUSED_STREAM",
+	// A pooled h2 ClientConn whose underlying SOCKS5 tunnel died silently (an
+	// idle-killed tunnel on a cheap relay, or an RST between our
+	// CanTakeNewRequest() check and the write) surfaces as these. Both are
+	// returned during h2's conn-reservation phase, BEFORE any request byte hits
+	// the wire, so replaying on a freshly-dialed conn is always safe — exactly
+	// what the stdlib http2.Transport does internally via shouldRetryRequest.
+	// Our custom uTLS transport (utlsTransport.RoundTrip) drives
+	// ClientConn.RoundTrip directly and loses that automatic redial, so we
+	// recover it here. Complements the ReadIdleTimeout PING health-check, which
+	// cannot cover the race window between a tunnel dying and the next probe.
+	"http2: client conn not usable",
+	"http2: no cached connection",
 }
 
 // IsTransientNetErr reports whether err looks like a transient wire-level
