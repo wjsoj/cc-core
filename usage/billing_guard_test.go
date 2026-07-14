@@ -22,7 +22,7 @@ func TestEnsureOpenAIStreamUsageAddsFlag(t *testing.T) {
 }
 
 func TestEnsureOpenAIStreamUsageForcesUsageAndPreservesOtherOptions(t *testing.T) {
-	body := []byte(`{"stream_options":{"include_usage":false,"foo":"bar"}}`)
+	body := []byte(`{"messages":[],"stream_options":{"include_usage":false,"foo":"bar"}}`)
 	got, err := EnsureOpenAIStreamUsage(body)
 	if err != nil {
 		t.Fatalf("EnsureOpenAIStreamUsage: %v", err)
@@ -38,6 +38,29 @@ func TestEnsureOpenAIStreamUsageForcesUsageAndPreservesOtherOptions(t *testing.T
 	}
 	if raw.StreamOptions["foo"] != "bar" {
 		t.Fatalf("existing stream option lost: %s", got)
+	}
+}
+
+// A Responses API request (has `input`, no `messages`) must NOT get
+// stream_options injected — /v1/responses rejects the unknown parameter with a
+// 400 on strict upstreams (observed in prod: "Unknown parameter:
+// 'stream_options.include_usage'"). Its usage is already carried by the
+// response.completed event, so the body must pass through byte-for-byte.
+func TestEnsureOpenAIStreamUsageSkipsResponsesAPI(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":"hi"}`)
+	got, err := EnsureOpenAIStreamUsage(body)
+	if err != nil {
+		t.Fatalf("EnsureOpenAIStreamUsage: %v", err)
+	}
+	if string(got) != string(body) {
+		t.Fatalf("Responses API body must pass through unchanged; got %s", got)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(got, &raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, injected := raw["stream_options"]; injected {
+		t.Fatalf("stream_options must NOT be injected into a Responses request: %s", got)
 	}
 }
 
