@@ -152,6 +152,7 @@ type Auth struct {
 	LastSuccess         time.Time // set on every <400 upstream response
 	ConsecutiveFailures int       // reset on success; drives auto hard-fail
 	Consecutive429s     int       // reset on success; drives 429-specific hard-fail (suspected stealth ban)
+	Consecutive401s     int       // reset on success; drives 401-specific hard-fail (only after a token refresh keeps succeeding — see MarkAuthRejection)
 	HardFailureAt       time.Time // sticky unhealthy; cleared only by ClearFailure
 	HardFailureReason   string
 
@@ -210,6 +211,28 @@ const hardFailureThreshold = 5
 // occasionally hides bans behind perpetual 429s rather than a clean 401/403)
 // and marked hard-unhealthy. Counter resets on any successful response.
 const rateLimit429HardFailureThreshold = 15
+
+// auth401HardFailureThreshold is the number of consecutive definitive 401s
+// (upstream authentication_error) — each with the credential's refresh token
+// STILL succeeding — after which the account is presumed genuinely revoked
+// (entitlement stripped without invalidating the refresh token) and marked
+// hard-unhealthy. Counter resets on any successful response.
+//
+// Deliberately generous. A single 401 is almost always a token-rotation race,
+// not a dead account: EnsureFresh mints a new access token and Anthropic
+// invalidates the old one server-side the instant refresh completes, so any
+// request that captured the old bearer and is still on the wire during the
+// ~1-2s rotation window comes back 401. A busy account (many client tokens,
+// always some request in flight) orphans one or a few requests into 401 after
+// every proactive refresh — all transient, all followed by successes on the
+// fresh token. The cost of hard-failing such an account by mistake (a paying
+// subscription pulled offline until a manual re-login) hugely outweighs the
+// cost of a few extra hidden retries on a genuinely dead one, so we wait for
+// a sustained run with no intervening success before retiring it. A truly
+// revoked refresh token is caught earlier and authoritatively by the refresh
+// path's invalid_grant hard-failure; this counter only backstops the rarer
+// "refresh works but every /v1/messages 401s" case.
+const auth401HardFailureThreshold = 8
 
 // clearExpiredQuotaLocked auto-clears the quota cooldown fields once their
 // reset time has passed, so stale "quota exceeded" state never lingers in
@@ -363,6 +386,42 @@ func (a *Auth) MarkRateLimited(reason string) int {
 	return n
 }
 
+// MarkAuthRejection records a definitive upstream 401 (authentication_error)
+// on this credential and returns the running count of consecutive such
+// rejections with no intervening success.
+//
+// A request-time 401 is NOT treated as a terminal signal on its own: it is
+// overwhelmingly a token-rotation race (see auth401HardFailureThreshold). Like
+// MarkRateLimited, this keeps a dedicated counter rather than touching the
+// generic ConsecutiveFailures/LastFailure state, so a burst of post-refresh
+// orphan 401s doesn't flip the credential into the noisy "degraded" UI state.
+// The caller applies a short cooldown per strike (self-recovering) and only
+// promotes to a sticky hard-failure once the count crosses
+// auth401HardFailureThreshold — by which point the account has 401'd a
+// sustained run of requests with zero successes, i.e. it is genuinely revoked
+// rather than briefly racing a refresh.
+//
+// API-key channels never auto-retire (see MarkFailure): a flaky relay backend
+// serving an occasional 401 must not pull the whole operator-managed channel
+// out of rotation. The count is still returned for backoff, but the sticky
+// hard-failure escalation is skipped.
+func (a *Auth) MarkAuthRejection(reason string) int {
+	if len(reason) > 200 {
+		reason = reason[:200] + "..."
+	}
+	a.mu.Lock()
+	a.Consecutive401s++
+	n := a.Consecutive401s
+	if a.Kind != KindAPIKey && a.Consecutive401s >= auth401HardFailureThreshold && a.HardFailureAt.IsZero() {
+		a.HardFailureAt = time.Now()
+		a.HardFailureReason = fmt.Sprintf("%d consecutive 401s (auth rejected, refresh still valid — presumed revoked): %s", a.Consecutive401s, reason)
+		a.LastFailure = a.HardFailureAt
+		a.LastFailureReason = a.HardFailureReason
+	}
+	a.mu.Unlock()
+	return n
+}
+
 // MarkUsageLimitReached records a Claude subscription usage-limit 429 (the
 // body carries "Claude AI usage limit reached|<unix-ts>"). This is the
 // regular 5h/weekly quota signal and resets exactly when Anthropic says it
@@ -427,6 +486,7 @@ func (a *Auth) MarkSuccess() {
 	a.LastSuccess = time.Now()
 	a.ConsecutiveFailures = 0
 	a.Consecutive429s = 0
+	a.Consecutive401s = 0
 	a.mu.Unlock()
 }
 
@@ -438,6 +498,7 @@ func (a *Auth) ClearFailure() {
 	a.LastFailureReason = ""
 	a.ConsecutiveFailures = 0
 	a.Consecutive429s = 0
+	a.Consecutive401s = 0
 	a.HardFailureAt = time.Time{}
 	a.HardFailureReason = ""
 	a.LastSuccess = time.Now()
