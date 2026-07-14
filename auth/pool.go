@@ -413,6 +413,42 @@ func (p *Pool) Release(provider, clientToken, sessionID string) {
 	}
 }
 
+// SessionsHeld reports how many live pool slots this client token currently
+// occupies for the given provider, and whether sessionID is already one of
+// them.
+//
+// A pool slot is the scarce resource behind a credential's max_concurrent, and
+// slots are NOT held for equal durations: an HTTP request holds one for
+// seconds, while a long-lived WebSocket session (the real codex-tui transport)
+// holds one for as long as the socket is open — up to an hour. A handful of WS
+// users can therefore sit on most of a provider's total slot capacity, and
+// every other client starts getting "no credentials available" even though the
+// fleet is perfectly healthy.
+//
+// Callers use this to enforce a per-token fair-share cap before acquiring, and
+// — because `already` distinguishes a brand-new slot from one this session
+// already owns — to let an established session keep working while only new
+// ones are refused. The policy and the client-facing message live with the
+// caller, since a WS handshake and an HTTP request reject differently.
+func (p *Pool) SessionsHeld(provider, clientToken, sessionID string) (held int, already bool) {
+	provider = NormalizeProvider(provider)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := time.Now()
+	p.gcLocked(now)
+	want := slotKey(provider, clientToken, sessionID)
+	for k, s := range p.sessions {
+		if s.provider != provider || s.clientToken != clientToken {
+			continue
+		}
+		held++
+		if k == want {
+			already = true
+		}
+	}
+	return held, already
+}
+
 // Unstick clears the sticky credential binding for a client session so the
 // next Acquire picks a fresh credential. Call this when the current credential
 // returned an upstream error — otherwise the client keeps hitting the same
