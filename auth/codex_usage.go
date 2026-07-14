@@ -16,10 +16,19 @@ import (
 // CodexUsageInfo mirrors the GET https://chatgpt.com/backend-api/wham/usage
 // response observed on the Codex web settings/analytics page. It is the
 // *official portal* view of a ChatGPT-subscription account's Codex usage:
-// primary (5h) and secondary (weekly) rolling rate-limit windows, credit
-// balance, spend control, and plan-type — all derivable without ever sending
-// a real /responses request. We use it as an active probe so the admin
-// surfaces stay up-to-date even when no proxy traffic is flowing.
+// its rolling rate-limit windows, credit balance, spend control, and plan-type
+// — all derivable without ever sending a real /responses request. We use it as
+// an active probe so the admin surfaces stay up-to-date even when no proxy
+// traffic is flowing.
+//
+// Rate-limit windows: historically primary=5h (limit_window_seconds 18000) and
+// secondary=weekly (604800) — see crack/codex/SPEC.md §rate_limit. As of the
+// 2026-07 ChatGPT quota-policy change the 5h window was retired, so the backend
+// now typically returns ONLY the weekly window (the 5h slot decodes as a nil
+// *CodexUsageRateWindow). The limit-reached gating below is window-agnostic —
+// it takes the earliest reset_at across whichever windows are non-nil — so it
+// already handles a weekly-only payload without change; a nil 5h window simply
+// drops out of the min().
 //
 // Field shapes match the JSON verbatim; missing fields decode as zero values
 // and the caller can branch on Updated.IsZero() to detect "never fetched".

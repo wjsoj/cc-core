@@ -1,8 +1,30 @@
-# Codex CLI fingerprint — capture target `codex-tui/0.135.0` (identity bumped to `0.144.1`)
+# Codex CLI fingerprint — capture target `codex-tui/0.135.0` (identity bumped to `0.144.4`)
 
 Ground truth captured 2026-05-30 via Whistle from a live `codex` (Rust TUI) session on a
 ChatGPT **Pro** subscription. All secrets (Bearer JWT, cookies, account UUID, user id, email,
 workspace path, git origin) are redacted in `rows/`. Non-secret fingerprint values are kept verbatim.
+
+## 2026-07-14 — identity bumped `0.144.1` → `0.144.4` + 5h quota window retired
+
+No fresh capture. Two changes, both wire-neutral:
+
+1. **Version bump `0.144.1` → `0.144.4`.** 0.144.4 is the latest stable Codex CLI release
+   (`github.com/openai/codex`, released 2026-07-14; 0.144.2/.3/.4 are patch releases with *no
+   user-facing changes*, 0.145 is still alpha-only). UA/Version format is byte-identical to
+   0.144.1, so the bump is purely `CodexCLIVersion`/`CodexCLIUserAgent` in `mimicry/codex.go`.
+   sub2api still pins `0.144.1` (`657c4f97`); 0.144.4 is the same 0.144.x wire, just fresher.
+
+2. **ChatGPT quota-policy change — 5h window retired (weekly-only).** As of the 2026-07 policy
+   change the primary 5h rate-limit window (`limit_window_seconds` 18000) was removed; `wham/usage`
+   and the `x-codex-*` response headers now typically carry ONLY the weekly window (604800). No
+   cc-core code change is required: `Auth.FetchCodexUsage` gating is window-agnostic (earliest
+   `reset_at` across whichever `primary_window`/`secondary_window` are non-nil), so a nil 5h slot
+   just drops out of the min(); `CaptureCodexRateLimits` mirrors whatever `x-codex-*` headers
+   arrive verbatim. Comments in `auth/codex_usage.go` updated to record the retirement. sub2api's
+   `Normalize()` classifies windows by `limit_window_seconds` (smaller = 5h) rather than trusting
+   the primary/secondary field names — cc-core reaches the same robustness via the nil-safe
+   earliest-reset gating instead of an explicit 5h/7d split, since it only *displays* the raw
+   windows and gates on limit_reached, never on a per-window threshold.
 
 ## 2026-07-10 — identity bumped `0.135.0` → `0.144.1` + gpt-5.6 models
 
