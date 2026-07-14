@@ -55,6 +55,15 @@ var transientErrFragments = []string{
 	// cannot cover the race window between a tunnel dying and the next probe.
 	"http2: client conn not usable",
 	"http2: no cached connection",
+	// The same pooled-conn death, but observed from the other side of the race:
+	// the ClientConn was handed out and the request written, then the underlying
+	// TCP/SOCKS5 tunnel died before the response arrived. h2 fails every in-flight
+	// stream on that conn with this. It is a transport flap, not a credential
+	// problem — and because a single dead conn kills every request riding it at
+	// once, treating it as a credential failure lands several MarkFailure calls in
+	// the same second, which is exactly what drives an otherwise-healthy account
+	// past the degraded threshold and takes the whole pool dark.
+	"http2: client connection lost",
 }
 
 // IsTransientNetErr reports whether err looks like a transient wire-level

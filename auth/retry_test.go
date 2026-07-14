@@ -24,6 +24,10 @@ func TestIsTransientNetErr(t *testing.T) {
 		{"goaway", errors.New("http2: server sent GOAWAY and closed the connection"), true},
 		{"h2-client-conn-unusable", errors.New("http2: client conn not usable"), true},
 		{"h2-no-cached-conn", errors.New("http2: no cached connection was available"), true},
+		// Verbatim from prod (2026-07-14): a dead pooled conn failed every
+		// in-flight stream at once, and because this string was not classified
+		// transient, each one landed a MarkFailure and took the codex pool dark.
+		{"h2-client-conn-lost", errors.New(`Post "https://chatgpt.com/backend-api/codex/responses": http2: client connection lost`), true},
 		{"broken-pipe", errors.New("write tcp: broken pipe"), true},
 		{"eof-sentinel", io.EOF, true},
 		{"unexpected-eof", errors.New("unexpected EOF"), true},

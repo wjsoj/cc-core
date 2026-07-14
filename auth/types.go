@@ -185,6 +185,21 @@ type Auth struct {
 // failures bypass this.
 const healthGrace = 2 * time.Minute
 
+// degradedProbeAfter is how long a repeatedly-failing (but not hard-failed)
+// credential stays out of rotation before the pool lets one request through to
+// re-probe it.
+//
+// Without this, ConsecutiveFailures >= 2 is a *terminal* state: the credential
+// reads unhealthy, so Acquire never picks it, so no success can ever arrive to
+// reset the counter. A brief upstream flap that lands two failures on every
+// credential of a provider takes the entire pool dark until an operator clears
+// the failures by hand. The probe closes that loop — it either succeeds
+// (MarkSuccess resets the counter and the credential is fully back) or fails
+// (LastFailure moves forward, re-quarantining it for another interval, and the
+// counter climbs toward hardFailureThreshold, which is the intended terminal
+// state for a genuinely dead credential).
+const degradedProbeAfter = 5 * time.Minute
+
 // hardFailureThreshold is the number of consecutive non-cooldown failures
 // after which a credential is marked hard-unhealthy and must be manually
 // reset from the admin panel.
@@ -468,6 +483,12 @@ func (a *Auth) IsHealthy() bool {
 	if a.ConsecutiveFailures < 2 && time.Since(a.LastFailure) > healthGrace {
 		return true
 	}
+	// Degraded re-probe: a credential that failed repeatedly is quarantined, but
+	// not forever — it gets back into rotation once degradedProbeAfter has passed
+	// so a single request can prove whether it recovered. See degradedProbeAfter.
+	if time.Since(a.LastFailure) > degradedProbeAfter {
+		return true
+	}
 	return false
 }
 
@@ -499,6 +520,8 @@ func (a *Auth) HealthSnapshot() (healthy, hardFailure bool, reason string, conse
 	case a.LastFailure.IsZero(), a.LastSuccess.After(a.LastFailure):
 		healthy = true
 	case a.ConsecutiveFailures < 2 && time.Since(a.LastFailure) > healthGrace:
+		healthy = true
+	case time.Since(a.LastFailure) > degradedProbeAfter:
 		healthy = true
 	default:
 		healthy = false
