@@ -26,18 +26,21 @@ import (
 	"strings"
 )
 
-// Header values pinned to Claude Code 2.1.211 / @anthropic-ai/sdk 0.94.0.
-// Values verified against a live CC 2.1.211 OAuth session capture
-// (whistle dump 2026-07-18 — see crack/cc2211/SPEC.md). The billing-block
-// fingerprint algorithm was re-validated against this capture: it reproduces
-// cc_version=2.1.211.3c8 byte-for-byte (fp suffix = sha256(salt+chars+ver)[:3],
-// version-keyed), so no fp/salt change was needed — only the version bump.
+// Header values pinned to Claude Code 2.1.214 / @anthropic-ai/sdk 0.94.0.
+// Values verified against a live CC 2.1.214 OAuth re-login + chat capture
+// (whistle dump 2026-07-18 — see crack/cc2214/SPEC.md). 2.1.211→2.1.214 is a
+// pure version+build_time bump on the wire: the request/telemetry beta lists,
+// the stainless versions (0.94.0 / v26.3.0), and the body layout are all
+// byte-identical. The billing-block fingerprint algorithm was re-validated
+// against this capture: it reproduces cc_version=2.1.214.17e byte-for-byte
+// (fp suffix = sha256(salt+chars+ver)[:3], version-keyed), so no fp/salt change
+// was needed — only the version bump.
 // CLICurrentVersion MUST match the version baked into ClaudeCLIUserAgent;
 // any drift will cause the cc_version=X.Y.Z.{fp} billing block to disagree
 // with the User-Agent and trigger Anthropic's third-party detection.
 const (
-	CLICurrentVersion       = "2.1.211"
-	ClaudeCLIUserAgent      = "claude-cli/2.1.211 (external, cli)"
+	CLICurrentVersion       = "2.1.214"
+	ClaudeCLIUserAgent      = "claude-cli/2.1.214 (external, cli)"
 	ClaudeStainlessLang     = "js"
 	ClaudeStainlessRuntime  = "node"
 	// 2.1.191 jumped the bundled Node runtime v24.3.0 → v26.3.0. This single
@@ -52,10 +55,12 @@ const (
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"
 	// ClaudeAnthropicBetaFull is the Anthropic-Beta REQUEST HEADER captured
-	// from real CC 2.1.211 — exact value, exact order (14 items). Any beta we
-	// drop that real CLI sends will downgrade us to "extra usage" billing; any
-	// extra beta we add that real CLI doesn't send is also a fingerprint signal.
-	// 2.1.206→2.1.211 rewrites this list: it ADDS context-1m-2025-08-07 back
+	// from real CC — exact value, exact order (14 items). RE-CONFIRMED byte-for-
+	// byte at 2.1.214 (crack/cc2214/SPEC.md §1): the list did NOT change
+	// 2.1.211→2.1.214. Any beta we drop that real CLI sends will downgrade us to
+	// "extra usage" billing; any extra beta we add that real CLI doesn't send is
+	// also a fingerprint signal.
+	// 2.1.206→2.1.211 rewrote this list: it ADDS context-1m-2025-08-07 back
 	// into the request header (at position 3) and DROPS both
 	// server-side-fallback-2026-06-01 and fallback-credit-2026-06-01 (15→14
 	// items). The 2.1.211 capture session ran WITH the 1M window active and ALL
@@ -77,9 +82,9 @@ const (
 	// `[1m]` model variant (1M-context active → context-1m beta reported);
 	// plain-model events carry an 8-item variant without context-1m. Our sidecar
 	// heartbeat emits the `[1m]` + 9-item pair, so this stays the 9-item list.
-	// Verified unchanged 2.1.156→2.1.211. The 2.1.211 capture session ran WITH 1M
+	// Verified unchanged 2.1.156→2.1.214. The 2.1.214 capture session ran WITH 1M
 	// context, so its telemetry directly RE-CONFIRMS this exact 9-item list paired
-	// with the `claude-opus-4-8[1m]` model (crack/cc2211/SPEC.md §3). Our sidecar
+	// with the `claude-opus-4-8[1m]` model (crack/cc2214/SPEC.md §3). Our sidecar
 	// keeps emitting the `[1m]` + 9-item pair. Do NOT regenerate this from
 	// ClaudeAnthropicBetaFull — the two are distinct: this telemetry list keeps
 	// context-1m (1M-context active) while the request-header BetaFull does not,
