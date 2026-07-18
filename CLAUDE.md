@@ -48,7 +48,7 @@ Also in `auth`: Anthropic login (`login.go` PKCE, `login_session.go` session-coo
 
 ### `mimicry` — the Claude fingerprint (header + body)
 
-`ApplyClaudeCodeHeaders` + `ApplyClaudeCodeBodyMimicry` make a request look like a real Claude Code **2.1.206** client. Version constants (`CLICurrentVersion`, `ClaudeCLIUserAgent`, `ClaudeAnthropicBetaFull`, telemetry-only `ClaudeReportedBetas`) are in `fingerprint.go` — **they all move together** on a version bump or the User-Agent disagrees with the body's `cc_version=` billing block. `SimIdentity{AccountKey, AccountUUID, ClientToken}` is the identity anchor: `DeviceIDFor` (sha256, identical for all traffic on one OAuth account), `SessionIDFor` (per-conversation, feeds both the body `metadata.user_id.session_id` and the `X-Claude-Code-Session-Id` header). Body mimicry is **skipped for Haiku** and for systems already starting with the CC prompt. Codex has its own constants (`codex.go`, `CodexCLIVersion` = **0.144.4**).
+`ApplyClaudeCodeHeaders` + `ApplyClaudeCodeBodyMimicry` make a request look like a real Claude Code **2.1.211** client. Version constants (`CLICurrentVersion`, `ClaudeCLIUserAgent`, `ClaudeAnthropicBetaFull`, telemetry-only `ClaudeReportedBetas`) are in `fingerprint.go` — **they all move together** on a version bump or the User-Agent disagrees with the body's `cc_version=` billing block. `SimIdentity{AccountKey, AccountUUID, ClientToken}` is the identity anchor: `DeviceIDFor` (sha256, identical for all traffic on one OAuth account), `SessionIDFor` (per-conversation, feeds both the body `metadata.user_id.session_id` and the `X-Claude-Code-Session-Id` header). Body mimicry is **skipped for Haiku** and for systems already starting with the CC prompt. Codex has its own constants (`codex.go`, `CodexCLIVersion` = **0.144.4**).
 
 ### `sidecar` — auxiliary traffic emulation
 
@@ -56,9 +56,9 @@ Also in `auth`: Anthropic login (`login.go` PKCE, `login_session.go` session-coo
 
 ### `crack/` — capture archive = fingerprint ground truth
 
-Recorded real-client traffic anchoring every constant in `mimicry`/`sidecar`/`auth/codex_*`/`kiro*`. Current Claude target **2.1.206** in `crack/cc2206/` (`SPEC.md` = authoritative constants + diff + edit checklist; `rows/` = structurally-redacted requests). `codex/` (`codex-tui/0.144.4`), `kiro/`, `oauth/`, `apikey/`, `login/` cover the rest. `scripts/extract_live.py` keeps fingerprint-bearing structure and `<masked>`s all identity/prose; raw dumps are never committed.
+Recorded real-client traffic anchoring every constant in `mimicry`/`sidecar`/`auth/codex_*`/`kiro*`. Current Claude target **2.1.211** in `crack/cc2211/` (`SPEC.md` = authoritative constants + diff + edit checklist; `rows/` = structurally-redacted requests). `codex/` (`codex-tui/0.144.4`), `kiro/`, `oauth/`, `apikey/`, `login/` cover the rest. `scripts/extract_live.py` keeps fingerprint-bearing structure and `<masked>`s all identity/prose; raw dumps are never committed.
 
-**Bumping the CC version target** (a cc-core-only change): capture a fresh dump → `extract_live.py <dump> crack/cc<ver>/rows` → write `crack/cc<ver>/SPEC.md` → update constants in `mimicry`/`sidecar` (User-Agent, betas, body layout, sidecar steps all together) → tag a release → bump the dependency in **both** forks. See `crack/cc2206/SPEC.md` for a worked diff.
+**Bumping the CC version target** (a cc-core-only change): capture a fresh dump → `extract_live.py <dump> crack/cc<ver>/rows` → write `crack/cc<ver>/SPEC.md` → update constants in `mimicry`/`sidecar` (User-Agent, betas, body layout, sidecar steps all together) → tag a release → bump the dependency in **both** forks. See `crack/cc2211/SPEC.md` for a worked diff.
 
 ### The ledger + gates
 
