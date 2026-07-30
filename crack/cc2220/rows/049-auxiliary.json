@@ -1,0 +1,37 @@
+{
+  "class": "auxiliary",
+  "url_host": "api.anthropic.com",
+  "path": "/api/claude_cli/bootstrap?entrypoint=cli&model=claude-fable-5",
+  "method": "GET",
+  "status": 200,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "content-type": "application/json",
+    "user-agent": "claude-code/2.1.220",
+    "authorization": "<masked>",
+    "anthropic-beta": "oauth-2025-04-20",
+    "accept-encoding": "gzip, br",
+    "host": "api.anthropic.com",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "date": "Thu, 30 Jul 2026 05:41:49 GMT",
+    "content-type": "application/json",
+    "transfer-encoding": "chunked",
+    "connection": "close",
+    "request-id": "<masked>",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "anthropic-organization-id": "<masked>",
+    "server": "cloudflare",
+    "content-encoding": "gzip",
+    "vary": "Accept-Encoding",
+    "server-timing": "x-originResponse;dur=149",
+    "cf-cache-status": "DYNAMIC",
+    "x-robots-tag": "none",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "cf-ray": "<masked>"
+  },
+  "request_body_keys": null,
+  "request_size": 0,
+  "response_size": 437
+}

@@ -1,0 +1,35 @@
+{
+  "class": "auxiliary",
+  "url_host": "api.anthropic.com",
+  "path": "/mcp-registry/v0/servers?version=latest&limit=100&visibility=commercial%2Cgsuite%2Centerprise%2Chealth",
+  "method": "GET",
+  "status": 200,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "user-agent": "claude-cli/2.1.220 (external, cli)",
+    "accept-encoding": "gzip, br",
+    "host": "api.anthropic.com",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "date": "Thu, 30 Jul 2026 05:41:49 GMT",
+    "content-type": "application/json",
+    "transfer-encoding": "chunked",
+    "connection": "close",
+    "x-request-id": "<masked>",
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-allow-headers": "*",
+    "content-encoding": "gzip",
+    "vary": "Accept-Encoding",
+    "server": "cloudflare",
+    "server-timing": "x-originResponse;dur=10",
+    "x-robots-tag": "none",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "cf-cache-status": "DYNAMIC",
+    "cf-ray": "<masked>"
+  },
+  "request_body_keys": null,
+  "request_size": 0,
+  "response_size": 80978
+}

@@ -1,0 +1,179 @@
+[
+  {
+    "file": "001-bootstrap-00-quota.json",
+    "class": "quota",
+    "group": "bootstrap",
+    "round": null,
+    "status": 200
+  },
+  {
+    "file": "030-multiturn-01-title.json",
+    "class": "title",
+    "group": "multiturn",
+    "round": 1,
+    "status": 200
+  },
+  {
+    "file": "031-multiturn-01-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 1,
+    "status": 200
+  },
+  {
+    "file": "032-multiturn-02-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 2,
+    "status": 200
+  },
+  {
+    "file": "033-multiturn-02-prompt_suggestion.json",
+    "class": "prompt_suggestion",
+    "group": "multiturn",
+    "round": 2,
+    "status": 200
+  },
+  {
+    "file": "034-multiturn-03-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 3,
+    "status": 200
+  },
+  {
+    "file": "035-multiturn-04-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 4,
+    "status": 200
+  },
+  {
+    "file": "036-multiturn-05-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 5,
+    "status": 200
+  },
+  {
+    "file": "038-multiturn-06-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 6,
+    "status": 200
+  },
+  {
+    "file": "040-multiturn-07-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 7,
+    "status": 200
+  },
+  {
+    "file": "041-multiturn-08-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 8,
+    "status": 200
+  },
+  {
+    "file": "043-multiturn-09-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 9,
+    "status": 200
+  },
+  {
+    "file": "045-multiturn-10-main.json",
+    "class": "main",
+    "group": "multiturn",
+    "round": 10,
+    "status": 200
+  },
+  {
+    "file": "047-telemetry-api.json",
+    "class": "telemetry_api"
+  },
+  {
+    "file": "048-telemetry-process.json",
+    "class": "telemetry_process"
+  },
+  {
+    "file": "049-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/api/claude_cli/bootstrap?entrypoint=cli&model=claude-fable-5"
+  },
+  {
+    "file": "050-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/api/claude_code_grove"
+  },
+  {
+    "file": "051-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/api/claude_code_penguin_mode"
+  },
+  {
+    "file": "052-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/api/oauth/account/settings"
+  },
+  {
+    "file": "053-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/api/oauth/organizations/<masked:uuid>/prepaid/credits"
+  },
+  {
+    "file": "054-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/api/oauth/usage"
+  },
+  {
+    "file": "055-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/mcp-registry/v0/servers?version=latest&limit=100&visibility=commercial%2Cgsuite%2Centerprise%2Chealth"
+  },
+  {
+    "file": "056-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/v1/code/triggers"
+  },
+  {
+    "file": "057-auxiliary.json",
+    "class": "auxiliary",
+    "host": "api.anthropic.com",
+    "path": "/v1/mcp_servers?limit=1000"
+  },
+  {
+    "file": "058-auxiliary.json",
+    "class": "auxiliary",
+    "host": "downloads.claude.ai",
+    "path": "/claude-code-releases/latest"
+  },
+  {
+    "file": "059-auxiliary.json",
+    "class": "auxiliary",
+    "host": "downloads.claude.ai",
+    "path": "/claude-code-releases/plugins/claude-plugins-official/latest"
+  },
+  {
+    "file": "060-auxiliary.json",
+    "class": "auxiliary",
+    "host": "http-intake.logs.us5.datadoghq.com",
+    "path": "/api/v2/logs"
+  },
+  {
+    "file": "061-auxiliary.json",
+    "class": "auxiliary",
+    "host": null,
+    "path": "443"
+  }
+]

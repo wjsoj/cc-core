@@ -1,0 +1,30 @@
+{
+  "class": "auxiliary",
+  "url_host": "http-intake.logs.us5.datadoghq.com",
+  "path": "/api/v2/logs",
+  "method": "POST",
+  "status": 202,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "content-type": "application/json",
+    "dd-api-key": "pubea5604404508cdd34afb69e6f42a05bc",
+    "user-agent": "axios/1.15.2",
+    "content-length": "108844",
+    "accept-encoding": "gzip, br",
+    "host": "http-intake.logs.us5.datadoghq.com",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "content-type": "application/json",
+    "content-length": "2",
+    "cross-origin-resource-policy": "cross-origin",
+    "accept-encoding": "identity,gzip,x-gzip,deflate,x-deflate,zstd",
+    "x-content-type-options": "nosniff",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "date": "Thu, 30 Jul 2026 06:00:57 GMT",
+    "connection": "close"
+  },
+  "request_body_keys": null,
+  "request_size": 108844,
+  "response_size": 2
+}

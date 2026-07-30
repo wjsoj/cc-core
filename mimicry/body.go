@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/cespare/xxhash/v2"
 )
@@ -17,22 +18,24 @@ import (
 //
 //  1. system[0] is an "x-anthropic-billing-header" text block carrying
 //     cc_version=X.Y.Z.{3hex}, cc_entrypoint=cli, and cch={5hex}
-//     (xxhash64 of the body with a fixed seed).
+//     (a per-request five-hex value; the exact 2.1.220 signer is unresolved).
 //  2. system[1] is "You are Claude Code, Anthropic's official CLI for Claude."
 //     (bare — no cache_control, matches real 2.1.201).
 //  3. messages carry a stable cache breakpoint on the last block.
 //  4. metadata.user_id is JSON: {"device_id":..., "account_uuid":..., "session_id":...}
 //
 // Missing any of these downgrades the request to "third-party app" billing
-// on OAuth credentials. The algorithms below are reverse-engineered
-// constants (fingerprintSalt, cchSeed) from sub2api / Parrot — keeping
-// them byte-for-byte identical is what lets us look like the real CLI.
+// on OAuth credentials. The version suffix is extracted from the real CLI.
+// The cch implementation remains a legacy best-effort reconstruction: the
+// genuine 2.1.220 client emits a dynamic value, but its signer did not match
+// the seeded-xxhash guess on any of 37 captured requests (cc2220/SPEC.md).
 
 const (
 	// fingerprintSalt is the salt used in the cc_version 3-char fingerprint.
 	// Originated from a real CLI capture; do not change.
 	fingerprintSalt = "59cf53e54c78"
-	// cchSeed is the xxhash64 seed for the billing header cch field.
+	// cchSeed is retained for the legacy best-effort cch signer. Do not claim
+	// it is byte-identical to Claude Code 2.1.220 without new validation.
 	cchSeed uint64 = 0x6E52736AC806831E
 )
 
@@ -267,7 +270,10 @@ func buildBillingBlock(body []byte, cliVersion string) json.RawMessage {
 //	   CC's injected messages (system-reminders etc.); on the wire those are
 //	   merged as LEADING blocks of the first user message, so we skip any text
 //	   block that is a <system-reminder> wrapper — matching CC's !isMeta filter.
-//	2. Pick characters at positions 4, 7, 20 (pad with '0' if shorter).
+//	2. Pick JavaScript UTF-16 code units at positions 4, 7, 20 (pad with '0'
+//	   if shorter). JavaScript indexes strings by UTF-16 code unit, not UTF-8
+//	   byte or Unicode code point; isolated selected surrogates are converted
+//	   to U+FFFD by Node's UTF-8 encoder before hashing.
 //	3. SHA256(salt + chars + cliVersion); take hex[:3].
 //
 // Skipping the reminder is what was wrong before v2.1.198: CC computes this fp
@@ -275,15 +281,17 @@ func buildBillingBlock(body []byte, cliVersion string) json.RawMessage {
 // first message, not the reminder text that leads the wire body.
 func computeClaudeCodeFingerprint(body []byte, version string) string {
 	first := extractFirstUserText(body)
-	chars := make([]byte, 0, 3)
+	units := utf16.Encode([]rune(first))
+	selected := make([]uint16, 0, 3)
 	for _, idx := range []int{4, 7, 20} {
-		if idx < len(first) {
-			chars = append(chars, first[idx])
+		if idx < len(units) {
+			selected = append(selected, units[idx])
 		} else {
-			chars = append(chars, '0')
+			selected = append(selected, '0')
 		}
 	}
-	sum := sha256.Sum256([]byte(fingerprintSalt + string(chars) + version))
+	chars := string(utf16.Decode(selected))
+	sum := sha256.Sum256([]byte(fingerprintSalt + chars + version))
 	return hex.EncodeToString(sum[:])[:3]
 }
 
@@ -339,8 +347,9 @@ func extractFirstUserText(body []byte) string {
 }
 
 // signBillingHeaderCCH replaces the cch=00000 placeholder in the billing
-// block with a 5-char hex digest of the body. xxhash64-with-seed matches
-// what the real CLI uses (signature derived from Parrot reverse-engineering).
+// block with a dynamic 5-char hex digest of the body. This seeded xxhash is a
+// legacy best-effort reconstruction. It keeps the field dynamic, but 0/37
+// genuine 2.1.220 samples matched it; the real signer remains unresolved.
 func signBillingHeaderCCH(body []byte) []byte {
 	if !cchPlaceholderRe.Match(body) {
 		return body

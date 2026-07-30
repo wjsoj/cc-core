@@ -1,0 +1,145 @@
+{
+  "class": "title",
+  "capture_group": "multiturn",
+  "round": 1,
+  "row_hash": "e30dfb2bd82e5ddf",
+  "url_host": "api.anthropic.com",
+  "path": "/v1/messages?beta=true",
+  "method": "POST",
+  "status": 200,
+  "reqHeaders": {
+    "accept": "application/json",
+    "authorization": "<masked>",
+    "content-type": "application/json",
+    "user-agent": "claude-cli/2.1.220 (external, cli)",
+    "x-claude-code-session-id": "<masked>",
+    "x-stainless-arch": "x64",
+    "x-stainless-lang": "js",
+    "x-stainless-os": "MacOS",
+    "x-stainless-package-version": "0.94.0",
+    "x-stainless-retry-count": "0",
+    "x-stainless-runtime": "node",
+    "x-stainless-runtime-version": "v26.3.0",
+    "x-stainless-timeout": "600",
+    "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advisor-tool-2026-03-01,structured-outputs-2025-12-15,cache-diagnosis-2026-04-07",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "anthropic-version": "2023-06-01",
+    "x-app": "cli",
+    "x-client-request-id": "<masked>",
+    "connection": "keep-alive",
+    "host": "api.anthropic.com",
+    "accept-encoding": "gzip, br",
+    "content-length": "2327"
+  },
+  "resHeaders": {
+    "date": "Thu, 30 Jul 2026 06:03:26 GMT",
+    "content-type": "text/event-stream; charset=utf-8",
+    "transfer-encoding": "chunked",
+    "connection": "keep-alive",
+    "cache-control": "no-cache",
+    "anthropic-ratelimit-unified-status": "allowed",
+    "anthropic-ratelimit-unified-5h-status": "allowed",
+    "anthropic-ratelimit-unified-5h-reset": "1785406800",
+    "anthropic-ratelimit-unified-5h-utilization": "0.04",
+    "anthropic-ratelimit-unified-7d-status": "allowed",
+    "anthropic-ratelimit-unified-7d-reset": "1785693600",
+    "anthropic-ratelimit-unified-7d-utilization": "0.01",
+    "anthropic-ratelimit-unified-representative-claim": "five_hour",
+    "anthropic-ratelimit-unified-fallback-percentage": "0.5",
+    "anthropic-ratelimit-unified-reset": "1785406800",
+    "anthropic-ratelimit-unified-overage-disabled-reason": "org_level_disabled",
+    "anthropic-ratelimit-unified-overage-status": "rejected",
+    "request-id": "<masked>",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "anthropic-organization-id": "<masked>",
+    "traceresponse": "00-e2b3674e7142b02cfccf2c705d9c81d1-248c323d303e06c4-01",
+    "server": "cloudflare",
+    "content-encoding": "gzip",
+    "vary": "Accept-Encoding",
+    "cf-cache-status": "DYNAMIC",
+    "x-robots-tag": "none",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "cf-ray": "<masked>"
+  },
+  "billing": {
+    "cc_version": "2.1.220.126",
+    "cc_entrypoint": "cli",
+    "cch": "bc61d",
+    "cc_prev_req_hash": null
+  },
+  "identity_hashes": {
+    "device_id": "bb5ba4898a97b503",
+    "account_uuid": "c55ed951131d1b3d",
+    "session_id": "86b7540d7d73c01f"
+  },
+  "body": {
+    "keys": [
+      "model",
+      "messages",
+      "system",
+      "tools",
+      "metadata",
+      "max_tokens",
+      "thinking",
+      "temperature",
+      "output_config",
+      "stream"
+    ],
+    "model": "claude-haiku-4-5-20251001",
+    "stream": true,
+    "max_tokens": 32000,
+    "system_count": 3,
+    "system_shape": [
+      {
+        "type": "text",
+        "billing": true,
+        "cache_control": null
+      },
+      {
+        "type": "text",
+        "billing": false,
+        "cache_control": null
+      },
+      {
+        "type": "text",
+        "billing": false,
+        "cache_control": null
+      }
+    ],
+    "message_count": 1,
+    "roles": [
+      "user"
+    ],
+    "message_block_types": [
+      [
+        "text"
+      ]
+    ],
+    "thinking": {
+      "type": "disabled"
+    },
+    "temperature": 1,
+    "output_config": {
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "context_management": null,
+    "diagnostics_keys": [],
+    "tool_count": 0,
+    "tool_choice": null
+  },
+  "response_request_hash": "44510d7fc9d6a595"
+}
