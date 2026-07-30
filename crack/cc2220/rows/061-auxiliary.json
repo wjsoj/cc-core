@@ -1,0 +1,15 @@
+{
+  "class": "auxiliary",
+  "url_host": null,
+  "path": "443",
+  "method": "CONNECT",
+  "status": "captureError",
+  "reqHeaders": {
+    "host": "api.anthropic.com:443",
+    "proxy-connection": "Keep-Alive"
+  },
+  "resHeaders": {},
+  "request_body_keys": null,
+  "request_size": null,
+  "response_size": null
+}

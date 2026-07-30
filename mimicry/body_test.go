@@ -298,3 +298,32 @@ func TestCCHSigning(t *testing.T) {
 		t.Fatalf("two distinct bodies produced identical output — cch not signing body content")
 	}
 }
+
+// TestClaudeCodeFingerprintUTF16Vectors locks the JavaScript string-indexing
+// semantics extracted from the real 2.1.220 bundle. In particular, emoji use
+// two UTF-16 code units; byte or rune indexing produces different suffixes.
+func TestClaudeCodeFingerprintUTF16Vectors(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "ascii", text: "abcdefghijklmnopqrstuvwxyz", want: "ac9"},
+		{name: "emoji-at-index-4", text: "abcd😀efghijklmnopqrstuvwxyz", want: "e25"},
+		{name: "bmp-non-ascii", text: "中文字符测试abcdefghijklmnop", want: "3f7"},
+		{name: "multiple-emoji", text: "abc😀def😀ghijklmnop😀qrstuvwxyz", want: "a94"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{
+				"messages": []any{map[string]any{"role": "user", "content": tt.text}},
+			})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if got := computeClaudeCodeFingerprint(body, "2.1.220"); got != tt.want {
+				t.Fatalf("fingerprint: got %s want %s", got, tt.want)
+			}
+		})
+	}
+}

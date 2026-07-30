@@ -1,0 +1,38 @@
+{
+  "class": "auxiliary",
+  "url_host": "api.anthropic.com",
+  "path": "/v1/code/triggers",
+  "method": "GET",
+  "status": 200,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "content-type": "application/json",
+    "user-agent": "claude-cli/2.1.220 (external, cli)",
+    "authorization": "<masked>",
+    "anthropic-version": "2023-06-01",
+    "anthropic-client-platform": "claude_code_cli",
+    "x-organization-uuid": "<masked>",
+    "anthropic-beta": "ccr-triggers-2026-01-30",
+    "accept-encoding": "gzip, br",
+    "host": "api.anthropic.com",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "date": "Thu, 30 Jul 2026 05:41:50 GMT",
+    "content-type": "application/json",
+    "content-length": "28",
+    "connection": "close",
+    "accept-encoding": "zstd,gzip",
+    "anthropic-organization-id": "<masked>",
+    "request-id": "<masked>",
+    "server": "cloudflare",
+    "server-timing": "x-originResponse;dur=95",
+    "cf-cache-status": "DYNAMIC",
+    "x-robots-tag": "none",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "cf-ray": "<masked>"
+  },
+  "request_body_keys": null,
+  "request_size": 0,
+  "response_size": 28
+}

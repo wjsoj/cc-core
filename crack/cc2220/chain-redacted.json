@@ -1,0 +1,709 @@
+{
+  "capture_version": "2.1.220",
+  "billing_request_count": 37,
+  "billing_requests": [
+    {
+      "group": "single",
+      "round": 1,
+      "type": "title",
+      "row_hash": "323024b77b9f20c1",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.204",
+      "cch": "a7389",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "238e31cb062fbf53",
+      "session_header_hash": "018743e1f04a65bf",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "018743e1f04a65bf"
+      },
+      "client_request_hash": "3aa3c354dba44880"
+    },
+    {
+      "group": "single",
+      "round": 1,
+      "type": "main",
+      "row_hash": "5fb12c9138ad03e7",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.ac9",
+      "cch": "6e6e3",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "0f38da38b3e86349",
+      "session_header_hash": "018743e1f04a65bf",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "018743e1f04a65bf"
+      },
+      "client_request_hash": "9d97949b8c784d84"
+    },
+    {
+      "group": "single",
+      "round": 2,
+      "type": "title",
+      "row_hash": "812809a66b2da11c",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.090",
+      "cch": "d8557",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "ae058fd2449118cf",
+      "session_header_hash": "97952ad6a96f866b",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "97952ad6a96f866b"
+      },
+      "client_request_hash": "d9e1f8148ac698e1"
+    },
+    {
+      "group": "single",
+      "round": 2,
+      "type": "main",
+      "row_hash": "561f1b748dac4f8c",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.e67",
+      "cch": "64965",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "0aeff3bc5bea93f3",
+      "session_header_hash": "97952ad6a96f866b",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "97952ad6a96f866b"
+      },
+      "client_request_hash": "95cdb4aab8c7085e"
+    },
+    {
+      "group": "single",
+      "round": 3,
+      "type": "title",
+      "row_hash": "88f151efca882014",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.8df",
+      "cch": "79476",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "5ba3b73f88cde92e",
+      "session_header_hash": "693be1e097973ef2",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "693be1e097973ef2"
+      },
+      "client_request_hash": "f6a6b5ef7edeafab"
+    },
+    {
+      "group": "single",
+      "round": 3,
+      "type": "main",
+      "row_hash": "4f56d9fdcf883bb2",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.e25",
+      "cch": "ca8d4",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "6bdb1c13fe6f14fd",
+      "session_header_hash": "693be1e097973ef2",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "693be1e097973ef2"
+      },
+      "client_request_hash": "3ce3e7099b3218d7"
+    },
+    {
+      "group": "single",
+      "round": 4,
+      "type": "title",
+      "row_hash": "0664fbbcb8d1493b",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.8df",
+      "cch": "410db",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "012024f71908d3cd",
+      "session_header_hash": "86bbab007194080b",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86bbab007194080b"
+      },
+      "client_request_hash": "0706996a2051e053"
+    },
+    {
+      "group": "single",
+      "round": 4,
+      "type": "main",
+      "row_hash": "a918e69f83994a34",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.e25",
+      "cch": "c4381",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "cf519a3a550fe7c9",
+      "session_header_hash": "86bbab007194080b",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86bbab007194080b"
+      },
+      "client_request_hash": "e4d192a062d6852a"
+    },
+    {
+      "group": "single",
+      "round": 5,
+      "type": "title",
+      "row_hash": "ecaf5a8dc16c2558",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.02c",
+      "cch": "af197",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "0180bb32ce9dddc4",
+      "session_header_hash": "0ee1cf0631d5371d",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "0ee1cf0631d5371d"
+      },
+      "client_request_hash": "38b207b8c700d4c4"
+    },
+    {
+      "group": "single",
+      "round": 5,
+      "type": "main",
+      "row_hash": "80dafee3e6103326",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.e08",
+      "cch": "1ca23",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "ce3f33b95ccd51f7",
+      "session_header_hash": "0ee1cf0631d5371d",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "0ee1cf0631d5371d"
+      },
+      "client_request_hash": "02fc0e721a4b1c5b"
+    },
+    {
+      "group": "single",
+      "round": 6,
+      "type": "title",
+      "row_hash": "0fc8476194ed9e4d",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.8e9",
+      "cch": "79c60",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "1482fd5b6f33f5bd",
+      "session_header_hash": "f23a975bbc3a5ee9",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "f23a975bbc3a5ee9"
+      },
+      "client_request_hash": "bf00ce6e0c87ce51"
+    },
+    {
+      "group": "single",
+      "round": 6,
+      "type": "main",
+      "row_hash": "1330a4db3518c75f",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.37b",
+      "cch": "fb752",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "18826926b0455a4b",
+      "session_header_hash": "f23a975bbc3a5ee9",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "f23a975bbc3a5ee9"
+      },
+      "client_request_hash": "1c00c83c38af1e82"
+    },
+    {
+      "group": "single",
+      "round": 7,
+      "type": "title",
+      "row_hash": "3d9912ebfa41d51c",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.6ca",
+      "cch": "5d719",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "b840aa0d9fdfc702",
+      "session_header_hash": "19220b3c59fda589",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "19220b3c59fda589"
+      },
+      "client_request_hash": "67725c1bcd72ea00"
+    },
+    {
+      "group": "single",
+      "round": 7,
+      "type": "main",
+      "row_hash": "99c4635c731d2dfc",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.002",
+      "cch": "5dec8",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "f1cc01b070a38839",
+      "session_header_hash": "19220b3c59fda589",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "19220b3c59fda589"
+      },
+      "client_request_hash": "d0e0a44d095b66bc"
+    },
+    {
+      "group": "single",
+      "round": 8,
+      "type": "title",
+      "row_hash": "b8c1105c76e04d46",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.204",
+      "cch": "f14d6",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "51918d4274c57979",
+      "session_header_hash": "9ef6077702275df3",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "9ef6077702275df3"
+      },
+      "client_request_hash": "8c7e5a8380cbaee6"
+    },
+    {
+      "group": "single",
+      "round": 8,
+      "type": "main",
+      "row_hash": "057413f47c9863ae",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.ac9",
+      "cch": "100e7",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "5a7842c1cf5a0aef",
+      "session_header_hash": "9ef6077702275df3",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "9ef6077702275df3"
+      },
+      "client_request_hash": "c190121d87589f0a"
+    },
+    {
+      "group": "single",
+      "round": 9,
+      "type": "title",
+      "row_hash": "2ea49a53e037f56c",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.204",
+      "cch": "80cdc",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "65dc1a1d2f53e227",
+      "session_header_hash": "f071024a5df98bda",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "f071024a5df98bda"
+      },
+      "client_request_hash": "e533ae052c94c568"
+    },
+    {
+      "group": "single",
+      "round": 9,
+      "type": "main",
+      "row_hash": "642e5e0e8030166a",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.ac9",
+      "cch": "c38ba",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "d1f168c2e2522c30",
+      "session_header_hash": "f071024a5df98bda",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "f071024a5df98bda"
+      },
+      "client_request_hash": "cdfcfdf3e4aba575"
+    },
+    {
+      "group": "single",
+      "round": 10,
+      "type": "title",
+      "row_hash": "895f75344accd11d",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.204",
+      "cch": "cfd47",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "358370b1c47d127a",
+      "session_header_hash": "677bddb878015d20",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "677bddb878015d20"
+      },
+      "client_request_hash": "a12b1ecbf1eb1ee6"
+    },
+    {
+      "group": "single",
+      "round": 10,
+      "type": "main",
+      "row_hash": "bc476cd4a51ef4de",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.ac9",
+      "cch": "4fdca",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "a60a28d5f8c889c9",
+      "session_header_hash": "677bddb878015d20",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "677bddb878015d20"
+      },
+      "client_request_hash": "b50aa65f07377ea8"
+    },
+    {
+      "group": "multiturn",
+      "round": 1,
+      "type": "title",
+      "row_hash": "e30dfb2bd82e5ddf",
+      "model": "claude-haiku-4-5-20251001",
+      "message_count": 1,
+      "cc_version": "2.1.220.126",
+      "cch": "bc61d",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "44510d7fc9d6a595",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "e8879533de0ecd11"
+    },
+    {
+      "group": "multiturn",
+      "round": 1,
+      "type": "main",
+      "row_hash": "988b36f2d36a2d0a",
+      "model": "claude-sonnet-5",
+      "message_count": 2,
+      "cc_version": "2.1.220.cde",
+      "cch": "321d7",
+      "cc_prev_req_hash": null,
+      "response_request_hash": "d343f6a2f1bda9bd",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "4c9e56a8f7e18838"
+    },
+    {
+      "group": "multiturn",
+      "round": 2,
+      "type": "main",
+      "row_hash": "0f608cdf871282ab",
+      "model": "claude-sonnet-5",
+      "message_count": 4,
+      "cc_version": "2.1.220.cde",
+      "cch": "45c6f",
+      "cc_prev_req_hash": "d343f6a2f1bda9bd",
+      "response_request_hash": "c905831b52c397de",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "adde90b38d17a637"
+    },
+    {
+      "group": "multiturn",
+      "round": 2,
+      "type": "prompt_suggestion",
+      "row_hash": "ff49ea170e916cac",
+      "model": "claude-sonnet-5",
+      "message_count": 6,
+      "cc_version": "2.1.220.cde",
+      "cch": "61197",
+      "cc_prev_req_hash": "c905831b52c397de",
+      "response_request_hash": "9f7fcc80767578d0",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "8cd9a880e072c5c3"
+    },
+    {
+      "group": "multiturn",
+      "round": 3,
+      "type": "main",
+      "row_hash": "f24c07db871a72e0",
+      "model": "claude-sonnet-5",
+      "message_count": 6,
+      "cc_version": "2.1.220.cde",
+      "cch": "fc207",
+      "cc_prev_req_hash": "c905831b52c397de",
+      "response_request_hash": "40ae4cb973f0b791",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "a3c91b3e8ec2c188"
+    },
+    {
+      "group": "multiturn",
+      "round": 4,
+      "type": "main",
+      "row_hash": "dff746fe25a0c20e",
+      "model": "claude-sonnet-5",
+      "message_count": 8,
+      "cc_version": "2.1.220.cde",
+      "cch": "6627b",
+      "cc_prev_req_hash": "40ae4cb973f0b791",
+      "response_request_hash": "e6b163bf475b2b04",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "5d0d45cee14491f6"
+    },
+    {
+      "group": "multiturn",
+      "round": 5,
+      "type": "main",
+      "row_hash": "12a5700a0b0820f3",
+      "model": "claude-sonnet-5",
+      "message_count": 10,
+      "cc_version": "2.1.220.cde",
+      "cch": "f1f34",
+      "cc_prev_req_hash": "e6b163bf475b2b04",
+      "response_request_hash": "dda4a7ba418e2170",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "f89c09862cc00ae5"
+    },
+    {
+      "group": "multiturn",
+      "round": 5,
+      "type": "prompt_suggestion",
+      "row_hash": "2aa5c0201f24df5e",
+      "model": "claude-sonnet-5",
+      "message_count": 12,
+      "cc_version": "2.1.220.cde",
+      "cch": "0b746",
+      "cc_prev_req_hash": "dda4a7ba418e2170",
+      "response_request_hash": "154803f5c858d7d4",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "c9440417f0ce12e5"
+    },
+    {
+      "group": "multiturn",
+      "round": 6,
+      "type": "main",
+      "row_hash": "4627468a0c14036d",
+      "model": "claude-sonnet-5",
+      "message_count": 12,
+      "cc_version": "2.1.220.cde",
+      "cch": "cd08a",
+      "cc_prev_req_hash": "dda4a7ba418e2170",
+      "response_request_hash": "df2c99e488dfc86d",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "360c2a5b47bffcf0"
+    },
+    {
+      "group": "multiturn",
+      "round": 6,
+      "type": "prompt_suggestion",
+      "row_hash": "90663279606bcb10",
+      "model": "claude-sonnet-5",
+      "message_count": 14,
+      "cc_version": "2.1.220.cde",
+      "cch": "b7a84",
+      "cc_prev_req_hash": "df2c99e488dfc86d",
+      "response_request_hash": "dfb9ea58d59fc4f1",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "d785ac3a7cd7af51"
+    },
+    {
+      "group": "multiturn",
+      "round": 7,
+      "type": "main",
+      "row_hash": "0f9a17ecfaa0d6bf",
+      "model": "claude-sonnet-5",
+      "message_count": 14,
+      "cc_version": "2.1.220.cde",
+      "cch": "67957",
+      "cc_prev_req_hash": "df2c99e488dfc86d",
+      "response_request_hash": "aa7cdddffd142af0",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "e9e94b80f7b1015b"
+    },
+    {
+      "group": "multiturn",
+      "round": 8,
+      "type": "main",
+      "row_hash": "bfe50e4d9746d412",
+      "model": "claude-sonnet-5",
+      "message_count": 16,
+      "cc_version": "2.1.220.cde",
+      "cch": "db105",
+      "cc_prev_req_hash": "aa7cdddffd142af0",
+      "response_request_hash": "d5932927127972e2",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "356d613eebae9e00"
+    },
+    {
+      "group": "multiturn",
+      "round": 8,
+      "type": "prompt_suggestion",
+      "row_hash": "4554be1336def9f8",
+      "model": "claude-sonnet-5",
+      "message_count": 18,
+      "cc_version": "2.1.220.cde",
+      "cch": "bac5c",
+      "cc_prev_req_hash": "d5932927127972e2",
+      "response_request_hash": "fc230c7fdd5dbb08",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "42d69a7acebb6ca0"
+    },
+    {
+      "group": "multiturn",
+      "round": 9,
+      "type": "main",
+      "row_hash": "13db3353846bed12",
+      "model": "claude-sonnet-5",
+      "message_count": 18,
+      "cc_version": "2.1.220.cde",
+      "cch": "bbf94",
+      "cc_prev_req_hash": "d5932927127972e2",
+      "response_request_hash": "a031303408ca83ab",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "3929e6aaa0c1da0b"
+    },
+    {
+      "group": "multiturn",
+      "round": 9,
+      "type": "prompt_suggestion",
+      "row_hash": "3e7de151fd552923",
+      "model": "claude-sonnet-5",
+      "message_count": 20,
+      "cc_version": "2.1.220.cde",
+      "cch": "e5526",
+      "cc_prev_req_hash": "a031303408ca83ab",
+      "response_request_hash": "18e005577eb5c665",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "6d400066b717138a"
+    },
+    {
+      "group": "multiturn",
+      "round": 10,
+      "type": "main",
+      "row_hash": "0409f56f68458570",
+      "model": "claude-sonnet-5",
+      "message_count": 20,
+      "cc_version": "2.1.220.cde",
+      "cch": "f96cd",
+      "cc_prev_req_hash": "a031303408ca83ab",
+      "response_request_hash": "165bdf45919dd17e",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "cf74fdd7ad0e8651"
+    },
+    {
+      "group": "multiturn",
+      "round": 10,
+      "type": "prompt_suggestion",
+      "row_hash": "d388238e4dad8c9e",
+      "model": "claude-sonnet-5",
+      "message_count": 22,
+      "cc_version": "2.1.220.cde",
+      "cch": "8841f",
+      "cc_prev_req_hash": "165bdf45919dd17e",
+      "response_request_hash": "2a5b1c9ae6ef0baa",
+      "session_header_hash": "86b7540d7d73c01f",
+      "body_identity_hashes": {
+        "device_id": "bb5ba4898a97b503",
+        "account_uuid": "c55ed951131d1b3d",
+        "session_id": "86b7540d7d73c01f"
+      },
+      "client_request_hash": "9ce69bf5f13f74b7"
+    }
+  ]
+}
