@@ -250,6 +250,43 @@ func TestAlreadyClaudeCode(t *testing.T) {
 	}
 }
 
+// TestBillingBlockSkipsRewrite covers proxied / prompt-drifted real Claude
+// Code traffic: a request whose system carries the billing attribution block
+// but whose prompt does NOT match any hard-coded ClaudeCodePromptPrefixes
+// (e.g. an upstream gateway relayed it, or CC shipped a revised prompt, or it
+// is a subagent prompt). This must be recognized as genuine CC and left
+// untouched — rewriting it would strip the client's cache_control and destroy
+// Anthropic's prompt-cache prefix. Guards the sub2api oauth-mimicry-cache
+// -prefix-break fix.
+func TestBillingBlockSkipsRewrite(t *testing.T) {
+	in := `{"model":"claude-sonnet-4-5","system":[` +
+		`{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli; cch=deadbeef;"},` +
+		`{"type":"text","text":"You are a bespoke internal coding agent.","cache_control":{"type":"ephemeral","ttl":"1h"}}` +
+		`],"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]}]}`
+	out := ApplyClaudeCodeBodyMimicry([]byte(in), "claude-sonnet-4-5", testID())
+
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("invalid output JSON: %v", err)
+	}
+	var sys []map[string]any
+	if err := json.Unmarshal(parsed["system"], &sys); err != nil {
+		t.Fatalf("system not array: %v", err)
+	}
+	// Must NOT have injected the intro block — system stays at its 2 blocks.
+	if len(sys) != 2 {
+		t.Fatalf("billing-block request must not be rewritten, got %d system blocks", len(sys))
+	}
+	if txt, _ := sys[1]["text"].(string); !strings.HasPrefix(txt, "You are a bespoke") {
+		t.Errorf("client system prompt was altered: %q", txt)
+	}
+	// The client's own message-level cache_control must survive verbatim
+	// (addMessageCacheBreakpoints must not have run).
+	if !strings.Contains(string(out), `"content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}}]`) {
+		t.Errorf("client message cache_control was rewritten; prompt-cache prefix broken:\n%s", out)
+	}
+}
+
 // TestNoBetaGatedFieldInjection confirms we do NOT synthesize beta-gated
 // body fields (thinking / output_config / context_management) when the
 // downstream client didn't send them. Real CC carries these but each is

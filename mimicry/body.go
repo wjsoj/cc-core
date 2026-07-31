@@ -51,6 +51,28 @@ const (
 	// cchSeed is retained for the legacy best-effort cch signer. Do not claim
 	// it is byte-identical to Claude Code 2.1.220 without new validation.
 	cchSeed uint64 = 0x6E52736AC806831E
+
+	// claudeBillingHeaderPrefix / claudeEntrypointMarker identify the billing
+	// attribution block real Claude Code injects as system[0]
+	// ("x-anthropic-billing-header: cc_version=…; cc_entrypoint=…; cch=…;").
+	//
+	// Presence of this block is a far more STABLE "this is genuine Claude Code"
+	// signal than the intro system prompt: it survives prompt-text revisions,
+	// subagent/other-tool prompts, and user-edited prompts, and it rides along
+	// when an upstream API gateway (new-api etc.) proxies real CC traffic —
+	// which mangles the User-Agent to Go-http-client but leaves the body's CC
+	// fingerprint intact. Matching it lets us SKIP body rewriting for such
+	// requests and preserve the client's own system blocks + cache_control
+	// breakpoints; rewriting them would invalidate Anthropic's prefix-based
+	// prompt cache (cache_read locks low, cache_creation grows every turn,
+	// single-request cost blows up 10-20×). We only ever MATCH on these markers
+	// here — buildBillingBlock is the sole writer. The entrypoint value drifts
+	// (cli / claude-vscode / jetbrains / sdk …) and is not an anti-forgery
+	// boundary, so we require the marker's presence, not a specific value.
+	// Ported from sub2api's systemHasBillingAttributionBlock (community fix
+	// for oauth-mimicry-cache-prefix-break).
+	claudeBillingHeaderPrefix = "x-anthropic-billing-header"
+	claudeEntrypointMarker    = "cc_entrypoint="
 )
 
 var cchPlaceholderRe = regexp.MustCompile(`(x-anthropic-billing-header:[^"]*?\bcch=)(00000)(;)`)
@@ -67,9 +89,12 @@ var cchPlaceholderRe = regexp.MustCompile(`(x-anthropic-billing-header:[^"]*?\bc
 // Skips entirely when:
 //   - body isn't a JSON object (not an Anthropic /v1/messages payload)
 //   - model contains "haiku" (Anthropic doesn't third-party-check Haiku)
-//   - the request already looks like Claude Code (system already has the
-//     official prompt prefix — likely a real CLI client passing through)
-//     — in that case only the cch signature is refreshed so it matches
+//   - the request already looks like Claude Code — either its system carries
+//     the billing attribution block (the robust signal; see
+//     claudeBillingHeaderPrefix) or it starts with a known CC prompt prefix.
+//     Likely a real CLI client passing through (direct or proxied); rewriting
+//     would corrupt the system field and destroy the client's prompt-cache
+//     prefix. In that case only the cch signature is refreshed so it matches
 //     the bytes actually being sent.
 func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byte {
 	if len(body) == 0 || strings.Contains(strings.ToLower(model), "haiku") {
@@ -80,9 +105,14 @@ func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byt
 		return body
 	}
 
-	// Detect "already a Claude Code request" — leave it alone, double-injection
-	// would corrupt the system field.
-	if hasClaudeCodeSystemPrefix(obj["system"]) {
+	// Detect "already a Claude Code request" — leave it alone. Rewriting would
+	// double-inject the system field AND destroy the client's prompt-cache
+	// prefix (a changed system invalidates all downstream message caching).
+	// Two signals, most-robust first:
+	//   1. billing attribution block present — the strongest tell of genuine
+	//      CC; survives prompt drift and upstream proxying (see const doc).
+	//   2. system already opens with a known CC prompt prefix.
+	if systemHasBillingBlock(obj["system"]) || hasClaudeCodeSystemPrefix(obj["system"]) {
 		return signBillingHeaderCCH(body)
 	}
 
@@ -140,6 +170,28 @@ func hasClaudeCodeSystemPrefix(raw json.RawMessage) bool {
 func matchesClaudeCodePrefix(text string) bool {
 	for _, p := range ClaudeCodePromptPrefixes {
 		if strings.HasPrefix(text, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// systemHasBillingBlock reports whether the system field already carries the
+// Claude Code billing attribution block (system[0] in real CC). Only the
+// []block shape can hold it — a bare-string system cannot. This is the
+// cache-safe "already genuine Claude Code" guard that survives prompt drift
+// and upstream proxying; see claudeBillingHeaderPrefix for the full rationale.
+func systemHasBillingBlock(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return false
+	}
+	for _, blk := range blocks {
+		if t, _ := blk["text"].(string); strings.HasPrefix(t, claudeBillingHeaderPrefix) &&
+			strings.Contains(t, claudeEntrypointMarker) {
 			return true
 		}
 	}
