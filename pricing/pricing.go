@@ -259,6 +259,18 @@ var builtIn = map[string]ModelPrice{
 		CacheReadPer1M:   0.50,
 		CacheCreatePer1M: 6.25,
 	},
+	// claude-opus-5 holds the Opus tier's long-standing rate, identical to
+	// opus-4-6/4-7/4-8. Without this entry Lookup's prefix fallback finds no
+	// "claude-opus" key and drops to builtInProviderDefaults[anthropic] — the
+	// Sonnet card — undercharging every opus-5 request by exactly 5/3 (all four
+	// counters scale uniformly, so the shortfall is 40% of the true cost
+	// regardless of the input/output/cache mix).
+	ProviderAnthropic + "/claude-opus-5": {
+		InputPer1M:       5.00,
+		OutputPer1M:      25.00,
+		CacheReadPer1M:   0.50,
+		CacheCreatePer1M: 6.25,
+	},
 	// claude-fable-5 is the premium tier — exactly 2× opus-4-8, which also
 	// satisfies Anthropic's standard cache ratios (read 0.1× input, write
 	// 1.25× input). One undated entry suffices: Lookup's prefix-fallback maps
@@ -275,10 +287,18 @@ var builtIn = map[string]ModelPrice{
 		CacheReadPer1M:   0.30,
 		CacheCreatePer1M: 3.75,
 	},
-	// claude-sonnet-5 launched 2026-07-01 at 2/3 of sonnet-4-6's rate (input
-	// $3→$2, output $15→$10, cache_read $0.30→$0.20, cache_write $3.75→$2.50 —
-	// still Anthropic's standard 0.1×/1.25× cache ratios). One undated entry;
-	// Lookup's prefix-fallback maps dated variants (claude-sonnet-5-2026…) here.
+	// claude-sonnet-5's LIST price is $3/$15 — the same as sonnet-4-6. The card
+	// below is the INTRODUCTORY price (2/3 of list: input $3→$2, output
+	// $15→$10, cache_read $0.30→$0.20, cache_write $3.75→$2.50, still
+	// Anthropic's standard 0.1×/1.25× cache ratios).
+	//
+	// ⚠️ EXPIRES 2026-08-31. From 2026-09-01 Anthropic bills list price; leaving
+	// this card as-is past that date undercharges every sonnet-5 request by 33%.
+	// On expiry, replace the four values with 3.00 / 15.00 / 0.30 / 3.75 and
+	// delete this notice (the card then matches sonnet-4-6 exactly).
+	//
+	// One undated entry; Lookup's prefix-fallback maps dated variants
+	// (claude-sonnet-5-2026…) here.
 	ProviderAnthropic + "/claude-sonnet-5": {
 		InputPer1M:       2.00,
 		OutputPer1M:      10.00,

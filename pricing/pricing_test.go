@@ -39,6 +39,35 @@ func TestLookupExactMatch(t *testing.T) {
 	}
 }
 
+// TestOpusTierCardsAreIdentical pins every Opus-tier model to the same card.
+// The regression this guards is silent: a missing entry doesn't error, it falls
+// through to builtInProviderDefaults[anthropic] (the Sonnet card) and
+// undercharges by 5/3 with no signal anywhere.
+func TestOpusTierCardsAreIdentical(t *testing.T) {
+	cat := NewCatalog(Config{})
+	want := ModelPrice{InputPer1M: 5.00, OutputPer1M: 25.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}
+	for _, m := range []string{"claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5"} {
+		if got := cat.Lookup("anthropic", m); got != want {
+			t.Errorf("%s price=%+v want %+v", m, got, want)
+		}
+	}
+	// A dated opus-5 variant must reach the same card, not the Sonnet default.
+	if got := cat.Lookup("anthropic", "claude-opus-5-20260901"); got != want {
+		t.Errorf("dated opus-5 price=%+v want %+v", got, want)
+	}
+}
+
+// TestSonnet5IntroPrice locks the introductory rate. It EXPIRES 2026-08-31 —
+// from 2026-09-01 the expected values become the sonnet-4-6 card
+// (3.00/15.00/0.30/3.75). Update both this test and the catalog together.
+func TestSonnet5IntroPrice(t *testing.T) {
+	cat := NewCatalog(Config{})
+	want := ModelPrice{InputPer1M: 2.00, OutputPer1M: 10.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50}
+	if got := cat.Lookup("anthropic", "claude-sonnet-5"); got != want {
+		t.Fatalf("sonnet-5 price=%+v want %+v (intro rate through 2026-08-31)", got, want)
+	}
+}
+
 func TestLookupDateSuffixFallback(t *testing.T) {
 	cat := NewCatalog(Config{})
 	// Dated variant should fall back to base entry via prefix trim.
