@@ -191,6 +191,7 @@ type Store struct {
 	doneCh   chan struct{}
 	flushInt time.Duration
 	now      func() time.Time // injectable clock (for tests)
+	dedup    *Deduper         // nil = idempotency disabled (see dedup.go)
 }
 
 // OpenInMemory returns a Store with no file persistence and no background

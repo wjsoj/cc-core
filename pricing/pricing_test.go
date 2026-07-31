@@ -169,3 +169,34 @@ func TestLookupStripsContextModeSuffix(t *testing.T) {
 		t.Errorf("opus-5[1m] InputPer1M=%v want 5.00 (Sonnet default would be 3.00)", p.InputPer1M)
 	}
 }
+
+// StripContextModeSuffix is the parse-layer canonicaliser. It must be safe to
+// call on any model name: preserve case, leave non-suffixed names untouched,
+// and — critically — never strip the "(effort)" suffix, which is routing
+// information the caller still needs.
+func TestStripContextModeSuffix(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"claude-opus-5[1m]", "claude-opus-5"},
+		{"claude-sonnet-5[1m]", "claude-sonnet-5"},
+		{"claude-opus-5-20260301[1m]", "claude-opus-5-20260301"},
+		{"Claude-Opus-5[1M]", "Claude-Opus-5"}, // case preserved
+		{"claude-opus-5", "claude-opus-5"},     // no suffix → untouched
+		{"", ""},
+		// Routing-relevant suffix — must survive.
+		{"gpt-5.3-codex(high)", "gpt-5.3-codex(high)"},
+		// Malformed / degenerate inputs must not mangle the name.
+		{"[1m]", "[1m]"},
+		{"claude-opus-5]", "claude-opus-5]"},
+	}
+	for _, tc := range cases {
+		if got := StripContextModeSuffix(tc.in); got != tc.want {
+			t.Errorf("StripContextModeSuffix(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+
+	// Idempotent — callers may apply it early AND Lookup applies it again.
+	once := StripContextModeSuffix("claude-opus-5[1m]")
+	if twice := StripContextModeSuffix(once); twice != once {
+		t.Errorf("not idempotent: %q → %q", once, twice)
+	}
+}

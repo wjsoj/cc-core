@@ -103,6 +103,40 @@ func NewCatalog(c Config) *Catalog {
 	return cat
 }
 
+// StripContextModeSuffix removes a trailing "[value]" context-mode label from
+// a model name, preserving case and everything else: "claude-opus-5[1m]" →
+// "claude-opus-5". Names without the suffix are returned unchanged.
+//
+// Real Claude Code tags a 1M-context request as "claude-opus-5[1m]" in its
+// TELEMETRY only — the request body carries the plain name (crack/cc2220/SPEC.md
+// §1a). The suffix is therefore a pure label: it selects no price tier (Anthropic
+// bills the full 1M window at standard rates) and identifies no distinct upstream
+// model. Left in place it is actively harmful — it misses every price card AND
+// every "claude-…" prefix, because Lookup's fallback only trims on "-", so the
+// name lands on the provider default (the Sonnet card) and an opus-5 request
+// bills 40% short.
+//
+// Exported so callers can canonicalise at the request-parse layer, ahead of
+// usage labels, request logs, and admin aggregation, rather than each consumer
+// re-deriving it. Lookup applies it too, so calling it early is optional and
+// idempotent.
+//
+// Deliberately narrower than what Lookup strips: the "(value)" convention
+// ("gpt-5.3-codex(high)") encodes reasoning effort, which is routing-relevant.
+// Only pricing may ignore that one — dropping it at parse time would discard a
+// real request parameter, so it is NOT part of this helper.
+func StripContextModeSuffix(model string) string {
+	m := strings.TrimSpace(model)
+	if !strings.HasSuffix(m, "]") {
+		return model
+	}
+	i := strings.LastIndex(m, "[")
+	if i <= 0 {
+		return model
+	}
+	return strings.TrimSpace(m[:i])
+}
+
 // Lookup returns the price card for a (provider, model) pair. Matching is
 // case-insensitive and tolerates well-known prefix matches (e.g. a suffix-
 // dated Claude model falls back to its undated base entry). Empty provider
@@ -118,17 +152,7 @@ func (c *Catalog) Lookup(provider, model string) ModelPrice {
 			m = strings.TrimSpace(m[:i])
 		}
 	}
-	// Strip a trailing "[value]" context-mode suffix — real Claude Code labels
-	// a 1M-context request "claude-opus-5[1m]" in its telemetry. The suffix is
-	// NOT a distinct price tier here; without this the name misses every card
-	// AND every "claude-…" prefix (the fallback only trims on "-"), landing on
-	// the Anthropic provider default (the Sonnet card) and undercharging an
-	// opus-5 request by 40%.
-	if strings.HasSuffix(m, "]") {
-		if i := strings.LastIndex(m, "["); i > 0 {
-			m = strings.TrimSpace(m[:i])
-		}
-	}
+	m = StripContextModeSuffix(m)
 	if m != "" {
 		full := prov + "/" + m
 		if p, ok := c.models[full]; ok {
