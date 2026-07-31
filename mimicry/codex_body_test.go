@@ -159,6 +159,57 @@ func TestSanitizeCodexRequestBody_SystemToDeveloper(t *testing.T) {
 	}
 }
 
+// TestSanitizeCodexRequestBody_ReasoningItemIDStripped covers the forced
+// store=false 404: a replayed reasoning item carries an "rs_…" id the stateless
+// Codex backend never persisted, which 404s ("Item with id 'rs_…' not found").
+// We must strip the id, keep the item (encrypted_content carries context), and
+// backfill a "summary" when absent — while leaving non-reasoning items alone.
+func TestSanitizeCodexRequestBody_ReasoningItemIDStripped(t *testing.T) {
+	in := `{
+		"model": "gpt-5.3-codex",
+		"input": [
+			{"type": "reasoning", "id": "rs_abc123", "encrypted_content": "ENC"},
+			{"type": "reasoning", "id": "rs_def456", "summary": [{"type":"summary_text","text":"kept"}], "encrypted_content": "ENC2"},
+			{"type": "message", "role": "user", "id": "msg_1", "content": [{"type": "input_text", "text": "hi"}]}
+		]
+	}`
+	out, _, err := SanitizeCodexRequestBody([]byte(in), "/v1/responses")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	m := decode(t, out)
+	items, _ := m["input"].([]any)
+	if len(items) != 3 {
+		t.Fatalf("input items = %d, want 3 (items kept, not dropped)", len(items))
+	}
+
+	r0, _ := items[0].(map[string]any)
+	if _, hasID := r0["id"]; hasID {
+		t.Errorf("reasoning[0] id should be stripped, got %v", r0["id"])
+	}
+	if r0["encrypted_content"] != "ENC" {
+		t.Errorf("reasoning[0] encrypted_content must survive, got %v", r0["encrypted_content"])
+	}
+	if s, ok := r0["summary"].([]any); !ok || len(s) != 0 {
+		t.Errorf("reasoning[0] summary should be backfilled to empty array, got %v", r0["summary"])
+	}
+
+	r1, _ := items[1].(map[string]any)
+	if _, hasID := r1["id"]; hasID {
+		t.Errorf("reasoning[1] id should be stripped, got %v", r1["id"])
+	}
+	if s, _ := r1["summary"].([]any); len(s) != 1 {
+		t.Errorf("reasoning[1] existing summary must be preserved verbatim, got %v", r1["summary"])
+	}
+
+	// Non-reasoning items keep their id untouched (tool-call/message pairing
+	// must not be disturbed — we intentionally scope stripping to reasoning).
+	msg, _ := items[2].(map[string]any)
+	if msg["id"] != "msg_1" {
+		t.Errorf("non-reasoning item id must be preserved, got %v", msg["id"])
+	}
+}
+
 func TestSanitizeCodexRequestBody_Compact(t *testing.T) {
 	in := `{
 		"model": "gpt-5.3-codex(high)",

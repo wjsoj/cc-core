@@ -165,7 +165,8 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 		}}
 	}
 	// Convert role "system" → "developer" in input items (Codex rejects
-	// "system" there).
+	// "system" there), and strip server-assigned ids from reasoning items
+	// that would 404 under the forced store=false (see filterCodexInputItems).
 	if items, ok := raw["input"].([]any); ok {
 		for _, it := range items {
 			if m, _ := it.(map[string]any); m != nil {
@@ -174,6 +175,7 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 				}
 			}
 		}
+		filterCodexInputItems(items)
 	}
 
 	// Normalize legacy/preview built-in tool type aliases.
@@ -234,6 +236,46 @@ func sanitizeCodexCompactRequestBody(body []byte) ([]byte, string, error) {
 	}
 	encoded, err := json.Marshal(out)
 	return encoded, baseModel, err
+}
+
+// filterCodexInputItems repairs input items that the ChatGPT Codex backend
+// rejects because SanitizeCodexRequestBody forces store=false. Mutates the
+// items in place (they are our own unmarshaled maps).
+//
+// reasoning items: the backend runs stateless (store=false), so replaying a
+// reasoning item with its server-assigned "id" ("rs_…") — which the stateless
+// backend never persisted — 404s upstream ("Item with id 'rs_…' not found"),
+// silently breaking multi-turn agent reasoning. We drop only the offending id
+// and keep the item: under store=false the encrypted_content field (requested
+// via include:["reasoning.encrypted_content"] above) is the official channel
+// for carrying reasoning context across turns, so dropping the whole item
+// would degrade reasoning instead. The backend also rejects a reasoning item
+// with no "summary" ("Missing required parameter 'input[N].summary'"), so we
+// backfill an empty array when absent.
+//
+// Ported from sub2api's filterCodexInputWithOptions reasoning branch (verified
+// end-to-end against chatgpt.com codex, issue #1957). We deliberately do NOT
+// port that function's call_id / fc-prefix / 64-char-compaction handling for
+// tool-call items: those target tool-continuation chains under request state
+// (PreserveReferences / PreserveCallIDs) that cc-core's forwarder does not
+// track, and mis-porting them would corrupt function_call ↔ function_call_output
+// pairing. Reasoning items never participate in that pairing — their context
+// rides in encrypted_content, not the id — so stripping their id is
+// unconditionally safe and needs no request-state gating.
+func filterCodexInputItems(items []any) {
+	for _, it := range items {
+		m, _ := it.(map[string]any)
+		if m == nil {
+			continue
+		}
+		if t, _ := m["type"].(string); t != "reasoning" {
+			continue
+		}
+		delete(m, "id")
+		if s, ok := m["summary"]; !ok || s == nil {
+			m["summary"] = []any{}
+		}
+	}
 }
 
 // normalizeBuiltinToolsInPlace rewrites the legacy Codex built-in tool
