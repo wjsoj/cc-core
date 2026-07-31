@@ -36,19 +36,23 @@ type recorder struct {
 }
 
 type recordedCall struct {
-	path string
-	ua   string
-	beta string
-	body []byte
+	path    string
+	ua      string
+	beta    string
+	authz   string
+	mcpCaps string
+	body    []byte
 }
 
 func (r *recorder) handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		r.mu.Lock()
 		r.calls = append(r.calls, recordedCall{
-			path: req.URL.Path,
-			ua:   req.Header.Get("User-Agent"),
-			beta: req.Header.Get("Anthropic-Beta"),
+			path:    req.URL.Path,
+			ua:      req.Header.Get("User-Agent"),
+			beta:    req.Header.Get("Anthropic-Beta"),
+			authz:   req.Header.Get("Authorization"),
+			mcpCaps: req.Header.Get("Anthropic-Mcp-Client-Capabilities"),
 		})
 		r.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
@@ -147,13 +151,13 @@ func TestBootstrapFiresAllStepsWithCorrectUA(t *testing.T) {
 	}{
 		"/api/eval/sdk-zAZezfDKGoZuXXKe": {"Bun/", "oauth-2025-04-20"},
 		// account/settings + grove use claude-cli (NOT claude-code) — verified in
-		// both the cc2191 and cc2214 live captures (crack/cc2214/SPEC.md §2).
+		// both the 2.1.191 and 2.1.214 live captures (crack/cc2214/SPEC.md §2).
 		"/api/oauth/account/settings":    {"claude-cli/", "oauth-2025-04-20"},
 		"/api/claude_code_grove":         {"claude-cli/", "oauth-2025-04-20"},
 		"/api/claude_cli/bootstrap":      {"claude-code/", "oauth-2025-04-20"},
 		"/api/claude_code_penguin_mode":  {"axios/", "oauth-2025-04-20"},
 		"/v1/messages":                   {"claude-cli/", quotaProbeBeta},
-		// mcp-registry uses claude-cli (NOT axios) — cc2191+cc2214, 8 samples.
+		// mcp-registry uses claude-cli (NOT axios) — 2.1.191 + cc2214, 8 samples.
 		"/mcp-registry/v0/servers":       {"claude-cli/", ""},
 		"/v1/mcp_servers":                {"axios/", "mcp-servers-2025-12-04"},
 		"/v1/code/triggers":              {"claude-cli/", "ccr-triggers-2026-01-30"},
@@ -179,6 +183,53 @@ func TestBootstrapFiresAllStepsWithCorrectUA(t *testing.T) {
 		if !seen[path] {
 			t.Errorf("missing bootstrap step for %s", path)
 		}
+	}
+}
+
+// The MCP pair has two capture-pinned details that are easy to get wrong:
+// /mcp-registry is a PUBLIC catalog and real CC sends no Authorization on it
+// (a Bearer there is a tell), while /v1/mcp_servers advertises
+// roots.listChanged in its base64 capability header.
+// (crack/cc2220/SPEC.md §3.)
+func TestMCPProbeAuthAndCapabilities(t *testing.T) {
+	rec := &recorder{}
+	srv := httptest.NewServer(rec.handler())
+	defer srv.Close()
+
+	mgr := New(Config{Enabled: true, BaseURL: srv.URL})
+	defer mgr.Stop()
+	mgr.httpClient = srv.Client()
+
+	mgr.Notify(newTestAuth("auth-mcp", "mcp@example.com"), "client-A")
+
+	if !waitForCallCount(rec, 9, 5*time.Second) {
+		t.Fatalf("bootstrap did not complete, got %d calls", rec.count())
+	}
+
+	const wantCaps = "eyJyb290cyI6eyJsaXN0Q2hhbmdlZCI6dHJ1ZX0sImVsaWNpdGF0aW9uIjp7fX0="
+	var sawRegistry, sawServers bool
+	for _, c := range rec.snapshot() {
+		switch c.path {
+		case "/mcp-registry/v0/servers":
+			sawRegistry = true
+			if c.authz != "" {
+				t.Errorf("mcp-registry must not carry Authorization, got %q", c.authz)
+			}
+		case "/v1/mcp_servers":
+			sawServers = true
+			if c.authz == "" {
+				t.Error("/v1/mcp_servers must carry Authorization")
+			}
+			if c.mcpCaps != wantCaps {
+				t.Errorf("mcp capabilities = %q, want %q", c.mcpCaps, wantCaps)
+			}
+		}
+	}
+	if !sawRegistry {
+		t.Error("missing /mcp-registry/v0/servers step")
+	}
+	if !sawServers {
+		t.Error("missing /v1/mcp_servers step")
 	}
 }
 

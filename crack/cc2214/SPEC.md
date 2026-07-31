@@ -3,9 +3,9 @@
 Captured 2026-07-18 from a live `claude-cli/2.1.214` session that included a full
 **OAuth re-login + startup bootstrap burst + chat** (whistle `get-data`,
 full-body). `rows/` are structurally-redacted via `crack/scripts/extract_live.py`
-— **18 rows**, the most complete Claude capture since `cc2191` (login-flow and
-bootstrap rows are back in-window because the re-login happened right before the
-pull). Supersedes `cc2211`.
+— **18 rows**, the most complete Claude capture since the 2.1.191 one (login-flow
+and bootstrap rows are back in-window because the re-login happened right before
+the pull). Supersedes the 2.1.211 capture (dir pruned, see git history).
 
 **2.1.211 → 2.1.214 is a pure version + `build_time` bump on the wire.** The
 request-header betas, telemetry betas, stainless versions, body layout, and the
@@ -49,7 +49,7 @@ for Haiku). `cch=` still a per-request `xxhash64(body)[:5]`.
 
 ## 2. Bootstrap burst + OAuth login flow — UA CORRECTIONS
 
-This capture finally re-anchors the bootstrap/login UAs (last seen in cc2191).
+This capture finally re-anchors the bootstrap/login UAs (last seen at 2.1.191).
 Endpoint → UA, verified against the live traffic:
 
 ```
@@ -67,7 +67,8 @@ GET  downloads.claude.ai/.../latest       axios/1.15.2
 **cc-core bug fixed here:** `oauth_account_settings` and `claude_code_grove` were
 sending `claude-code/<ver>`, and `mcp_registry` was sending `axios/1.15.2`. All
 three should be the main `claude-cli` UA — and they were ALSO `claude-cli` in the
-2.1.191 baseline (`cc2191/rows/{05,08,11}`), so cc-core shipped these wrong from
+2.1.191 baseline (rows `{05,08,11}` of that capture; dir pruned, see git
+history), so cc-core shipped these wrong from
 the start; the `grove` code comment claiming a "2.1.141 switch to claude-code"
 was incorrect. Fixed in `sidecar.realBootstrapSteps` + `sidecar_test.go`.
 

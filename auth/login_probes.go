@@ -11,7 +11,8 @@ import (
 
 // Auxiliary login-phase endpoints. Real Claude Code fires these around the
 // token exchange on every fresh `/login` — captured from a live 2.1.191 OAuth
-// session (crack/cc2191/rows/{01,03,04,05,06}). Doing only the bare token
+// session, re-confirmed at 2.1.214 (crack/cc2214/rows/{01,03,04,05,06}). Doing
+// only the bare token
 // exchange leaves a lone POST with none of the surrounding probes, which is
 // itself a "not the official client" signal at Anthropic's edge. We replay
 // them best-effort so an operator-driven login produces the same traffic
@@ -31,7 +32,7 @@ const (
 // are set only when non-empty. The header set matches the live capture exactly.
 // The response body is drained (connection reuse + realistic byte counts) and
 // discarded — we already have account/org/email from the token response.
-func doLoginProbe(ctx context.Context, client *http.Client, urlStr, ua, accessToken, beta string) error {
+func doLoginProbe(ctx context.Context, client *http.Client, urlStr, ua, accessToken, beta string, extra map[string]string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
 		return err
@@ -42,6 +43,9 @@ func doLoginProbe(ctx context.Context, client *http.Client, urlStr, ua, accessTo
 	req.Header.Set("Connection", "close")
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	for k, v := range extra {
+		req.Header.Set(k, v)
 	}
 	if beta != "" {
 		req.Header.Set("anthropic-beta", beta)
@@ -62,7 +66,7 @@ func doLoginProbe(ctx context.Context, client *http.Client, urlStr, ua, accessTo
 func performPreLoginProbes(ctx context.Context, client *http.Client) {
 	ua := mimicry.ClaudeCLIUserAgent
 	for _, u := range []string{anthropicHelloURL, anthropicAPIHelloURL} {
-		if err := doLoginProbe(ctx, client, u, ua, "", ""); err != nil {
+		if err := doLoginProbe(ctx, client, u, ua, "", "", nil); err != nil {
 			log.Debugf("oauth login pre-probe %s: %v", u, err)
 		}
 	}
@@ -75,13 +79,23 @@ func performPreLoginProbes(ctx context.Context, client *http.Client) {
 // Best-effort: failures are logged at debug and never abort the login.
 func performPostLoginProbes(ctx context.Context, client *http.Client, accessToken string) {
 	cli := mimicry.ClaudeCLIUserAgent
-	probes := []struct{ url, ua, beta string }{
-		{anthropicProfileURL, anthropicOAuthUA, ""},
-		{anthropicRolesURL, anthropicOAuthUA, ""},
-		{anthropicSettingsURL, cli, anthropicOAuthBeta},
+	// The three probes are NOT header-identical: profile carries Content-Type
+	// and Cache-Control: no-cache, roles carries neither. Verified on the
+	// 2026-07-31 login capture (crack/cc2220/SPEC.md §2).
+	profileExtra := map[string]string{
+		"Content-Type":  "application/json",
+		"Cache-Control": "no-cache",
+	}
+	probes := []struct {
+		url, ua, beta string
+		extra         map[string]string
+	}{
+		{anthropicProfileURL, anthropicOAuthUA, "", profileExtra},
+		{anthropicRolesURL, anthropicOAuthUA, "", nil},
+		{anthropicSettingsURL, cli, anthropicOAuthBeta, nil},
 	}
 	for _, p := range probes {
-		if err := doLoginProbe(ctx, client, p.url, p.ua, accessToken, p.beta); err != nil {
+		if err := doLoginProbe(ctx, client, p.url, p.ua, accessToken, p.beta, p.extra); err != nil {
 			log.Debugf("oauth login post-probe %s: %v", p.url, err)
 		}
 	}

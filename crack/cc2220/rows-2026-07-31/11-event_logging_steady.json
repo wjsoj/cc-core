@@ -1,0 +1,183 @@
+{
+  "class": "event_logging_steady",
+  "url": "https://api.anthropic.com/api/event_logging/v2/batch",
+  "method": "POST",
+  "status": 200,
+  "reqSize": 5099,
+  "resSize": 56,
+  "reqHeaders": {
+    "accept": "application/json, text/plain, */*",
+    "content-type": "application/json",
+    "user-agent": "claude-code/2.1.220",
+    "x-service-name": "claude-code",
+    "content-length": "5099",
+    "accept-encoding": "gzip, br",
+    "host": "api.anthropic.com",
+    "connection": "close"
+  },
+  "resHeaders": {
+    "date": "Fri, 31 Jul 2026 13:27:15 GMT",
+    "content-type": "application/json",
+    "transfer-encoding": "chunked",
+    "connection": "close",
+    "request-id": "<masked>",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "server": "cloudflare",
+    "content-encoding": "gzip",
+    "vary": "Accept-Encoding",
+    "server-timing": "x-originResponse;dur=24",
+    "cf-cache-status": "DYNAMIC",
+    "x-robots-tag": "none",
+    "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    "cf-ray": "<masked>"
+  },
+  "event_histogram": {
+    "tengu_oauth_claudeai_selected": 1,
+    "tengu_keybinding_fired": 1,
+    "tengu_oauth_flow_start": 1
+  },
+  "reqBody": {
+    "body": {
+      "events": [
+        {
+          "event_type": "ClaudeCodeInternalEvent",
+          "event_data": {
+            "event_name": "tengu_oauth_claudeai_selected",
+            "client_timestamp": "2026-07-31T13:27:03.510Z",
+            "model": "claude-opus-4-8",
+            "session_id": "<masked:session_id>",
+            "user_type": "external",
+            "betas": "<text:208 chars>",
+            "env": {
+              "platform": "linux",
+              "node_version": "v26.3.0",
+              "terminal": "konsole",
+              "package_managers": "npm,yarn,pnpm",
+              "runtimes": "bun,deno,node",
+              "is_running_with_bun": true,
+              "is_ci": false,
+              "is_claubbit": false,
+              "is_github_action": false,
+              "is_claude_code_action": false,
+              "is_claude_ai_auth": false,
+              "version": "2.1.220",
+              "arch": "x64",
+              "is_claude_code_remote": false,
+              "deployment_environment": "unknown-linux",
+              "is_conductor": false,
+              "version_base": "2.1.220",
+              "build_time": "2026-07-24T22:17:45Z",
+              "is_local_agent_mode": false,
+              "linux_distro_id": "arch",
+              "linux_kernel": "7.1.2-arch3-1",
+              "vcs": "git",
+              "platform_raw": "linux",
+              "shell": "zsh"
+            },
+            "entrypoint": "cli",
+            "is_interactive": true,
+            "client_type": "cli",
+            "process": "<text:336 chars>",
+            "additional_metadata": "eyJyaCI6IjcwMDM4NmJlZWZkYzQ5ZWEiLCJyZW5kZXJlcl9tb2RlIjoiZnVsbHNjcmVlbiJ9",
+            "event_id": "<masked:event_id>",
+            "device_id": "<masked:device_id>"
+          }
+        },
+        {
+          "event_type": "ClaudeCodeInternalEvent",
+          "event_data": {
+            "event_name": "tengu_keybinding_fired",
+            "client_timestamp": "2026-07-31T13:27:03.511Z",
+            "model": "claude-opus-4-8",
+            "session_id": "<masked:session_id>",
+            "user_type": "external",
+            "betas": "<text:208 chars>",
+            "env": {
+              "platform": "linux",
+              "node_version": "v26.3.0",
+              "terminal": "konsole",
+              "package_managers": "npm,yarn,pnpm",
+              "runtimes": "bun,deno,node",
+              "is_running_with_bun": true,
+              "is_ci": false,
+              "is_claubbit": false,
+              "is_github_action": false,
+              "is_claude_code_action": false,
+              "is_claude_ai_auth": false,
+              "version": "2.1.220",
+              "arch": "x64",
+              "is_claude_code_remote": false,
+              "deployment_environment": "unknown-linux",
+              "is_conductor": false,
+              "version_base": "2.1.220",
+              "build_time": "2026-07-24T22:17:45Z",
+              "is_local_agent_mode": false,
+              "linux_distro_id": "arch",
+              "linux_kernel": "7.1.2-arch3-1",
+              "vcs": "git",
+              "platform_raw": "linux",
+              "shell": "zsh"
+            },
+            "entrypoint": "cli",
+            "is_interactive": true,
+            "client_type": "cli",
+            "process": "<text:268 chars>",
+            "additional_metadata": "<text:112 chars>",
+            "event_id": "<masked:event_id>",
+            "device_id": "<masked:device_id>"
+          }
+        },
+        {
+          "event_type": "ClaudeCodeInternalEvent",
+          "event_data": {
+            "event_name": "tengu_oauth_flow_start",
+            "client_timestamp": "2026-07-31T13:27:03.521Z",
+            "model": "claude-opus-4-8",
+            "session_id": "<masked:session_id>",
+            "user_type": "external",
+            "betas": "<text:208 chars>",
+            "env": {
+              "platform": "linux",
+              "node_version": "v26.3.0",
+              "terminal": "konsole",
+              "package_managers": "npm,yarn,pnpm",
+              "runtimes": "bun,deno,node",
+              "is_running_with_bun": true,
+              "is_ci": false,
+              "is_claubbit": false,
+              "is_github_action": false,
+              "is_claude_code_action": false,
+              "is_claude_ai_auth": false,
+              "version": "2.1.220",
+              "arch": "x64",
+              "is_claude_code_remote": false,
+              "deployment_environment": "unknown-linux",
+              "is_conductor": false,
+              "version_base": "2.1.220",
+              "build_time": "2026-07-24T22:17:45Z",
+              "is_local_agent_mode": false,
+              "linux_distro_id": "arch",
+              "linux_kernel": "7.1.2-arch3-1",
+              "vcs": "git",
+              "platform_raw": "linux",
+              "shell": "zsh"
+            },
+            "entrypoint": "cli",
+            "is_interactive": true,
+            "client_type": "cli",
+            "process": "<text:332 chars>",
+            "additional_metadata": "<text:108 chars>",
+            "event_id": "<masked:event_id>",
+            "device_id": "<masked:device_id>"
+          }
+        }
+      ]
+    }
+  },
+  "resBody": {
+    "body": {
+      "accepted_count": 3,
+      "rejected_count": 0
+    }
+  }
+}

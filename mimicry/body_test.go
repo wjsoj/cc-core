@@ -1,7 +1,9 @@
 package mimicry
 
 import (
+	"bytes"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -325,5 +327,31 @@ func TestClaudeCodeFingerprintUTF16Vectors(t *testing.T) {
 				t.Fatalf("fingerprint: got %s want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+// The 2.1.220 bundle literally contains `cch=00000` and no code that replaces
+// it (crack/cc2220/SPEC.md, "`cch` — exhaustive static analysis"). That is a
+// standing temptation to "align" cc-core by shipping the placeholder — but no
+// genuine request ever carries it: 43/43 captured values are non-zero and
+// unique. This test fails loudly if the signer is ever removed or neutered.
+func TestCCHIsNeverPlaceholder(t *testing.T) {
+	const billing = `{"system":[{"type":"text","text":` +
+		`"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli; cch=00000;"}]}`
+
+	got := signBillingHeaderCCH([]byte(billing))
+	if bytes.Contains(got, []byte("cch=00000")) {
+		t.Fatalf("placeholder survived signing — real clients never send it:\n%s", got)
+	}
+
+	m := regexp.MustCompile(`cch=([0-9a-f]{5});`).FindSubmatch(got)
+	if m == nil {
+		t.Fatalf("signed body has no 5-hex cch: %s", got)
+	}
+
+	// Deterministic for a fixed body — a silent seed/algorithm change is a
+	// behavioural change to every proxied request and must be explicit.
+	if again := signBillingHeaderCCH([]byte(billing)); !bytes.Equal(got, again) {
+		t.Error("cch signing is not deterministic for a fixed body")
 	}
 }

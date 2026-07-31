@@ -11,16 +11,14 @@ carry a `crack/`.
 
 | dir | provider / client | capture target | status |
 |---|---|---|---|
-| `cc2220/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.220`, 2026-07-30 | **current Claude target — read `cc2220/SPEC.md` first.** Startup plus 10 independent first turns and one continuous 10-turn conversation, consolidated to 28 representative/data rows while retaining all 10 multi-turn main requests. `chain-redacted.json` preserves all 37 billing requests and hashed `cc_prev_req` → upstream response `request-id` linkage (main 9/9, prompt suggestion 6/6). Version/build_time bumped; UTF-16 billing suffix semantics fixed. `context-1m` is intentionally excluded from the version diff. |
-| `cc2214/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.214`, 2026-07-18 | Superseded by cc2220. Full re-login + bootstrap + chat (18 rows). Wire vs cc2211: pure version + `build_time` bump; also fixed 3 bootstrap-sidecar UAs (account/settings, grove, mcp-registry). |
-| `cc2211/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.211`, 2026-07-18 | Superseded by cc2214. Chat-path diff vs cc2206: `anthropic-beta` rewritten 15→14 items (+context-1m, −server-side-fallback, −fallback-credit); runtime tail only. |
-| `cc2191/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.191`, 2026-06-25 | Login-flow + startup-burst baseline (kept because later captures roll those rows out of whistle's buffer). Full OAuth login flow (hello/token/profile/roles + api_hello/account_settings probes) and startup burst (eval_sdk/grove/bootstrap/penguin/mcp). Older per-version dirs (cc2167/cc2170/cc2183) were pruned — see git history. Later diffs: cc2197/cc2198/cc2201/cc2206. |
+| `cc2220/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.220`, 2026-07-30 + 2026-07-31 | **current Claude target — read `cc2220/SPEC.md` first.** Two independent captures: `rows/` (macOS, Sonnet 5) and `rows-2026-07-31/` (Linux, opus-4-8 + opus-5 1M, plus a full fresh OAuth login). The second one established that the request beta list is context-mode dependent (13 non-1M / 15 with 1M), that `count_tokens` is its own request class, and corrected the login `profile` probe headers and two MCP-probe details (§1a/§1b/§2/§3). Startup plus 10 independent first turns and one continuous 10-turn conversation, consolidated to 28 representative/data rows while retaining all 10 multi-turn main requests. `chain-redacted.json` preserves all 37 billing requests and hashed `cc_prev_req` → upstream response `request-id` linkage (main 9/9, prompt suggestion 6/6). Version/build_time bumped; UTF-16 billing suffix semantics fixed. `context-1m` is intentionally excluded from the version diff. |
+| `cc2214/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.214`, 2026-07-18 | Superseded by cc2220 but **kept as the login-flow baseline**: it is the only in-tree capture with the `oauth_hello`, `api_hello` and `oauth_account_settings` probe rows, which cc2220 does not have. Full re-login + bootstrap + chat (18 rows). Wire vs 2.1.211: pure version + `build_time` bump; also fixed 3 bootstrap-sidecar UAs (account/settings, grove, mcp-registry). Older per-version dirs (cc2167/cc2170/cc2183, then cc2191/cc2197/cc2198/cc2201/cc2206/cc2211) were pruned — see git history. |
 | `codex/` | OpenAI ChatGPT backend / Codex CLI | `codex-tui/0.135.0`, 2026-05-30 | **current Codex target** — identity bumped to `0.144.4`; 5h quota window retired 2026-07 (weekly-only). See `codex/SPEC.md`. |
 | `kiro/` | Amazon Q / Kiro CLI | 2026-05/06 sessions + image-tool flow + PKCE login | **current Kiro target** |
 | `oauth/` | Anthropic / Claude Code 2.1.126-era benign OAuth session | historical | beta-list / body-shape provenance |
 | `apikey/` | Anthropic via x-api-key (3rd-party gateway path) | historical | provenance for the **apikey beta list** (strict gateways reject unknown betas) |
 | `login/` | Anthropic OAuth login flow (hello → token → profile → roles → bootstrap) | 2.1.158-era | login-path fingerprint; UA on login sidecars = axios |
-| `scripts/` | tooling | — | `extract_live.py` (structural redactor; pass `cc2191/rows` as outdir), `split.py`/`sanitize.py`/`gen.py` (older pipeline) |
+| `scripts/` | tooling | — | `extract_live.py` (structural redactor; pass `cc<ver>/rows` as outdir), `split.py`/`sanitize.py`/`gen.py` (older pipeline) |
 | `COMPARE.md` | — | — | oauth-vs-apikey path diff notes |
 
 ## Redaction policy
@@ -46,4 +44,4 @@ secrets, local-only) is gitignored.
    `kiro*` for the other providers), run `go test ./...`, tag a release.
 5. Bump the `cc-core` dependency in hypitoken and CPA-Claude.
 
-See `cc2191/SPEC.md` for the worked 2.1.183 → 2.1.191 example.
+See `cc2220/SPEC.md` for the worked 2.1.214 → 2.1.220 example.

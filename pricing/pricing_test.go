@@ -141,3 +141,31 @@ func TestModelsAndProviderDefaultsCopies(t *testing.T) {
 		t.Fatal("Models() should return a copy, not the underlying map")
 	}
 }
+
+// Real Claude Code labels a 1M-context request "claude-opus-5[1m]" in its
+// telemetry. If that label ever reaches billing it must still resolve to the
+// model's own card: the bracket suffix misses every key AND every "claude-…"
+// prefix (the fallback only trims on "-"), so an unstripped name silently
+// lands on the Anthropic provider default — the Sonnet card — undercharging
+// an opus-5 request by 40%.
+func TestLookupStripsContextModeSuffix(t *testing.T) {
+	cat := NewCatalog(Config{})
+
+	cases := []struct{ model, base string }{
+		{"claude-opus-5[1m]", "claude-opus-5"},
+		{"claude-sonnet-5[1m]", "claude-sonnet-5"},
+		{"claude-opus-4-8[1m]", "claude-opus-4-8"},
+		{"claude-opus-5-20260301[1m]", "claude-opus-5"},
+	}
+	for _, tc := range cases {
+		got, want := cat.Lookup("anthropic", tc.model), cat.Lookup("anthropic", tc.base)
+		if got != want {
+			t.Errorf("Lookup(%q) = %+v, want the %q card %+v", tc.model, got, tc.base, want)
+		}
+	}
+
+	// Guard the specific regression: opus-5[1m] must not bill at Sonnet rates.
+	if p := cat.Lookup("anthropic", "claude-opus-5[1m]"); p.InputPer1M != 5.00 {
+		t.Errorf("opus-5[1m] InputPer1M=%v want 5.00 (Sonnet default would be 3.00)", p.InputPer1M)
+	}
+}

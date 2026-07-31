@@ -46,6 +46,12 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	// POST /v1/messages/count_tokens is a distinct request class in real CC:
+	// its own (shorter) beta list and no X-Stainless-Timeout.
+	// (crack/cc2220/SPEC.md §1b.)
+	countTokens := req.URL != nil &&
+		strings.HasSuffix(strings.TrimSuffix(req.URL.Path, "/"), "/v1/messages/count_tokens")
+
 	// Anthropic protocol headers.
 	ensureHeader(req.Header, "Anthropic-Version", ClaudeAnthropicVersion)
 	if existing := strings.TrimSpace(req.Header.Get("Anthropic-Beta")); existing != "" {
@@ -60,6 +66,10 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 		// cache-diagnosis-2026-04-07) that strict 3rd-party apikey gateways will
 		// reject — real CC's apikey path doesn't send them either.
 		req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaApikey)
+	} else if countTokens {
+		// count_tokens is its own request class on the OAuth path with a much
+		// shorter list — sending the main 13-item list here is a tell.
+		req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaCountTokens)
 	} else {
 		req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaFull)
 	}
@@ -76,7 +86,10 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 	ensureHeader(req.Header, "X-Stainless-Package-Version", ClaudeStainlessPackageV)
 	ensureHeader(req.Header, "X-Stainless-Os", ClaudeStainlessOS)
 	ensureHeader(req.Header, "X-Stainless-Arch", ClaudeStainlessArch)
-	ensureHeader(req.Header, "X-Stainless-Timeout", ClaudeStainlessTimeout)
+	if !countTokens {
+		// Real CC omits this one on count_tokens (it keeps Retry-Count).
+		ensureHeader(req.Header, "X-Stainless-Timeout", ClaudeStainlessTimeout)
+	}
 
 	// Stable per-credential session ID; new UUID per request for the
 	// client-request-id (only on first-party endpoint).

@@ -153,7 +153,7 @@ const (
 // claude-cli UA for everything else — chat, quota probe, grove,
 // oauth/account/settings, mcp-registry, code/triggers, hello. Mismatching is
 // detectable. NOTE: account/settings + grove + mcp-registry all use claude-cli,
-// NOT claude-code/axios — verified identical in BOTH the cc2191 and cc2214
+// NOT claude-code/axios — verified identical in BOTH the 2.1.191 and 2.1.214
 // captures (crack/cc2214/SPEC.md §2), and the 2.1.220 bootstrap re-confirmed
 // the endpoint families (crack/cc2220/SPEC.md). cc-core shipped the wrong UA
 // on those three from 2.1.191 until this was caught at the 2.1.214 bump.
@@ -412,7 +412,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			method:         "GET",
 			url:            baseURL + "/api/oauth/account/settings",
 			delayFromStart: 160 * time.Millisecond,
-			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (cc2191+cc2214)
+			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (2.1.191 + cc2214)
 			beta:           "oauth-2025-04-20",
 			connection:     "close",
 		},
@@ -421,7 +421,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			method:         "GET",
 			url:            baseURL + "/api/claude_code_grove",
 			delayFromStart: 160 * time.Millisecond,
-			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (cc2191+cc2214 both)
+			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (2.1.191 + cc2214 both)
 			beta:           "oauth-2025-04-20",
 			connection:     "close",
 		},
@@ -476,8 +476,12 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			method:         "GET",
 			url:            baseURL + "/mcp-registry/v0/servers?version=latest&limit=100&visibility=commercial%2Cgsuite%2Centerprise%2Chealth",
 			delayFromStart: 1950 * time.Millisecond,
-			userAgent:      uaClaudeCLI, // claude-cli, NOT axios (cc2191+cc2214 both, 8 samples)
+			userAgent:      uaClaudeCLI, // claude-cli, NOT axios (2.1.191 + cc2214 both, 8 samples)
 			connection:     "close",
+			// Real CC sends NO Authorization on the registry — it is a public
+			// catalog endpoint. A Bearer here is itself a tell. Verified on the
+			// 2026-07-31 capture, 4 samples (crack/cc2220/SPEC.md §3).
+			noAuth: true,
 		},
 		{
 			name:           "v1_mcp_servers",
@@ -490,11 +494,14 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			contentType:    "application/json",
 			connection:     "close",
 			// Real CC sends the MCP handshake pair alongside the beta on this
-			// probe — captured since 2.1.191 but never wired here (cc2191 row 12
-			// had them too). anthropic-mcp-client-capabilities is the base64 of
-			// {"roots":{},"elicitation":{}}. (crack/cc2197/SPEC.md §2.)
+			// probe — captured since 2.1.191 but never wired here
+			// (crack/cc2214/rows/12-mcp_servers.json has them too).
+			// anthropic-mcp-client-capabilities is the base64 of
+			// {"roots":{"listChanged":true},"elicitation":{}} — the CLI advertises
+			// roots.listChanged, so the older {"roots":{}} encoding decoded to a
+			// capability set real CC never sends (crack/cc2220/SPEC.md §3).
 			extraHeaders: map[string]string{
-				"anthropic-mcp-client-capabilities": "eyJyb290cyI6e30sImVsaWNpdGF0aW9uIjp7fX0=",
+				"anthropic-mcp-client-capabilities": "eyJyb290cyI6eyJsaXN0Q2hhbmdlZCI6dHJ1ZX0sImVsaWNpdGF0aW9uIjp7fX0=",
 				"MCP-Protocol-Version":              "2025-11-25",
 			},
 		},
@@ -503,8 +510,8 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			// behind the ccr-triggers-2026-01-30 beta. Carries
 			// anthropic-client-platform and X-Organization-UUID;
 			// extraHeaders below sets the latter from the auth at dispatch.
-			// UA is the main claude-cli agent, NOT axios — verified in the
-			// 2.1.191 capture (crack/cc2191/rows/18-code_triggers).
+			// UA is the main claude-cli agent, NOT axios — verified since the
+			// 2.1.191 capture (crack/cc2214/rows/18-code_triggers.json).
 			name:           "code_triggers",
 			method:         "GET",
 			url:            baseURL + "/v1/code/triggers",

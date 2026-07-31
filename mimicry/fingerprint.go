@@ -44,7 +44,7 @@ const (
 	// 2.1.191 jumped the bundled Node runtime v24.3.0 → v26.3.0. This single
 	// constant feeds BOTH the X-Stainless-Runtime-Version request header and the
 	// telemetry env.node_version (sidecar), which the live capture confirms move
-	// together. UNCHANGED at 2.1.206 (still v26.3.0). (crack/cc2206/SPEC.md §1.)
+	// together. UNCHANGED through 2.1.220 (still v26.3.0). (crack/cc2220/SPEC.md.)
 	ClaudeStainlessRuntimeV = "v26.3.0"
 	ClaudeStainlessPackageV = "0.94.0"
 	ClaudeStainlessOS       = "Linux"
@@ -52,28 +52,52 @@ const (
 	ClaudeStainlessTimeout  = "600"
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"
-	// ClaudeAnthropicBetaFull is the Anthropic-Beta REQUEST HEADER captured
-	// from real CC with 1M context active — exact value, exact order (14 items).
-	// The 2.1.220 capture used ordinary Sonnet 5 and therefore cannot determine
-	// whether context-1m belongs in a 1M request; per the capture review, this
-	// version bump preserves the existing context-mode policy. Any beta we drop
-	// that real CLI sends will downgrade us to
-	// "extra usage" billing; any extra beta we add that real CLI doesn't send is
-	// also a fingerprint signal.
-	// 2.1.206→2.1.211 rewrote this list: it ADDS context-1m-2025-08-07 back
-	// into the request header (at position 3) and DROPS both
-	// server-side-fallback-2026-06-01 and fallback-credit-2026-06-01 (15→14
-	// items). The 2.1.211 capture session ran WITH the 1M window active and ALL
-	// 24 of its /v1/messages requests carried this exact 14-item list including
-	// context-1m — a change from 2.1.206, where the request header omitted
-	// context-1m even under 1M. Since real CC 2.1.211 no longer sends the two
-	// fallback betas, keeping them would now be the fingerprint MISMATCH; match
-	// the capture. context-1m also lives in telemetry ClaudeReportedBetas below
-	// (that 9-item list is UNCHANGED — re-confirmed identical in this capture).
-	// Verified crack/cc2211/SPEC.md §1.
+	// ClaudeAnthropicBetaFull is the Anthropic-Beta REQUEST HEADER real CC
+	// 2.1.220 sends on an ordinary (NON-1M) main /v1/messages request — exact
+	// value, exact order (13 items). Any beta we drop that real CLI sends will
+	// downgrade us to "extra usage" billing; any extra beta we add that real CLI
+	// doesn't send is also a fingerprint signal.
+	//
+	// The 2.1.220 request list is CONTEXT-MODE DEPENDENT — established by the
+	// 2026-07-31 Linux capture (crack/cc2220/SPEC.md §1a), which caught both
+	// modes in one session:
+	//
+	//	non-1M (claude-opus-4-8)   → this 13-item list        (5 requests)
+	//	1M active (claude-opus-5)  → ClaudeAnthropicBeta1M    (1 request)
+	//
+	// The independent 2.1.220 macOS capture (ordinary Sonnet 5, 20 controlled
+	// main requests) carried this same 13-item list, so the non-1M shape has
+	// 25+ requests across two hosts behind it and is the right default.
+	//
+	// This REPLACES the old 14-item constant (13 + context-1m, no
+	// fallback-credit) inherited from the 2.1.211 capture, which matched
+	// NEITHER 2.1.220 variant: real CC only sends context-1m when the 1M window
+	// is actually active, and when it does it also sends fallback-credit.
+	//
 	// NOTE: only injected on OAuth requests that arrive WITHOUT their own beta
-	// list (headers.go) — real CC passthrough keeps the client's own list.
-	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	// list (headers.go) — real CC passthrough keeps the client's own list, so a
+	// downstream client that wants 1M declares context-1m itself, exactly as
+	// the real CLI does.
+	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	// ClaudeAnthropicBeta1M is the same header when the 1M context window IS
+	// active (15 items): context-1m-2025-08-07 at position 3 and
+	// fallback-credit-2026-06-01 between effort and extended-cache-ttl. Captured
+	// verbatim from the one `claude-opus-5` request in the 2026-07-31 session
+	// whose telemetry reported the model as `claude-opus-5[1m]`
+	// (crack/cc2220/SPEC.md §1a).
+	//
+	// NOT injected automatically: a request body carries no 1M marker (the
+	// `[1m]` suffix exists only in telemetry), so cc-core cannot infer the mode.
+	// Exported so a fork offering an explicit "1M mode" sends the real list
+	// instead of hand-assembling one. Single-sample — re-verify on the next
+	// capture before treating it as settled.
+	ClaudeAnthropicBeta1M = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,fallback-credit-2026-06-01,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	// ClaudeAnthropicBetaCountTokens is the beta list real CC 2.1.220 sends on
+	// POST /v1/messages/count_tokens — a request class of its own, NOT the main
+	// list (5 items, 4 samples, crack/cc2220/SPEC.md §1b). count_tokens also
+	// omits X-Stainless-Timeout, which every main request carries; headers.go
+	// reproduces both differences.
+	ClaudeAnthropicBetaCountTokens = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,token-counting-2024-11-01"
 	// ClaudeReportedBetas is the SHORTER beta list real CC 2.1.191 reports in
 	// its telemetry bodies (event_logging `betas`, datadog `betas`/ddtags) — 9
 	// items, stopping at mid-conversation-system. In the 2.1.191 telemetry this

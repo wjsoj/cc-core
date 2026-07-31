@@ -29,6 +29,20 @@ import (
 // The cch implementation remains a legacy best-effort reconstruction: the
 // genuine 2.1.220 client emits a dynamic value, but its signer did not match
 // the seeded-xxhash guess on any of 37 captured requests (cc2220/SPEC.md).
+//
+// An exhaustive static search of the 2.1.220 bundle (2026-07-31) proved WHY
+// that reconstruction can't be finished from the binary: the JS emits the
+// literal placeholder `cch=00000` and contains NO code that replaces it —
+// `cc_version=` and `cc_prev_req` each appear exactly once (the one builder),
+// the only other references to the billing block merely EXCLUDE it from the
+// local cache-diagnosis hashes, and there is no native symbol for it either.
+// The real substitution happens below the JS layer. See cc2220/SPEC.md,
+// "`cch` — exhaustive static analysis".
+//
+// Therefore: keep signing. Do NOT "correct" this to emit 00000 just because
+// that is what the bundle's source says — 43/43 captured real requests carry
+// a non-zero, unique value, so the placeholder is a shape no genuine client
+// ever puts on the wire. TestCCHIsNeverPlaceholder guards this.
 
 const (
 	// fingerprintSalt is the salt used in the cc_version 3-char fingerprint.
@@ -260,7 +274,10 @@ func buildBillingBlock(body []byte, cliVersion string) json.RawMessage {
 
 // computeClaudeCodeFingerprint replicates the real CLI's cc_version suffix.
 // Verified byte-for-byte against the CC 2.1.198 bundle (functions xtf/awo,
-// extracted from the standalone binary — see crack/cc2197/SPEC.md §5):
+// extracted from the standalone binary at 2.1.197/2.1.198; that per-version
+// archive dir was pruned, see git history. UTF-16 semantics re-verified against
+// the live capture in crack/cc2220/SPEC.md "Billing, fingerprint suffix, and
+// `cch`"):
 //
 //	function xtf(e){let t=e.find(r=>r.type==="user"&&!r.isMeta); ... first text block}
 //	function awo(e,t){let r=[4,7,20].map(i=>e[i]||"0").join(""); return

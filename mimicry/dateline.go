@@ -12,7 +12,8 @@ import (
 // "Today's date is YYYY-MM-DD." sentence it injects into the environment
 // context (top-level system prompt on turn 1, <system-reminder> blocks on
 // later turns). Verified byte-for-byte against the CC 2.1.197 standalone binary
-// (functions rdp / odp / qla — see crack/cc2197/SPEC.md §6):
+// (functions rdp / odp / qla — decompiled at 2.1.197; that per-version archive
+// dir was pruned, see git history):
 //
 //	function rdp(){ if(vrt()) return null;            // official base URL → no beacon
 //	  let e=host, n=(tz==="Asia/Shanghai"||tz==="Asia/Urumqi");

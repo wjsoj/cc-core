@@ -118,6 +118,17 @@ func (c *Catalog) Lookup(provider, model string) ModelPrice {
 			m = strings.TrimSpace(m[:i])
 		}
 	}
+	// Strip a trailing "[value]" context-mode suffix — real Claude Code labels
+	// a 1M-context request "claude-opus-5[1m]" in its telemetry. The suffix is
+	// NOT a distinct price tier here; without this the name misses every card
+	// AND every "claude-…" prefix (the fallback only trims on "-"), landing on
+	// the Anthropic provider default (the Sonnet card) and undercharging an
+	// opus-5 request by 40%.
+	if strings.HasSuffix(m, "]") {
+		if i := strings.LastIndex(m, "["); i > 0 {
+			m = strings.TrimSpace(m[:i])
+		}
+	}
 	if m != "" {
 		full := prov + "/" + m
 		if p, ok := c.models[full]; ok {
