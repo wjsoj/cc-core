@@ -313,6 +313,13 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 			if k.IsQuotaExceeded(now) {
 				continue
 			}
+			// Circuit breaker: a channel that just failed repeatedly is paused,
+			// so traffic rotates onto the next key instead of re-paying a
+			// doomed upstream round-trip on every request. Self-expiring — the
+			// key returns for a probe without operator involvement.
+			if k.IsQuarantined(now) {
+				continue
+			}
 			if isGroupIdleNow(k.Group, now) {
 				continue
 			}

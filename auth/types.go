@@ -2,9 +2,12 @@ package auth
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // NormalizeGroup canonicalizes a group identifier. Empty string and the
@@ -156,6 +159,14 @@ type Auth struct {
 	HardFailureAt       time.Time // sticky unhealthy; cleared only by ClearFailure
 	HardFailureReason   string
 
+	// Circuit breaker for API-key channels. Unlike HardFailureAt these are
+	// self-healing: QuarantineUntil is a deadline, never a sticky flag, so a
+	// channel is only ever *paused*, never retired. QuarantineStrikes counts
+	// consecutive quarantine rounds and drives the exponential backoff.
+	// See apiKeyQuarantineThreshold. Cleared by MarkSuccess / ClearFailure.
+	QuarantineUntil   time.Time
+	QuarantineStrikes int
+
 	// Client-initiated cancellations (ctrl-C, connection close). Tracked
 	// for admin visibility only — does NOT affect IsHealthy / cooldown /
 	// consecutive-failure counters, since the credential itself is fine.
@@ -212,6 +223,47 @@ const hardFailureThreshold = 5
 // and marked hard-unhealthy. Counter resets on any successful response.
 const rateLimit429HardFailureThreshold = 15
 
+// apiKeyQuarantineThreshold is the number of consecutive upstream-side
+// failures after which an API-key channel is paused (its circuit opens).
+//
+// API-key credentials are operator-managed BYOK / relay channels and are
+// deliberately exempt from every *sticky* auto-retirement path (see
+// MarkFailure, MarkHardFailure): a working channel must never end up pinned
+// offline waiting for a human. That exemption, on its own, left the opposite
+// failure mode — a channel that is comprehensively broken (revoked key, dead
+// relay) stayed in rotation forever, so every single request paid a full
+// upstream round-trip to rediscover the same failure before failing over.
+//
+// The quarantine closes that gap without reintroducing the sticky behaviour:
+// it is a *deadline*, so the channel always returns by itself. Three strikes
+// rather than one deliberately tolerates the ordinary weather of a shared
+// relay (a lone 502, a burst of throttling) before pausing anything.
+const apiKeyQuarantineThreshold = 3
+
+// apiKeyQuarantineBackoff returns how long an API-key channel stays paused
+// after its n-th consecutive quarantine round.
+//
+// The ceiling matters more than the growth curve: with a single API-key
+// channel configured, the backoff is also the maximum time the deployment is
+// unable to serve that model at all, so it is capped well short of the point
+// where a recovered upstream would sit unused. The first step is short
+// because the common case — a relay restarting, a backend rotating — clears
+// in seconds.
+func apiKeyQuarantineBackoff(n int) time.Duration {
+	switch {
+	case n <= 1:
+		return 10 * time.Second
+	case n == 2:
+		return 30 * time.Second
+	case n == 3:
+		return 2 * time.Minute
+	case n == 4:
+		return 5 * time.Minute
+	default:
+		return 15 * time.Minute
+	}
+}
+
 // auth401HardFailureThreshold is the number of consecutive definitive 401s
 // (upstream authentication_error) — each with the credential's refresh token
 // STILL succeeding — after which the account is presumed genuinely revoked
@@ -257,7 +309,9 @@ func (a *Auth) clearExpiredQuotaLocked(now time.Time) {
 func (a *Auth) Snapshot() AuthInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.clearExpiredQuotaLocked(time.Now())
+	now := time.Now()
+	a.clearExpiredQuotaLocked(now)
+	a.quarantinedLocked(now) // drop an expired pause so the panel never shows a stale one
 	var mm map[string]string
 	if len(a.ModelMap) > 0 {
 		mm = make(map[string]string, len(a.ModelMap))
@@ -289,6 +343,8 @@ func (a *Auth) Snapshot() AuthInfo {
 		Group:             a.Group,
 		Order:             a.Order,
 		PriceMultiplier:   a.PriceMultiplier,
+		QuarantineUntil:   a.QuarantineUntil,
+		QuarantineStrikes: a.QuarantineStrikes,
 		ModelMap:          mm,
 		CodexRateLimits:   rl,
 		CodexRateLimitsAt: a.CodexRateLimitsAt,
@@ -298,22 +354,28 @@ func (a *Auth) Snapshot() AuthInfo {
 }
 
 type AuthInfo struct {
-	ID                string
-	Kind              Kind
-	Provider          string
-	Label             string
-	Email             string
-	ExpiresAt         time.Time
-	ProxyURL          string
-	MaxConcurrent     int
-	Disabled          bool
-	QuotaExceededAt   time.Time
-	QuotaResetAt      time.Time
-	FilePath          string
-	BaseURL           string
-	Group             string
-	Order             int
-	PriceMultiplier   float64
+	ID              string
+	Kind            Kind
+	Provider        string
+	Label           string
+	Email           string
+	ExpiresAt       time.Time
+	ProxyURL        string
+	MaxConcurrent   int
+	Disabled        bool
+	QuotaExceededAt time.Time
+	QuotaResetAt    time.Time
+	FilePath        string
+	BaseURL         string
+	Group           string
+	Order           int
+	PriceMultiplier float64
+	// QuarantineUntil / QuarantineStrikes expose the API-key circuit breaker
+	// so the admin panel can show a paused channel instead of leaving it
+	// looking healthy while it silently serves no traffic. Zero deadline =
+	// circuit closed.
+	QuarantineUntil   time.Time
+	QuarantineStrikes int
 	ModelMap          map[string]string
 	CodexRateLimits   map[string]string
 	CodexRateLimitsAt time.Time
@@ -339,6 +401,73 @@ func (a *Auth) MarkQuotaExceeded(resetAt time.Time) {
 	a.mu.Unlock()
 }
 
+// IsQuarantined reports whether an API-key channel's circuit is currently
+// open (paused). Expired quarantines auto-clear as a side effect, so callers
+// and the admin panel never see a stale pause.
+//
+// Note the deadline is only *cleared* here, not the strike counter: strikes
+// must survive the pause so a channel that fails its re-probe backs off
+// further instead of retrying at the shortest interval forever. MarkSuccess
+// is what resets the count — i.e. only real recovery closes the circuit.
+func (a *Auth) IsQuarantined(now time.Time) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.quarantinedLocked(now)
+}
+
+func (a *Auth) quarantinedLocked(now time.Time) bool {
+	if a.QuarantineUntil.IsZero() {
+		return false
+	}
+	if now.Before(a.QuarantineUntil) {
+		return true
+	}
+	// Deadline passed — the circuit goes half-open: the channel is offered to
+	// the very next request so a single probe can prove whether the upstream
+	// recovered. Success clears the strikes (MarkSuccess); another failure
+	// re-opens the circuit at the next backoff step (tripQuarantineLocked).
+	a.QuarantineUntil = time.Time{}
+	return false
+}
+
+// tripQuarantineLocked opens the circuit for an API-key channel once its
+// consecutive-failure count reaches the threshold. Caller MUST hold a.mu.
+//
+// The backoff carries ±20% jitter. Without it, a fleet of keys knocked out by
+// one shared upstream fault would come back at the identical instant, hit the
+// still-broken upstream together, and re-open together — a self-synchronising
+// thundering herd that turns one outage into a periodic stampede.
+// threshold is the consecutive-failure count at which the circuit opens:
+// apiKeyQuarantineThreshold for ordinary upstream weather, 1 for a
+// definitive credential rejection, which needs no corroboration.
+func (a *Auth) tripQuarantineLocked(now time.Time, reason string, threshold int) {
+	if a.Kind != KindAPIKey {
+		return
+	}
+	if a.ConsecutiveFailures < threshold {
+		return
+	}
+	if now.Before(a.QuarantineUntil) {
+		return // already paused; don't extend on a request already in flight
+	}
+	a.QuarantineStrikes++
+	d := apiKeyQuarantineBackoff(a.QuarantineStrikes)
+	jitter := 1 + (rand.Float64()*0.4 - 0.2) //nolint:gosec // jitter spread, not a security decision
+	a.QuarantineUntil = now.Add(time.Duration(float64(d) * jitter))
+	log.Warnf("auth: api-key %s paused until %s (strike %d, %d consecutive failures): %s",
+		a.ID, a.QuarantineUntil.Format(time.RFC3339), a.QuarantineStrikes, a.ConsecutiveFailures, reason)
+}
+
+// QuarantineSnapshot returns the current pause deadline and strike count for
+// the admin panel. A zero deadline means the circuit is closed. Auto-clears
+// an expired deadline, matching IsQuarantined.
+func (a *Auth) QuarantineSnapshot() (until time.Time, strikes int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.quarantinedLocked(time.Now())
+	return a.QuarantineUntil, a.QuarantineStrikes
+}
+
 func (a *Auth) MarkFailure(reason string) {
 	a.mu.Lock()
 	a.LastFailure = time.Now()
@@ -355,6 +484,9 @@ func (a *Auth) MarkFailure(reason string) {
 		a.HardFailureAt = a.LastFailure
 		a.HardFailureReason = fmt.Sprintf("%d consecutive failures: %s", a.ConsecutiveFailures, reason)
 	}
+	// API keys get the self-healing equivalent instead: a timed pause that
+	// takes the channel out of rotation without ever retiring it.
+	a.tripQuarantineLocked(a.LastFailure, reason, apiKeyQuarantineThreshold)
 	a.mu.Unlock()
 }
 
@@ -461,13 +593,20 @@ func (a *Auth) ClientCancelSnapshot() (time.Time, string) {
 // must manually clear it before traffic resumes. Used for obvious terminal
 // signals (e.g. account disabled, upstream dead).
 //
-// API-key credentials are exempt: they are operator-managed BYOK / relay
-// channels that must never be auto-retired by error detection — a single
-// 401/403 from a flaky relay backend shouldn't pull the whole channel out of
-// rotation until someone clears it by hand. The failure is still recorded for
-// admin visibility, but the sticky hard-failure flag is not set. Operators who
-// genuinely want an API key offline use SetDisabled (the manual Disabled flag),
-// which IsHealthy honours independently of this path.
+// API-key credentials are exempt from the *sticky* flag: they are
+// operator-managed BYOK / relay channels that must never be auto-retired by
+// error detection — a single 401/403 from a flaky relay backend shouldn't
+// pull the whole channel out of rotation until someone clears it by hand.
+// Operators who genuinely want an API key offline use SetDisabled (the manual
+// Disabled flag), which IsHealthy honours independently of this path.
+//
+// They are NOT exempt from the self-healing quarantine, and here it opens on
+// the first strike rather than the third: unlike throttling or a gateway
+// error, a rejection of the credential itself is definitive and needs no
+// corroboration, and re-presenting a revoked key on every subsequent request
+// only buys a guaranteed round-trip before failing over. The pause still
+// expires on its own, so a relay that rejected one request spuriously is back
+// within seconds.
 func (a *Auth) MarkHardFailure(reason string) {
 	a.mu.Lock()
 	a.LastFailure = time.Now()
@@ -475,6 +614,9 @@ func (a *Auth) MarkHardFailure(reason string) {
 	if a.Kind != KindAPIKey {
 		a.HardFailureAt = a.LastFailure
 		a.HardFailureReason = reason
+	} else {
+		a.ConsecutiveFailures++
+		a.tripQuarantineLocked(a.LastFailure, reason, 1)
 	}
 	a.mu.Unlock()
 }
@@ -487,6 +629,16 @@ func (a *Auth) MarkSuccess() {
 	a.ConsecutiveFailures = 0
 	a.Consecutive429s = 0
 	a.Consecutive401s = 0
+	// Recovery closes the circuit for good: a successful exchange is the only
+	// thing that resets the strike count, so the backoff ladder restarts from
+	// the bottom next time rather than staying pessimistic forever. This is
+	// what makes the half-open probe in quarantinedLocked terminate — the
+	// channel returns to full rotation with no operator involvement.
+	if !a.QuarantineUntil.IsZero() || a.QuarantineStrikes > 0 {
+		log.Infof("auth: api-key %s recovered after %d quarantine strike(s) — back in rotation", a.ID, a.QuarantineStrikes)
+	}
+	a.QuarantineUntil = time.Time{}
+	a.QuarantineStrikes = 0
 	a.mu.Unlock()
 }
 
@@ -501,6 +653,8 @@ func (a *Auth) ClearFailure() {
 	a.Consecutive401s = 0
 	a.HardFailureAt = time.Time{}
 	a.HardFailureReason = ""
+	a.QuarantineUntil = time.Time{}
+	a.QuarantineStrikes = 0
 	a.LastSuccess = time.Now()
 	a.mu.Unlock()
 }
@@ -522,16 +676,18 @@ func (a *Auth) IsHealthy() bool {
 	if !a.QuotaExceededAt.IsZero() {
 		return false
 	}
-	// API-key channels are never downgraded by error detection: a relay
-	// serving a run of 500s (or a model it can't fulfil) stays in rotation so
-	// it can recover on the very next good request, instead of dropping out
-	// the moment ConsecutiveFailures crosses the degraded threshold and then
-	// having no way back in if it's the only channel for a model. The sticky
-	// HardFailureAt and quota cooldowns above still apply; only the
-	// consecutive-failure "degraded" heuristic below is skipped. Operators
-	// take an API key offline explicitly via the Disabled flag.
+	// API-key channels are never downgraded by the open-ended "degraded"
+	// heuristic used for OAuth below: a relay serving a run of 500s would drop
+	// out the moment ConsecutiveFailures crossed the threshold and then have no
+	// way back in if it were the only channel for a model.
+	//
+	// They are instead governed by the quarantine circuit breaker, which is
+	// bounded rather than open-ended — it always expires, so the channel
+	// always gets another probe (see apiKeyQuarantineThreshold). While the
+	// circuit is open the key is skipped, which is what lets traffic rotate
+	// onto the next key instead of re-paying a doomed round-trip per request.
 	if a.Kind == KindAPIKey {
-		return true
+		return !a.quarantinedLocked(time.Now())
 	}
 	if a.LastFailure.IsZero() {
 		return true
@@ -560,12 +716,17 @@ func (a *Auth) IsHealthy() bool {
 func (a *Auth) HealthSnapshot() (healthy, hardFailure bool, reason string, consecutive int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.clearExpiredQuotaLocked(time.Now())
+	now := time.Now()
+	a.clearExpiredQuotaLocked(now)
+	quarantined := a.quarantinedLocked(now)
 	hardFailure = !a.HardFailureAt.IsZero()
 	consecutive = a.ConsecutiveFailures
 	switch {
 	case hardFailure:
 		reason = a.HardFailureReason
+	case quarantined:
+		reason = fmt.Sprintf("paused until %s (strike %d): %s",
+			a.QuarantineUntil.Format(time.RFC3339), a.QuarantineStrikes, a.LastFailureReason)
 	case !a.LastFailure.IsZero() && !a.LastSuccess.After(a.LastFailure):
 		reason = a.LastFailureReason
 	}
@@ -578,6 +739,12 @@ func (a *Auth) HealthSnapshot() (healthy, hardFailure bool, reason string, conse
 		healthy = false
 	case !a.QuotaExceededAt.IsZero():
 		healthy = false
+	// API keys are governed by the quarantine breaker, never by the
+	// open-ended degraded heuristic below — mirroring IsHealthy. Without this
+	// case the panel reported an API key unhealthy on rules the router does
+	// not apply, so a key that was actively serving traffic could show red.
+	case a.Kind == KindAPIKey:
+		healthy = !quarantined
 	case a.LastFailure.IsZero(), a.LastSuccess.After(a.LastFailure):
 		healthy = true
 	case a.ConsecutiveFailures < 2 && time.Since(a.LastFailure) > healthGrace:
