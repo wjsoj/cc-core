@@ -150,6 +150,17 @@ type Auth struct {
 	Disabled            bool
 	QuotaExceededAt     time.Time // zero = not flagged
 	QuotaResetAt        time.Time // when to try again (may be zero = manual reset)
+
+	// ModelRateLimits scopes a cooldown to a subset of models instead of the
+	// whole credential. Key is a family scope (e.g. "anthropic:fable"), value
+	// is when that scope's cooldown expires. Unlike QuotaExceededAt this NEVER
+	// makes the credential globally unschedulable — only requests whose model
+	// maps to a live scope are skipped, so the account keeps serving every
+	// other model. Used for Anthropic's per-model overage windows (fable's
+	// 7d_oi bucket is an independent ~half-of-weekly allotment that rejects on
+	// its own while 5h/7d stay allowed). nil/empty = no scoped limits. Append-
+	// only field: old credential files without it decode as nil.
+	ModelRateLimits map[string]time.Time
 	LastFailure         time.Time
 	LastFailureReason   string
 	LastSuccess         time.Time // set on every <400 upstream response
@@ -567,6 +578,63 @@ func (a *Auth) MarkUsageLimitReached(resetAt time.Time) {
 	a.mu.Unlock()
 }
 
+// ModelScopeAnthropicFable is the model-family scope for Anthropic's fable
+// models. Anthropic bills fable against an independent weekly (7d_oi) overage
+// window that rejects on its own while the shared 5h/7d quota stays available,
+// so a fable exhaustion must be scoped to the family — never the whole account.
+const ModelScopeAnthropicFable = "anthropic:fable"
+
+// AnthropicModelScope maps a client model string to the model-family rate-limit
+// scope it belongs to, or "" if the model has no independent scope (in which
+// case any quota signal is account-wide). Matches any fable variant — dated
+// (claude-fable-5-2026…), 1M-context ("[1m]") and mixed casing all collapse to
+// the same family scope.
+func AnthropicModelScope(model string) string {
+	if strings.Contains(strings.ToLower(model), "fable") {
+		return ModelScopeAnthropicFable
+	}
+	return ""
+}
+
+// MarkModelRateLimited records that a specific model-family scope on this
+// credential is out of quota until resetAt, WITHOUT touching account-wide
+// health. Requests for models in that scope are skipped by the scheduler; every
+// other model keeps scheduling normally. Like MarkUsageLimitReached it
+// deliberately does NOT advance Consecutive429s — a per-model overage window
+// hitting its ceiling is a real quota signal, not a stealth-ban candidate.
+func (a *Auth) MarkModelRateLimited(scope string, resetAt time.Time) {
+	if scope == "" {
+		return
+	}
+	a.mu.Lock()
+	if a.ModelRateLimits == nil {
+		a.ModelRateLimits = make(map[string]time.Time, 1)
+	}
+	a.ModelRateLimits[scope] = resetAt
+	a.mu.Unlock()
+}
+
+// IsModelRateLimited reports whether the given model-family scope is currently
+// cooling down on this credential. Expired entries are pruned as a side effect
+// so callers and the admin panel never see stale scoped limits.
+func (a *Auth) IsModelRateLimited(scope string, now time.Time) bool {
+	if scope == "" {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	resetAt, ok := a.ModelRateLimits[scope]
+	if !ok {
+		return false
+	}
+	// Zero reset = manual clear only (mirrors QuotaResetAt semantics).
+	if !resetAt.IsZero() && !now.Before(resetAt) {
+		delete(a.ModelRateLimits, scope)
+		return false
+	}
+	return true
+}
+
 // MarkClientCancel records that a request through this credential was
 // aborted by the client (context canceled before upstream responded). This
 // is surfaced to the admin panel as a non-fatal hint but never touches
@@ -815,6 +883,7 @@ func (a *Auth) ClearQuota() {
 	a.mu.Lock()
 	a.QuotaExceededAt = time.Time{}
 	a.QuotaResetAt = time.Time{}
+	a.ModelRateLimits = nil
 	a.mu.Unlock()
 }
 

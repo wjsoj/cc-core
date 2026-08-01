@@ -229,14 +229,14 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 	// check a group client stays pinned to public for the whole active
 	// window even if its own credentials regain capacity.
 	if s.authID != "" && s.kind == KindOAuth && !excluded[s.authID] {
-		if a := p.findOAuthLocked(s.authID); a != nil && allowed(a.Group) && NormalizeProvider(a.Provider) == provider && p.oauthUsableLocked(a, now) {
+		if a := p.findOAuthLocked(s.authID); a != nil && allowed(a.Group) && NormalizeProvider(a.Provider) == provider && p.oauthUsableLocked(a, now, clientModel) {
 			// Upgrade sticky pick to the client's own group when one becomes
 			// available. Covers sticky=public and sticky=NEW both — they
 			// live in the shared tier, so a group-scoped client prefers
 			// its dedicated pool whenever it has slots. No upgrade for
 			// clients already in the shared tier.
 			upgrade := clientGroup != "" && clientGroup != "new" && a.Group != clientGroup &&
-				p.pickOAuthLocked(now, excluded, map[string]bool{clientGroup: true}, provider) != nil
+				p.pickOAuthLocked(now, excluded, map[string]bool{clientGroup: true}, provider, clientModel) != nil
 			if !upgrade {
 				// Reusing an assignment we already hold a slot for: counts us
 				// only once because activeCountLocked scans distinct sessions.
@@ -270,7 +270,7 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 	// next tier (public).
 	for _, tier := range tiers {
 		for {
-			chosen := p.pickOAuthLocked(now, excluded, tier, provider)
+			chosen := p.pickOAuthLocked(now, excluded, tier, provider, clientModel)
 			if chosen == nil {
 				break
 			}
@@ -479,7 +479,7 @@ func (p *Pool) findOAuthLocked(id string) *Auth {
 	return nil
 }
 
-func (p *Pool) oauthUsableLocked(a *Auth, now time.Time) bool {
+func (p *Pool) oauthUsableLocked(a *Auth, now time.Time, clientModel string) bool {
 	if a.Disabled {
 		return false
 	}
@@ -487,6 +487,13 @@ func (p *Pool) oauthUsableLocked(a *Auth, now time.Time) bool {
 		return false
 	}
 	if a.IsQuotaExceeded(now) {
+		return false
+	}
+	// Per-model overage window (e.g. Anthropic fable's 7d_oi bucket): skip this
+	// credential only for the limited model family. The account stays healthy
+	// and schedulable for every other model — that's the whole point of a
+	// model-scoped limit vs. IsQuotaExceeded's account-wide flag.
+	if scope := AnthropicModelScope(clientModel); scope != "" && a.IsModelRateLimited(scope, now) {
 		return false
 	}
 	// Group-level scheduled downtime (e.g. "new" group drops 10 random
@@ -511,7 +518,7 @@ func (p *Pool) oauthUsableLocked(a *Auth, now time.Time) bool {
 // spreads load toward credentials doing less real work — cache-heavy
 // clients don't starve a credential out just by racking up near-free
 // cache_read volume.
-func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedGroups map[string]bool, provider string) *Auth {
+func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedGroups map[string]bool, provider, clientModel string) *Auth {
 	type cand struct {
 		a    *Auth
 		load int64 // weighted tokens consumed in the recent load-balancing window (0 if unknown)
@@ -527,7 +534,7 @@ func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedG
 		if excluded[a.ID] {
 			continue
 		}
-		if !p.oauthUsableLocked(a, now) {
+		if !p.oauthUsableLocked(a, now, clientModel) {
 			continue
 		}
 		active := p.activeCountLocked(a.ID, now)
