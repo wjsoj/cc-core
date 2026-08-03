@@ -233,6 +233,20 @@ func TestGenuineRewriteStripIsAtomicAndConsistent(t *testing.T) {
 	}
 }
 
+func TestGenuineRewriteAcceptsOfficialSDKCLIEntrypoint(t *testing.T) {
+	in := bytes.ReplaceAll(standardGenuinePolicyBody(), []byte("cc_entrypoint=cli;"), []byte("cc_entrypoint=sdk-cli;"))
+	result := mustTransform(t, in, testID(), GenuineRequestRewriteStripCCH)
+	if !bytes.Contains(result.Body(), []byte("cc_entrypoint=sdk-cli;")) {
+		t.Fatalf("sdk-cli entrypoint was not preserved: %s", result.Body())
+	}
+	if bytes.Contains(result.Body(), []byte("cch=1a2b3")) || !result.CCHStripped() {
+		t.Fatalf("sdk-cli cch was not stripped: %s", result.Body())
+	}
+	if !bytes.Contains(result.Body(), []byte("cc_version="+CLICurrentVersion+".")) {
+		t.Fatalf("sdk-cli billing version was not pinned: %s", result.Body())
+	}
+}
+
 func TestHashClaudeRequestIDIsTrimmedDomainSeparatedAndOpaque(t *testing.T) {
 	got := HashClaudeRequestID("  req-123  ")
 	if got == "" || got == "req-123" || got != HashClaudeRequestID("req-123") {

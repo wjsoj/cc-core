@@ -689,7 +689,11 @@ func parseBillingText(text string) (billingHeader, bool, error) {
 	for _, field := range fields {
 		switch field.key {
 		case "cc_entrypoint":
-			if field.value != "cli" {
+			// Claude Code 2.1.220 uses "cli" for interactive sessions and
+			// "sdk-cli" for the official --print/Agent SDK path. Both are
+			// genuine first-party request shapes; retain the source value so
+			// the rewritten billing block stays consistent with its caller.
+			if field.value != "cli" && field.value != "sdk-cli" {
 				return billingHeader{}, true, fmt.Errorf("unsupported cc_entrypoint %q", field.value)
 			}
 		case "cch":
