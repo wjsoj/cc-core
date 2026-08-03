@@ -60,6 +60,9 @@ func LoginWithSessionCookie(
 	if proxyURL == "" {
 		return nil, fmt.Errorf("proxy_url is required for session-cookie login")
 	}
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return nil, fmt.Errorf("proxy_url: %w", err)
+	}
 
 	verifier, err := randomURLSafe(32)
 	if err != nil {

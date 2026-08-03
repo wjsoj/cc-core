@@ -105,6 +105,10 @@ func pkceChallenge(verifier string) string {
 // browser navigation.
 func StartLogin(provider, proxyURL, label string) (*LoginSession, string, error) {
 	provider = NormalizeProvider(provider)
+	proxyURL = strings.TrimSpace(proxyURL)
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return nil, "", fmt.Errorf("proxy_url: %w", err)
+	}
 	// Real Claude Code 2.1.167 uses 32-byte verifier + 32-byte state, both
 	// emitted as 43-char base64url-no-padding. Match exactly so that any
 	// fingerprinting based on the length distribution of these two fields
@@ -134,7 +138,7 @@ func StartLogin(provider, proxyURL, label string) (*LoginSession, string, error)
 		Provider:     provider,
 		State:        state,
 		CodeVerifier: verifier,
-		ProxyURL:     strings.TrimSpace(proxyURL),
+		ProxyURL:     proxyURL,
 		Label:        strings.TrimSpace(label),
 		CreatedAt:    time.Now(),
 	}
@@ -365,19 +369,91 @@ func finishAnthropicLogin(
 	if g := NormalizeGroup(group); g != "" {
 		raw["group"] = g
 	}
+	a, err := writeAnthropicLoginCredential(full, email, tr.Account.UUID, raw)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("oauth login: saved %s (email=%s exp=%s)", a.ID, email, expires.Format(time.RFC3339))
+	return a, nil
+}
+
+func writeAnthropicLoginCredential(path, email, accountUUID string, raw map[string]any) (*Auth, error) {
+	// Serialize with saveAuth so an admin Persist cannot race between reading
+	// the old mode and replacing the re-authorized credential file. Parsing the
+	// replacement also stays inside the lock: otherwise a mode-only update could
+	// land after rename but before parse and leave the pool object stale even
+	// though the credential file contains the new mode.
+	saveMu.Lock()
+	defer saveMu.Unlock()
+	candidateBytes, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	candidate, err := parseFile(path, candidateBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse replacement credential: %w", err)
+	}
+	if currentBytes, readErr := os.ReadFile(path); readErr == nil {
+		if current, parseErr := parseFile(path, currentBytes); parseErr == nil && !sameAnthropicOAuthAccount(current, candidate) {
+			return nil, fmt.Errorf("%w: refusing OAuth login overwrite for %s", ErrCredentialFileAccountMismatch, filepath.Base(path))
+		}
+	}
+
+	// Re-authorizing the same account refreshes tokens but must not silently
+	// remove an operator's explicit rewrite_strip experiment assignment. Copy
+	// only this validated policy field; never merge stale tokens or health state.
+	if mode, ok := preservedClaudeIdentityMode(path, email, accountUUID); ok {
+		raw["claude_identity_mode"] = string(mode)
+	}
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(full, out, 0600); err != nil {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, out, 0600); err != nil {
 		return nil, err
 	}
-	a, err := parseFile(full, out)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return nil, err
+	}
+	a, err := parseFile(path, out)
 	if err != nil {
 		return nil, fmt.Errorf("parse newly written file: %w", err)
 	}
-	log.Infof("oauth login: saved %s (email=%s exp=%s)", a.ID, email, expires.Format(time.RFC3339))
 	return a, nil
+}
+
+func preservedClaudeIdentityMode(path, newEmail, newAccountUUID string) (ClaudeIdentityMode, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	var old map[string]any
+	if err := json.Unmarshal(data, &old); err != nil || old == nil {
+		return "", false
+	}
+	oldUUID, _ := old["account_uuid"].(string)
+	oldEmail, _ := old["email"].(string)
+	match := false
+	if strings.TrimSpace(newAccountUUID) != "" || strings.TrimSpace(oldUUID) != "" {
+		match = strings.TrimSpace(newAccountUUID) != "" && strings.TrimSpace(oldUUID) != "" &&
+			strings.TrimSpace(newAccountUUID) == strings.TrimSpace(oldUUID)
+	} else if strings.TrimSpace(newEmail) != "" && strings.TrimSpace(oldEmail) != "" {
+		match = strings.EqualFold(strings.TrimSpace(newEmail), strings.TrimSpace(oldEmail))
+	}
+	if !match {
+		return "", false
+	}
+	rawMode, ok := old["claude_identity_mode"].(string)
+	if !ok {
+		return "", false
+	}
+	mode, err := ParseClaudeIdentityMode(rawMode)
+	if err != nil || mode != ClaudeIdentityModeRewriteStripCCH {
+		return "", false
+	}
+	return mode, true
 }
 
 // sanitizeLoginFilename builds an on-disk filename for a newly-persisted

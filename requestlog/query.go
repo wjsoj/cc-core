@@ -146,6 +146,9 @@ func AggregateHourly(dir string, hours int) ([]HourBucket, error) {
 			if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
 				continue
 			}
+			if r.AttemptOnly {
+				continue
+			}
 			if r.TS.Before(start) || r.TS.After(now.Add(time.Hour)) {
 				continue
 			}
@@ -201,6 +204,9 @@ func AggregateByAuth(dir string, from, to time.Time) (map[string]Aggregate, erro
 		for sc.Scan() {
 			var r Record
 			if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
+				continue
+			}
+			if r.AttemptOnly {
 				continue
 			}
 			if !from.IsZero() && r.TS.Before(from) {
@@ -368,6 +374,9 @@ func (e *entryHeap) Pop() any {
 }
 
 func matches(r Record, f Filter) bool {
+	if r.AttemptOnly {
+		return false
+	}
 	if f.UserID != 0 && r.UserID != f.UserID {
 		return false
 	}

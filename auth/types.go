@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"strings"
@@ -37,6 +38,29 @@ const (
 	KindOAuth Kind = iota
 	KindAPIKey
 )
+
+// ClaudeIdentityMode selects how a genuine Claude Code request is handled
+// when it is forwarded through an Anthropic OAuth subscription account.
+// Missing/empty values are deliberately preserve for backward compatibility.
+type ClaudeIdentityMode string
+
+const (
+	ClaudeIdentityModePreserve        ClaudeIdentityMode = "preserve"
+	ClaudeIdentityModeRewriteStripCCH ClaudeIdentityMode = "rewrite_strip"
+)
+
+// ParseClaudeIdentityMode validates the credential-file/admin representation.
+// Empty is the legacy-safe preserve default.
+func ParseClaudeIdentityMode(value string) (ClaudeIdentityMode, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", string(ClaudeIdentityModePreserve):
+		return ClaudeIdentityModePreserve, nil
+	case string(ClaudeIdentityModeRewriteStripCCH):
+		return ClaudeIdentityModeRewriteStripCCH, nil
+	default:
+		return "", fmt.Errorf("unsupported Claude identity mode %q", value)
+	}
+}
 
 // Auth is a single upstream credential.
 // For OAuth: AccessToken/RefreshToken/ExpiresAt are managed by the refresher.
@@ -94,6 +118,14 @@ type Auth struct {
 	// without it keep loading.
 	HostProfile HostProfile
 
+	// claudeIdentityMode is the explicit genuine-request policy for this
+	// Anthropic OAuth account. preserve tells the consuming application to run
+	// its complete pre-policy forwarding path as the experiment control;
+	// rewrite_strip maps metadata identity into this account's namespace and
+	// removes the now-stale cch. Kept private so callers must use the validating,
+	// lock-safe setter. Other providers/kinds ignore it.
+	claudeIdentityMode ClaudeIdentityMode
+
 	// Routing
 	ProxyURL      string // per-credential upstream proxy (empty = direct/use default)
 	BaseURL       string // per-credential upstream base URL override (API-key only; empty = config.AnthropicBaseURL)
@@ -147,9 +179,9 @@ type Auth struct {
 	FilePath string
 
 	// Health
-	Disabled            bool
-	QuotaExceededAt     time.Time // zero = not flagged
-	QuotaResetAt        time.Time // when to try again (may be zero = manual reset)
+	Disabled        bool
+	QuotaExceededAt time.Time // zero = not flagged
+	QuotaResetAt    time.Time // when to try again (may be zero = manual reset)
 
 	// ModelRateLimits scopes a cooldown to a subset of models instead of the
 	// whole credential. Key is a family scope (e.g. "anthropic:fable"), value
@@ -160,7 +192,7 @@ type Auth struct {
 	// 7d_oi bucket is an independent ~half-of-weekly allotment that rejects on
 	// its own while 5h/7d stay allowed). nil/empty = no scoped limits. Append-
 	// only field: old credential files without it decode as nil.
-	ModelRateLimits map[string]time.Time
+	ModelRateLimits     map[string]time.Time
 	LastFailure         time.Time
 	LastFailureReason   string
 	LastSuccess         time.Time // set on every <400 upstream response
@@ -338,29 +370,30 @@ func (a *Auth) Snapshot() AuthInfo {
 		}
 	}
 	return AuthInfo{
-		ID:                a.ID,
-		Kind:              a.Kind,
-		Provider:          a.Provider,
-		Label:             a.Label,
-		Email:             a.Email,
-		ExpiresAt:         a.ExpiresAt,
-		ProxyURL:          a.ProxyURL,
-		MaxConcurrent:     a.MaxConcurrent,
-		Disabled:          a.Disabled,
-		QuotaExceededAt:   a.QuotaExceededAt,
-		QuotaResetAt:      a.QuotaResetAt,
-		FilePath:          a.FilePath,
-		BaseURL:           a.BaseURL,
-		Group:             a.Group,
-		Order:             a.Order,
-		PriceMultiplier:   a.PriceMultiplier,
-		QuarantineUntil:   a.QuarantineUntil,
-		QuarantineStrikes: a.QuarantineStrikes,
-		ModelMap:          mm,
-		CodexRateLimits:   rl,
-		CodexRateLimitsAt: a.CodexRateLimitsAt,
-		CodexUsage:        a.CodexUsage,
-		CodexUsageAt:      a.CodexUsageAt,
+		ID:                 a.ID,
+		Kind:               a.Kind,
+		Provider:           a.Provider,
+		Label:              a.Label,
+		Email:              a.Email,
+		ExpiresAt:          a.ExpiresAt,
+		ProxyURL:           a.ProxyURL,
+		MaxConcurrent:      a.MaxConcurrent,
+		Disabled:           a.Disabled,
+		QuotaExceededAt:    a.QuotaExceededAt,
+		QuotaResetAt:       a.QuotaResetAt,
+		FilePath:           a.FilePath,
+		BaseURL:            a.BaseURL,
+		Group:              a.Group,
+		Order:              a.Order,
+		PriceMultiplier:    a.PriceMultiplier,
+		QuarantineUntil:    a.QuarantineUntil,
+		QuarantineStrikes:  a.QuarantineStrikes,
+		ModelMap:           mm,
+		ClaudeIdentityMode: a.claudeIdentityModeLocked(),
+		CodexRateLimits:    rl,
+		CodexRateLimitsAt:  a.CodexRateLimitsAt,
+		CodexUsage:         a.CodexUsage,
+		CodexUsageAt:       a.CodexUsageAt,
 	}
 }
 
@@ -385,13 +418,14 @@ type AuthInfo struct {
 	// so the admin panel can show a paused channel instead of leaving it
 	// looking healthy while it silently serves no traffic. Zero deadline =
 	// circuit closed.
-	QuarantineUntil   time.Time
-	QuarantineStrikes int
-	ModelMap          map[string]string
-	CodexRateLimits   map[string]string
-	CodexRateLimitsAt time.Time
-	CodexUsage        *CodexUsageInfo
-	CodexUsageAt      time.Time
+	QuarantineUntil    time.Time
+	QuarantineStrikes  int
+	ModelMap           map[string]string
+	ClaudeIdentityMode ClaudeIdentityMode
+	CodexRateLimits    map[string]string
+	CodexRateLimitsAt  time.Time
+	CodexUsage         *CodexUsageInfo
+	CodexUsageAt       time.Time
 }
 
 // IsQuotaExceeded reports true if Anthropic has signalled this auth is out of
@@ -968,6 +1002,43 @@ func (a *Auth) GroupName() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.Group
+}
+
+// SetClaudeIdentityMode updates the in-memory genuine Claude Code policy for
+// an Anthropic OAuth credential. Persistent runtime callers should use
+// UpdateClaudeIdentityMode so a concurrent token refresh cannot be overwritten.
+func (a *Auth) SetClaudeIdentityMode(mode ClaudeIdentityMode) error {
+	normalized, err := ParseClaudeIdentityMode(string(mode))
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.Kind != KindOAuth || NormalizeProvider(a.Provider) != ProviderAnthropic {
+		return errors.New("claude identity mode only applies to Anthropic OAuth credentials")
+	}
+	if normalized == ClaudeIdentityModeRewriteStripCCH && strings.TrimSpace(a.AccountUUID) == "" {
+		return ErrClaudeIdentityModeMissingAccountUUID
+	}
+	a.claudeIdentityMode = normalized
+	return nil
+}
+
+// ClaudeIdentityModeValue returns the normalized policy under the lock.
+func (a *Auth) ClaudeIdentityModeValue() ClaudeIdentityMode {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.claudeIdentityModeLocked()
+}
+
+func (a *Auth) claudeIdentityModeLocked() ClaudeIdentityMode {
+	if a.Kind != KindOAuth || NormalizeProvider(a.Provider) != ProviderAnthropic {
+		return ""
+	}
+	if a.claudeIdentityMode == ClaudeIdentityModeRewriteStripCCH {
+		return ClaudeIdentityModeRewriteStripCCH
+	}
+	return ClaudeIdentityModePreserve
 }
 
 // SetModelMap replaces the credential's client→upstream model map. Empty/nil

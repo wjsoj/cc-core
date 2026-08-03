@@ -57,3 +57,20 @@ func SessionIDFor(id SimIdentity, body []byte) string {
 	sum := h.Sum(nil)
 	return uuidFromBytes(sum[:16])
 }
+
+// SessionIDForSource maps an official Claude Code session into the selected
+// OAuth account's identity domain. Genuine Claude Code uses the same source
+// session for main, title, and prompt-suggestion requests even though their
+// first user messages differ, so those request classes must not use
+// SessionIDFor's first-message derivation.
+func SessionIDForSource(id SimIdentity, sourceSessionID string) string {
+	h := sha256.New()
+	h.Write([]byte("cpa-claude-source-session/"))
+	h.Write([]byte(id.AccountKey))
+	h.Write([]byte("|"))
+	h.Write([]byte(id.ClientToken))
+	h.Write([]byte("|"))
+	h.Write([]byte(sourceSessionID))
+	sum := h.Sum(nil)
+	return uuidFromBytes(sum[:16])
+}

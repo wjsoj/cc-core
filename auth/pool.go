@@ -2,12 +2,24 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+)
+
+var (
+	ErrClaudeIdentityModeAuthNotFound       = errors.New("claude identity mode credential not found")
+	ErrClaudeIdentityModeNotApplicable      = errors.New("claude identity mode only applies to Anthropic OAuth credentials")
+	ErrClaudeIdentityModeCredentialEnabled  = errors.New("credential must be disabled before changing Claude identity mode")
+	ErrClaudeIdentityModeCredentialActive   = errors.New("credential still has active sessions")
+	ErrClaudeIdentityModeMissingAccountUUID = errors.New("rewrite_strip requires an OAuth account UUID")
+	ErrDuplicateClaudeAccountUUID           = errors.New("duplicate Anthropic OAuth account_uuid")
+	ErrCredentialFileAccountMismatch        = errors.New("credential file now belongs to a different account")
 )
 
 // Pool holds all credentials (OAuth + API keys) and assigns them to client
@@ -68,6 +80,7 @@ func slotKey(provider, clientToken, sessionID string) string {
 }
 
 func NewPool(oauths, apikeys []*Auth, activeWindow time.Duration, useUTLS bool, defaultProxy string) *Pool {
+	defaultProxy = strings.TrimSpace(defaultProxy)
 	p := &Pool{
 		oauths:       append([]*Auth(nil), oauths...),
 		apikeys:      append([]*Auth(nil), apikeys...),
@@ -693,24 +706,98 @@ func (p *Pool) FindByID(id string) *Auth {
 	return nil
 }
 
-// AddOAuth registers a newly uploaded OAuth credential into the live pool.
-// Any existing auth with the same ID is replaced.
-func (p *Pool) AddOAuth(a *Auth) {
-	if a == nil || a.Kind != KindOAuth {
-		return
-	}
-	if a.ProxyURL == "" && p.defaultProxy != "" {
-		a.ProxyURL = p.defaultProxy
+// UpdateClaudeIdentityMode changes an account's genuine-request policy while
+// holding the pool lock. Requiring the credential to be disabled with no live
+// sticky sessions prevents one virtual Claude Code process from changing its
+// identity/profile mid-session. Holding this lock also serializes the update
+// with AddOAuth replacement after a re-login or credential upload.
+func (p *Pool) UpdateClaudeIdentityMode(id string, mode ClaudeIdentityMode) error {
+	normalized, err := ParseClaudeIdentityMode(string(mode))
+	if err != nil {
+		return err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	now := time.Now()
+	p.gcLocked(now)
+	a := p.findOAuthLocked(id)
+	if a == nil {
+		return ErrClaudeIdentityModeAuthNotFound
+	}
+	st := a.Snapshot()
+	if st.Kind != KindOAuth || NormalizeProvider(st.Provider) != ProviderAnthropic {
+		return ErrClaudeIdentityModeNotApplicable
+	}
+	if !st.Disabled {
+		return ErrClaudeIdentityModeCredentialEnabled
+	}
+	if active := p.activeCountLocked(id, now); active > 0 {
+		return fmt.Errorf("%w: %d", ErrClaudeIdentityModeCredentialActive, active)
+	}
+	if normalized == ClaudeIdentityModeRewriteStripCCH && strings.TrimSpace(a.AccountUUIDValue()) == "" {
+		return ErrClaudeIdentityModeMissingAccountUUID
+	}
+	return a.UpdateClaudeIdentityMode(normalized)
+}
+
+// AddOAuth registers a newly uploaded OAuth credential into the live pool.
+// Any existing auth with the same ID is replaced.
+func (p *Pool) AddOAuth(a *Auth) error {
+	if a == nil || a.Kind != KindOAuth {
+		return errors.New("invalid OAuth credential")
+	}
+	a.ProxyURL = strings.TrimSpace(a.ProxyURL)
+	if err := ValidateProxyURL(a.ProxyURL); err != nil {
+		return fmt.Errorf("proxy_url: %w", err)
+	}
+	if a.ProxyURL == "" && p.defaultProxy != "" {
+		a.ProxyURL = strings.TrimSpace(p.defaultProxy)
+		if err := ValidateProxyURL(a.ProxyURL); err != nil {
+			return fmt.Errorf("default proxy_url: %w", err)
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, existing := range p.oauths {
+		if existing.ID != a.ID && sameAnthropicOAuthAccount(existing, a) {
+			return fmt.Errorf("%w: %s conflicts with %s", ErrDuplicateClaudeAccountUUID, a.ID, existing.ID)
+		}
+	}
 	for i, existing := range p.oauths {
 		if existing.ID == a.ID {
+			// A re-login/upload may have parsed its replacement just before an
+			// operator changed the live account mode. For the same underlying
+			// Anthropic account, the pool's current value wins; reconcile both the
+			// replacement object and its file before publishing it.
+			if sameAnthropicOAuthAccount(existing, a) {
+				mode := existing.ClaudeIdentityModeValue()
+				if a.ClaudeIdentityModeValue() != mode {
+					if err := a.UpdateClaudeIdentityMode(mode); err != nil {
+						return fmt.Errorf("reconcile OAuth replacement identity mode: %w", err)
+					}
+				}
+			}
 			p.oauths[i] = a
-			return
+			return nil
 		}
 	}
 	p.oauths = append(p.oauths, a)
+	return nil
+}
+
+func sameAnthropicOAuthAccount(old, replacement *Auth) bool {
+	if old == nil || replacement == nil || old.Kind != KindOAuth || replacement.Kind != KindOAuth ||
+		NormalizeProvider(old.Provider) != ProviderAnthropic || NormalizeProvider(replacement.Provider) != ProviderAnthropic {
+		return false
+	}
+	oldUUID := strings.TrimSpace(old.AccountUUIDValue())
+	newUUID := strings.TrimSpace(replacement.AccountUUIDValue())
+	if oldUUID != "" || newUUID != "" {
+		return oldUUID != "" && newUUID != "" && oldUUID == newUUID
+	}
+	oldEmail := strings.TrimSpace(old.Snapshot().Email)
+	newEmail := strings.TrimSpace(replacement.Snapshot().Email)
+	return oldEmail != "" && newEmail != "" && strings.EqualFold(oldEmail, newEmail)
 }
 
 // AddAPIKey registers an API-key credential into the live pool. Replaces

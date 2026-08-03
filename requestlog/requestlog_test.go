@@ -62,6 +62,75 @@ func TestWriterRoundTripAndQuery(t *testing.T) {
 	}
 }
 
+func TestClaudeAuditRoundTripContainsOnlyDigests(t *testing.T) {
+	dir := t.TempDir()
+	w, err := Open(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Log(Record{
+		TS: time.Now().UTC(), Model: "claude-opus-5", Status: 200,
+		ClaudeAudit: &ClaudeAudit{
+			RequestClass:          "genuine",
+			IdentityMode:          "rewrite_strip",
+			AccountIdentityMapped: true,
+			CCHStripped:           true,
+			CCPrevReqPresent:      true,
+			CCPrevReqPreserved:    true,
+			CCPrevReqHash:         "0123456789abcdef",
+			ResponseRequestIDHash: "fedcba9876543210",
+		},
+	})
+	w.Close()
+
+	files, err := filepath.Glob(filepath.Join(dir, "requests-*.jsonl"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("log files: %v %v", files, err)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "raw-prev") || strings.Contains(string(data), "raw-response") {
+		t.Fatalf("raw request identifier leaked: %s", data)
+	}
+	var got Record
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ClaudeAudit == nil || got.ClaudeAudit.CCPrevReqHash != "0123456789abcdef" ||
+		got.ClaudeAudit.ResponseRequestIDHash != "fedcba9876543210" {
+		t.Fatalf("audit did not round-trip: %+v", got.ClaudeAudit)
+	}
+}
+
+func TestAttemptOnlyRowsArePersistedButExcludedFromQueries(t *testing.T) {
+	dir := t.TempDir()
+	w, err := Open(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Log(Record{TS: time.Now().UTC(), AuthID: "auth-a", Model: "m", Status: 429, Error: "withheld", AttemptOnly: true})
+	w.Log(Record{TS: time.Now().UTC(), AuthID: "auth-b", Model: "m", Status: 200})
+	w.Close()
+
+	files, _ := filepath.Glob(filepath.Join(dir, "requests-*.jsonl"))
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"attempt_only":true`) {
+		t.Fatalf("attempt audit row was not persisted: %s", data)
+	}
+	result, err := Query(Filter{Dir: dir, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Count != 1 || len(result.Entries) != 1 || result.Entries[0].AuthID != "auth-b" {
+		t.Fatalf("attempt row polluted query aggregates: %+v", result)
+	}
+}
+
 func TestQueryFilterByUserIDAndAuthID(t *testing.T) {
 	dir := t.TempDir()
 	w, _ := Open(dir, 0)
