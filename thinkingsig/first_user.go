@@ -2,6 +2,28 @@ package thinkingsig
 
 import "encoding/json"
 
+// sourceSessionID returns the genuine Claude Code source session embedded in
+// metadata.user_id. Claude Code serializes user_id as a JSON string rather than
+// a nested object. Distinct conversations can start with identical reminder
+// text, so this is the authoritative conversation key when present.
+func sourceSessionID(body []byte) string {
+	var obj struct {
+		Metadata struct {
+			UserID string `json:"user_id"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(body, &obj); err != nil || obj.Metadata.UserID == "" {
+		return ""
+	}
+	var identity struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal([]byte(obj.Metadata.UserID), &identity); err != nil {
+		return ""
+	}
+	return identity.SessionID
+}
+
 // firstUserText returns the first user message's text content from a
 // /v1/messages JSON body. Used as the conversation anchor inside this
 // package; mirrors what callers' SessionIDFor does so the switch

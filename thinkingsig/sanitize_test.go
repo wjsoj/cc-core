@@ -214,3 +214,35 @@ func TestSwitchTrackerDetection(t *testing.T) {
 		t.Fatal("empty messages should not signal")
 	}
 }
+
+func TestSwitchTrackerSeparatesClaudeConversationsWithSameReminder(t *testing.T) {
+	tr := &SwitchTracker{entries: make(map[string]switchEntry)}
+	userID := func(session string) string {
+		return `{"device_id":"device","account_uuid":"downstream","session_id":"` + session + `"}`
+	}
+	body := func(session string) []byte {
+		obj := map[string]any{
+			"messages": []any{map[string]any{
+				"role": "user", "content": "<system-reminder>Today's date is 2026-08-04.</system-reminder>",
+			}},
+			"metadata": map[string]any{"user_id": userID(session)},
+		}
+		out, err := json.Marshal(obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	conversationA := body("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	conversationB := body("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+	if tr.Check("client", conversationA, "auth-A") || tr.Check("client", conversationB, "auth-B") {
+		t.Fatal("independent source sessions collided on first touch")
+	}
+	if tr.Check("client", conversationA, "auth-A") {
+		t.Fatal("stable conversation A reported a switch")
+	}
+	if !tr.Check("client", conversationB, "auth-C") {
+		t.Fatal("real account switch inside conversation B was not detected")
+	}
+}
