@@ -162,7 +162,7 @@ func parseFile(path string, data []byte) (*Auth, error) {
 		if err != nil {
 			return nil, fmt.Errorf("claude_identity_mode: %w", err)
 		}
-		if identityMode == ClaudeIdentityModeRewriteStripCCH && strings.TrimSpace(accountUUID) == "" {
+		if identityMode == ClaudeIdentityModeRewrite && strings.TrimSpace(accountUUID) == "" {
 			return nil, fmt.Errorf("claude_identity_mode: %w", ErrClaudeIdentityModeMissingAccountUUID)
 		}
 	}
@@ -535,8 +535,8 @@ func saveAuth(a *Auth) error {
 		} else {
 			delete(raw, "host_profile")
 		}
-		if provider == ProviderAnthropic && a.claudeIdentityModeLocked() == ClaudeIdentityModeRewriteStripCCH {
-			raw["claude_identity_mode"] = string(ClaudeIdentityModeRewriteStripCCH)
+		if provider == ProviderAnthropic && a.claudeIdentityModeLocked() == ClaudeIdentityModeRewrite {
+			raw["claude_identity_mode"] = string(ClaudeIdentityModeRewrite)
 		} else {
 			delete(raw, "claude_identity_mode")
 		}
@@ -627,7 +627,7 @@ func (a *Auth) UpdateClaudeIdentityMode(mode ClaudeIdentityMode) error {
 	if !applicable {
 		return errors.New("claude identity mode only applies to Anthropic OAuth credentials")
 	}
-	if normalized == ClaudeIdentityModeRewriteStripCCH && strings.TrimSpace(accountUUID) == "" {
+	if normalized == ClaudeIdentityModeRewrite && strings.TrimSpace(accountUUID) == "" {
 		return ErrClaudeIdentityModeMissingAccountUUID
 	}
 	if path != "" {
@@ -646,7 +646,7 @@ func (a *Auth) UpdateClaudeIdentityMode(mode ClaudeIdentityMode) error {
 		if !sameAnthropicOAuthAccount(a, diskAuth) {
 			return fmt.Errorf("%w: refusing stale mode update for %s", ErrCredentialFileAccountMismatch, a.ID)
 		}
-		if normalized == ClaudeIdentityModeRewriteStripCCH {
+		if normalized == ClaudeIdentityModeRewrite {
 			raw["claude_identity_mode"] = string(normalized)
 		} else {
 			delete(raw, "claude_identity_mode")
@@ -689,8 +689,8 @@ func InstallCredentialFile(path string, data []byte) (*Auth, error) {
 	}
 	if currentData, readErr := os.ReadFile(path); readErr == nil {
 		if current, parseErr := parseFile(path, currentData); parseErr == nil && sameAnthropicOAuthAccount(current, candidate) {
-			if current.ClaudeIdentityModeValue() == ClaudeIdentityModeRewriteStripCCH {
-				raw["claude_identity_mode"] = string(ClaudeIdentityModeRewriteStripCCH)
+			if current.ClaudeIdentityModeValue() == ClaudeIdentityModeRewrite {
+				raw["claude_identity_mode"] = string(ClaudeIdentityModeRewrite)
 			} else {
 				delete(raw, "claude_identity_mode")
 			}

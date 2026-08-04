@@ -56,9 +56,9 @@ type Record struct {
 	// the client and followed by failover. Dashboard/query aggregates ignore
 	// these rows so retry telemetry does not inflate user-visible counts.
 	AttemptOnly bool `json:"attempt_only,omitempty"`
-	// ClaudeAudit contains only boolean policy outcomes and domain-separated
-	// truncated SHA-256 digests. It never stores a raw cc_prev_req, upstream
-	// request-id, prompt, bearer, or client token.
+	// ClaudeAudit contains only policy outcomes and a domain-separated account
+	// digest. It never stores an account UUID, email, prompt, bearer, or client
+	// token.
 	ClaudeAudit *ClaudeAudit `json:"claude_audit,omitempty"`
 
 	// SaaS-tier optional fields. Zero on requests that didn't go through
@@ -77,19 +77,13 @@ type Record struct {
 	UserID int64 `json:"user_id,omitempty"`
 }
 
-// ClaudeAudit is the privacy-safe evidence needed to verify a real Claude
-// Code multi-turn chain. For consecutive main requests, the later row's
-// CCPrevReqHash must equal the earlier row's ResponseRequestIDHash.
+// ClaudeAudit is privacy-safe evidence that a genuine Claude Code request was
+// mapped into the selected upstream account's identity namespace.
 type ClaudeAudit struct {
 	AccountHash           string `json:"account_hash,omitempty"`
 	RequestClass          string `json:"request_class"`
 	IdentityMode          string `json:"identity_mode"`
 	AccountIdentityMapped bool   `json:"account_identity_mapped"`
-	CCHStripped           bool   `json:"cch_stripped"`
-	CCPrevReqPresent      bool   `json:"cc_prev_req_present"`
-	CCPrevReqPreserved    bool   `json:"cc_prev_req_preserved"`
-	CCPrevReqHash         string `json:"cc_prev_req_hash,omitempty"`
-	ResponseRequestIDHash string `json:"response_request_id_hash,omitempty"`
 	CredentialHardFailed  bool   `json:"credential_hard_failed,omitempty"`
 }
 

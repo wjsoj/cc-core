@@ -45,8 +45,14 @@ const (
 type ClaudeIdentityMode string
 
 const (
-	ClaudeIdentityModePreserve        ClaudeIdentityMode = "preserve"
-	ClaudeIdentityModeRewriteStripCCH ClaudeIdentityMode = "rewrite_strip"
+	ClaudeIdentityModePreserve ClaudeIdentityMode = "preserve"
+	ClaudeIdentityModeRewrite  ClaudeIdentityMode = "rewrite"
+
+	// ClaudeIdentityModeRewriteStripCCH is kept as a source-compatibility alias
+	// for consumers built against the original experiment name. New state is
+	// always normalized and persisted as "rewrite".
+	// Deprecated: use ClaudeIdentityModeRewrite.
+	ClaudeIdentityModeRewriteStripCCH = ClaudeIdentityModeRewrite
 )
 
 // ParseClaudeIdentityMode validates the credential-file/admin representation.
@@ -55,8 +61,8 @@ func ParseClaudeIdentityMode(value string) (ClaudeIdentityMode, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", string(ClaudeIdentityModePreserve):
 		return ClaudeIdentityModePreserve, nil
-	case string(ClaudeIdentityModeRewriteStripCCH):
-		return ClaudeIdentityModeRewriteStripCCH, nil
+	case string(ClaudeIdentityModeRewrite), "rewrite_strip":
+		return ClaudeIdentityModeRewrite, nil
 	default:
 		return "", fmt.Errorf("unsupported Claude identity mode %q", value)
 	}
@@ -121,9 +127,9 @@ type Auth struct {
 	// claudeIdentityMode is the explicit genuine-request policy for this
 	// Anthropic OAuth account. preserve tells the consuming application to run
 	// its complete pre-policy forwarding path as the experiment control;
-	// rewrite_strip maps metadata identity into this account's namespace and
-	// removes the now-stale cch. Kept private so callers must use the validating,
-	// lock-safe setter. Other providers/kinds ignore it.
+	// rewrite maps metadata identity into this account's namespace. Kept private
+	// so callers must use the validating, lock-safe setter. Other providers/kinds
+	// ignore it.
 	claudeIdentityMode ClaudeIdentityMode
 
 	// Routing
@@ -1017,7 +1023,7 @@ func (a *Auth) SetClaudeIdentityMode(mode ClaudeIdentityMode) error {
 	if a.Kind != KindOAuth || NormalizeProvider(a.Provider) != ProviderAnthropic {
 		return errors.New("claude identity mode only applies to Anthropic OAuth credentials")
 	}
-	if normalized == ClaudeIdentityModeRewriteStripCCH && strings.TrimSpace(a.AccountUUID) == "" {
+	if normalized == ClaudeIdentityModeRewrite && strings.TrimSpace(a.AccountUUID) == "" {
 		return ErrClaudeIdentityModeMissingAccountUUID
 	}
 	a.claudeIdentityMode = normalized
@@ -1035,8 +1041,8 @@ func (a *Auth) claudeIdentityModeLocked() ClaudeIdentityMode {
 	if a.Kind != KindOAuth || NormalizeProvider(a.Provider) != ProviderAnthropic {
 		return ""
 	}
-	if a.claudeIdentityMode == ClaudeIdentityModeRewriteStripCCH {
-		return ClaudeIdentityModeRewriteStripCCH
+	if a.claudeIdentityMode == ClaudeIdentityModeRewrite {
+		return ClaudeIdentityModeRewrite
 	}
 	return ClaudeIdentityModePreserve
 }

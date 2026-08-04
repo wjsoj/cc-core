@@ -34,23 +34,27 @@ func (c RequestClass) String() string {
 }
 
 // GenuineRequestMode controls the only two supported treatments of an
-// official Claude Code body. There is intentionally no rewrite-and-retain-cch
-// value: the 2.1.220 signer remains unknown, so changing identity-bearing body
-// bytes while retaining the old signature is never a valid state.
+// official Claude Code body. Rewrite only accepts the custom-base-url shape
+// emitted without first-party cch or cc_prev_req fields.
 type GenuineRequestMode uint8
 
 const (
 	GenuineRequestModeUnspecified GenuineRequestMode = iota
 	GenuineRequestPreserve
-	GenuineRequestRewriteStripCCH
+	GenuineRequestRewrite
+
+	// GenuineRequestRewriteStripCCH is kept as a source-compatibility alias for
+	// consumers built against the original experiment name.
+	// Deprecated: use GenuineRequestRewrite.
+	GenuineRequestRewriteStripCCH = GenuineRequestRewrite
 )
 
 func (m GenuineRequestMode) String() string {
 	switch m {
 	case GenuineRequestPreserve:
 		return "preserve"
-	case GenuineRequestRewriteStripCCH:
-		return "rewrite_strip"
+	case GenuineRequestRewrite:
+		return "rewrite"
 	default:
 		return "unspecified"
 	}
@@ -69,12 +73,12 @@ func NewClaudeCodeRequestPolicy(class RequestClass, genuineMode GenuineRequestMo
 	case RequestClassGeneric:
 		if genuineMode != GenuineRequestModeUnspecified &&
 			genuineMode != GenuineRequestPreserve &&
-			genuineMode != GenuineRequestRewriteStripCCH {
+			genuineMode != GenuineRequestRewrite {
 			return RequestPolicy{}, fmt.Errorf("unsupported genuine request mode: %d", genuineMode)
 		}
 		return RequestPolicy{class: class, genuineMode: GenuineRequestModeUnspecified, valid: true}, nil
 	case RequestClassGenuine:
-		if genuineMode != GenuineRequestPreserve && genuineMode != GenuineRequestRewriteStripCCH {
+		if genuineMode != GenuineRequestPreserve && genuineMode != GenuineRequestRewrite {
 			return RequestPolicy{}, fmt.Errorf("unsupported genuine request mode: %d", genuineMode)
 		}
 		return RequestPolicy{class: class, genuineMode: genuineMode, valid: true}, nil
@@ -99,11 +103,6 @@ type BodyTransformResult struct {
 	credentialKind         string
 	sessionID              string
 	accountIdentityApplied bool
-	cchPresentBefore       bool
-	cchStripped            bool
-	ccPrevReqPresent       bool
-	ccPrevReqPreserved     bool
-	ccPrevReqHash          string
 	valid                  bool
 }
 
@@ -111,29 +110,11 @@ func (r BodyTransformResult) Body() []byte                 { return r.body }
 func (r BodyTransformResult) Policy() RequestPolicy        { return r.policy }
 func (r BodyTransformResult) SessionID() string            { return r.sessionID }
 func (r BodyTransformResult) AccountIdentityApplied() bool { return r.accountIdentityApplied }
-func (r BodyTransformResult) CCHPresentBefore() bool       { return r.cchPresentBefore }
-func (r BodyTransformResult) CCHStripped() bool            { return r.cchStripped }
-func (r BodyTransformResult) CCPrevReqPresent() bool       { return r.ccPrevReqPresent }
-func (r BodyTransformResult) CCPrevReqPreserved() bool     { return r.ccPrevReqPreserved }
-func (r BodyTransformResult) CCPrevReqHash() string        { return r.ccPrevReqHash }
 func (r BodyTransformResult) IsValid() bool                { return r.valid }
 
-// HashClaudeRequestID returns a short, domain-separated digest suitable for
-// correlating cc_prev_req with Anthropic's response request-id in logs. The
-// original identifier is never retained. Empty input deliberately stays empty
-// so callers can distinguish "header absent" from a real digest.
-func HashClaudeRequestID(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte("claude-request-id/v1\x00" + value))
-	return fmt.Sprintf("%x", sum[:8])
-}
-
 // HashClaudeAccountKey returns a privacy-safe stable account identifier for
-// experiment/audit logs. It is domain-separated from request-id hashes and
-// never exposes an OAuth UUID, email, or credential filename.
+// experiment/audit logs. It never exposes an OAuth UUID, email, or credential
+// filename.
 func HashClaudeAccountKey(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -179,9 +160,11 @@ func ClaudeCodeSourceSessionID(body []byte) (string, bool) {
 // rotate it while the caller waits for sidecar bootstrap.
 //
 // Generic requests retain the existing mimicry behavior. Genuine preserve
-// returns the exact input bytes. Genuine rewrite_strip replaces the metadata
-// identity with the selected OAuth account, maps the genuine source session
-// into that account's namespace, pins the billing version, and removes cch.
+// returns the exact input bytes. Genuine rewrite replaces the metadata identity
+// with the selected OAuth account, maps the genuine source session into that
+// account's namespace, and pins the billing version. First-party-only cch and
+// cc_prev_req fields are rejected because custom-base-url Claude Code requests
+// do not emit them and the proxy cannot safely regenerate or rebind them.
 //
 // Any error returns an unusable zero result. The caller must stop this attempt;
 // it must not send the original body as an implicit preserve fallback, switch
@@ -204,14 +187,14 @@ func PrepareClaudeCodeRequest(body []byte, model string, id SimIdentity, policy 
 	switch policy.class {
 	case RequestClassGeneric:
 		out := ApplyClaudeCodeBodyMimicry(body, model, id)
-		return newBodyTransformResult(out, policy, id, credentialKind, "", false, false, false), nil
+		return newBodyTransformResult(out, policy, id, credentialKind, "", false), nil
 	case RequestClassGenuine:
 		switch policy.genuineMode {
 		case GenuineRequestPreserve:
 			source, _ := metadataIdentityFromBody(body)
-			return newBodyTransformResult(body, policy, id, credentialKind, source.SessionID, false, false, false), nil
-		case GenuineRequestRewriteStripCCH:
-			return transformGenuineRewriteStrip(body, id, policy, credentialKind)
+			return newBodyTransformResult(body, policy, id, credentialKind, source.SessionID, false), nil
+		case GenuineRequestRewrite:
+			return transformGenuineRewrite(body, id, policy, credentialKind)
 		default:
 			return BodyTransformResult{}, fmt.Errorf("unsupported genuine request mode: %d", policy.genuineMode)
 		}
@@ -220,50 +203,35 @@ func PrepareClaudeCodeRequest(body []byte, model string, id SimIdentity, policy 
 	}
 }
 
-func transformGenuineRewriteStrip(body []byte, id SimIdentity, policy RequestPolicy, credentialKind string) (BodyTransformResult, error) {
+func transformGenuineRewrite(body []byte, id SimIdentity, policy RequestPolicy, credentialKind string) (BodyTransformResult, error) {
 	if credentialKind != KindOAuth {
-		return BodyTransformResult{}, errors.New("rewrite_strip requires an OAuth credential")
+		return BodyTransformResult{}, errors.New("rewrite requires an OAuth credential")
 	}
 	if strings.TrimSpace(id.AccountKey) == "" {
-		return BodyTransformResult{}, errors.New("rewrite_strip requires a non-empty account key")
+		return BodyTransformResult{}, errors.New("rewrite requires a non-empty account key")
 	}
 	if strings.TrimSpace(id.AccountUUID) == "" {
-		return BodyTransformResult{}, errors.New("rewrite_strip requires the OAuth account UUID")
+		return BodyTransformResult{}, errors.New("rewrite requires the OAuth account UUID")
 	}
 	if strings.TrimSpace(id.ClientToken) == "" {
-		return BodyTransformResult{}, errors.New("rewrite_strip requires a downstream client token")
+		return BodyTransformResult{}, errors.New("rewrite requires a downstream client token")
 	}
 	source, err := metadataIdentityFromBody(body)
 	if err != nil || strings.TrimSpace(source.SessionID) == "" {
 		if err == nil {
 			err = errors.New("metadata.user_id.session_id is empty")
 		}
-		return BodyTransformResult{}, fmt.Errorf("rewrite_strip requires a genuine source session: %w", err)
+		return BodyTransformResult{}, fmt.Errorf("rewrite requires a genuine source session: %w", err)
 	}
 	targetSession := SessionIDForSource(id, source.SessionID)
-	out, cchPresent, err := rewriteGenuineIdentityStripCCH(body, id, targetSession)
+	out, err := rewriteGenuineIdentity(body, id, targetSession)
 	if err != nil {
 		return BodyTransformResult{}, err
 	}
-	prevBefore, prevPresentBefore, err := previousRequestIDFromBody(body)
-	if err != nil {
-		return BodyTransformResult{}, fmt.Errorf("inspect source cc_prev_req: %w", err)
-	}
-	prevAfter, prevPresentAfter, err := previousRequestIDFromBody(out)
-	if err != nil {
-		return BodyTransformResult{}, fmt.Errorf("inspect rewritten cc_prev_req: %w", err)
-	}
-	if prevPresentBefore != prevPresentAfter || prevBefore != prevAfter {
-		return BodyTransformResult{}, errors.New("rewrite changed cc_prev_req")
-	}
-	result := newBodyTransformResult(out, policy, id, credentialKind, targetSession, true, cchPresent, cchPresent)
-	result.ccPrevReqPresent = prevPresentBefore
-	result.ccPrevReqPreserved = true
-	result.ccPrevReqHash = HashClaudeRequestID(prevBefore)
-	return result, nil
+	return newBodyTransformResult(out, policy, id, credentialKind, targetSession, true), nil
 }
 
-func newBodyTransformResult(body []byte, policy RequestPolicy, id SimIdentity, credentialKind, sessionID string, identityApplied, cchPresent, cchStripped bool) BodyTransformResult {
+func newBodyTransformResult(body []byte, policy RequestPolicy, id SimIdentity, credentialKind, sessionID string, identityApplied bool) BodyTransformResult {
 	return BodyTransformResult{
 		body:                   body,
 		bodyDigest:             sha256.Sum256(body),
@@ -273,8 +241,6 @@ func newBodyTransformResult(body []byte, policy RequestPolicy, id SimIdentity, c
 		credentialKind:         credentialKind,
 		sessionID:              sessionID,
 		accountIdentityApplied: identityApplied,
-		cchPresentBefore:       cchPresent,
-		cchStripped:            cchStripped,
 		valid:                  true,
 	}
 }
@@ -296,7 +262,7 @@ func ApplyClaudeCodePreparedRequest(req *http.Request, credentialToken, credenti
 	if credentialAccountKey != result.credentialAccountKey || credentialKind != result.credentialKind {
 		return errors.New("prepared request credential binding mismatch")
 	}
-	if result.policy.class == RequestClassGenuine && result.policy.genuineMode == GenuineRequestRewriteStripCCH &&
+	if result.policy.class == RequestClassGenuine && result.policy.genuineMode == GenuineRequestRewrite &&
 		(req.Header == nil || strings.TrimSpace(req.Header.Get("Anthropic-Beta")) == "") {
 		// Genuine CC request betas are a request-class/context feature vector,
 		// not one global version constant (main, 1M, and title differ). Without
@@ -323,7 +289,7 @@ func ApplyClaudeCodePreparedRequest(req *http.Request, credentialToken, credenti
 			if result.sessionID != "" {
 				req.Header.Set("X-Claude-Code-Session-Id", result.sessionID)
 			}
-		} else if result.policy.genuineMode != GenuineRequestRewriteStripCCH || !result.accountIdentityApplied {
+		} else if result.policy.genuineMode != GenuineRequestRewrite || !result.accountIdentityApplied {
 			return errors.New("invalid prepared genuine rewrite")
 		} else {
 			ApplyClaudeCodeHeaders(req, credentialToken, credentialKind, stream, isAnthropicBase, result.identity, result.body)
@@ -360,7 +326,7 @@ func validatePreparedResult(result BodyTransformResult) error {
 	if ClassifyClaudeCodeRequest(result.body) != result.policy.class {
 		return errors.New("prepared Claude request class no longer matches its body")
 	}
-	if result.policy.class == RequestClassGenuine && result.policy.genuineMode == GenuineRequestRewriteStripCCH {
+	if result.policy.class == RequestClassGenuine && result.policy.genuineMode == GenuineRequestRewrite {
 		if !result.accountIdentityApplied || result.sessionID == "" {
 			return errors.New("prepared rewrite has no account identity")
 		}
@@ -384,71 +350,76 @@ func applyCredentialHeader(h http.Header, token, kind string) {
 	h.Set("Authorization", "Bearer "+token)
 }
 
-func rewriteGenuineIdentityStripCCH(body []byte, id SimIdentity, sessionID string) ([]byte, bool, error) {
+func rewriteGenuineIdentity(body []byte, id SimIdentity, sessionID string) ([]byte, error) {
 	if !json.Valid(body) {
-		return nil, false, errors.New("genuine body is not a JSON object")
+		return nil, errors.New("genuine body is not a JSON object")
 	}
 
 	metadataSpan, err := requireJSONObjectMemberSpan(body, "metadata")
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	userIDSpan, err := requireJSONObjectMemberSpan(body[metadataSpan.start:metadataSpan.end], "user_id")
 	if err != nil {
-		return nil, false, fmt.Errorf("metadata: %w", err)
+		return nil, fmt.Errorf("metadata: %w", err)
 	}
 	userIDSpan.start += metadataSpan.start
 	userIDSpan.end += metadataSpan.start
 
 	systemSpan, err := requireJSONObjectMemberSpan(body, "system")
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	rawSystem := body[systemSpan.start:systemSpan.end]
 	firstBlockSpan, err := requireJSONArrayElementSpan(rawSystem, 0)
 	if err != nil {
-		return nil, false, fmt.Errorf("system: %w", err)
+		return nil, fmt.Errorf("system: %w", err)
 	}
 	firstBlock := rawSystem[firstBlockSpan.start:firstBlockSpan.end]
 	textSpan, err := requireJSONObjectMemberSpan(firstBlock, "text")
 	if err != nil {
-		return nil, false, fmt.Errorf("system[0]: %w", err)
+		return nil, fmt.Errorf("system[0]: %w", err)
 	}
 	textSpan.start += systemSpan.start + firstBlockSpan.start
 	textSpan.end += systemSpan.start + firstBlockSpan.start
 
 	parsed, _, _, err := parseSingleBillingSystem(rawSystem)
 	if err != nil {
-		return nil, false, err
+		return nil, err
+	}
+	for _, field := range parsed.fields {
+		if field.key == "cch" || field.key == "cc_prev_req" {
+			return nil, fmt.Errorf("genuine rewrite does not accept first-party billing field %q", field.key)
+		}
 	}
 	rewrittenBilling, err := parsed.rewritten(computeClaudeCodeFingerprint(body, CLICurrentVersion))
 	if err != nil {
-		return nil, false, fmt.Errorf("rewrite billing header: %w", err)
+		return nil, fmt.Errorf("rewrite billing header: %w", err)
 	}
 	encodedBilling, err := json.Marshal(rewrittenBilling)
 	if err != nil {
-		return nil, false, fmt.Errorf("marshal billing text: %w", err)
+		return nil, fmt.Errorf("marshal billing text: %w", err)
 	}
 
 	userID := buildJSONUserID(DeviceIDFor(id.AccountKey), id.AccountUUID, sessionID)
 	encodedUserID, err := json.Marshal(userID)
 	if err != nil {
-		return nil, false, fmt.Errorf("marshal metadata.user_id: %w", err)
+		return nil, fmt.Errorf("marshal metadata.user_id: %w", err)
 	}
 	out, err := applyByteReplacements(body, []byteReplacement{
 		{start: userIDSpan.start, end: userIDSpan.end, value: encodedUserID},
 		{start: textSpan.start, end: textSpan.end, value: encodedBilling},
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("rewrite genuine body: %w", err)
+		return nil, fmt.Errorf("rewrite genuine body: %w", err)
 	}
 	if !metadataMatchesIdentity(out, id, sessionID) {
-		return nil, false, errors.New("refusing partial identity rewrite: metadata verification failed")
+		return nil, errors.New("refusing partial identity rewrite: metadata verification failed")
 	}
 	if err := verifyRewrittenBilling(out); err != nil {
-		return nil, false, fmt.Errorf("refusing partial identity rewrite: %w", err)
+		return nil, fmt.Errorf("refusing partial identity rewrite: %w", err)
 	}
-	return out, parsed.cchPresent, nil
+	return out, nil
 }
 
 type metadataIdentity struct {
@@ -615,18 +586,15 @@ func trimmedStringSpan(value string, start, end int) (int, int) {
 }
 
 type billingField struct {
-	key          string
-	value        string
-	valueStart   int
-	valueEnd     int
-	segmentStart int
-	segmentEnd   int
+	key        string
+	value      string
+	valueStart int
+	valueEnd   int
 }
 
 type billingHeader struct {
-	text       string
-	fields     []billingField
-	cchPresent bool
+	text   string
+	fields []billingField
 }
 
 const billingHeaderPrefix = "x-anthropic-billing-header:"
@@ -669,12 +637,10 @@ func parseBillingText(text string) (billingHeader, bool, error) {
 		}
 		seen[normalizedKey] = true
 		fields = append(fields, billingField{
-			key:          normalizedKey,
-			value:        text[valueStart:valueEnd],
-			valueStart:   valueStart,
-			valueEnd:     valueEnd,
-			segmentStart: cursor,
-			segmentEnd:   semicolon + 1,
+			key:        normalizedKey,
+			value:      text[valueStart:valueEnd],
+			valueStart: valueStart,
+			valueEnd:   valueEnd,
 		})
 		cursor = semicolon + 1
 	}
@@ -696,18 +662,13 @@ func parseBillingText(text string) (billingHeader, bool, error) {
 			if field.value != "cli" && field.value != "sdk-cli" {
 				return billingHeader{}, true, fmt.Errorf("unsupported cc_entrypoint %q", field.value)
 			}
-		case "cch":
-			if !isFiveHex(field.value) {
-				return billingHeader{}, true, errors.New("malformed billing cch field")
-			}
-			parsed.cchPresent = true
 		}
 	}
 	return parsed, true, nil
 }
 
 func (b billingHeader) rewritten(fingerprint string) (string, error) {
-	replacements := make([]byteReplacement, 0, 2)
+	replacements := make([]byteReplacement, 0, 1)
 	for _, field := range b.fields {
 		switch field.key {
 		case "cc_version":
@@ -716,11 +677,6 @@ func (b billingHeader) rewritten(fingerprint string) (string, error) {
 				end:   field.valueEnd,
 				value: []byte(CLICurrentVersion + "." + fingerprint),
 			})
-		case "cch":
-			replacements = append(replacements, byteReplacement{
-				start: field.segmentStart,
-				end:   field.segmentEnd,
-			})
 		}
 	}
 	out, err := applyByteReplacements([]byte(b.text), replacements)
@@ -728,23 +684,6 @@ func (b billingHeader) rewritten(fingerprint string) (string, error) {
 		return "", err
 	}
 	return string(out), nil
-}
-
-func previousRequestIDFromBody(body []byte) (string, bool, error) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(body, &obj); err != nil || obj == nil {
-		return "", false, errors.New("body is not a JSON object")
-	}
-	parsed, _, _, err := parseSingleBillingSystem(obj["system"])
-	if err != nil {
-		return "", false, err
-	}
-	for _, field := range parsed.fields {
-		if field.key == "cc_prev_req" {
-			return field.value, true, nil
-		}
-	}
-	return "", false, nil
 }
 
 func parseSingleBillingSystem(rawSystem json.RawMessage) (billingHeader, []json.RawMessage, map[string]json.RawMessage, error) {
@@ -799,28 +738,16 @@ func verifyRewrittenBilling(body []byte) error {
 	if err != nil {
 		return err
 	}
-	if parsed.cchPresent {
-		return errors.New("billing cch remains")
-	}
 	expectedVersion := CLICurrentVersion + "." + computeClaudeCodeFingerprint(body, CLICurrentVersion)
 	for _, field := range parsed.fields {
+		if field.key == "cch" || field.key == "cc_prev_req" {
+			return fmt.Errorf("unsupported first-party billing field %q remains", field.key)
+		}
 		if field.key == "cc_version" && field.value != expectedVersion {
 			return fmt.Errorf("billing version %q does not match %q", field.value, expectedVersion)
 		}
 	}
 	return nil
-}
-
-func isFiveHex(value string) bool {
-	if len(value) != 5 {
-		return false
-	}
-	for _, r := range value {
-		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
-			return false
-		}
-	}
-	return true
 }
 
 func metadataMatchesIdentity(body []byte, id SimIdentity, sessionID string) bool {

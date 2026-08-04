@@ -400,7 +400,7 @@ func writeAnthropicLoginCredential(path, email, accountUUID string, raw map[stri
 	}
 
 	// Re-authorizing the same account refreshes tokens but must not silently
-	// remove an operator's explicit rewrite_strip experiment assignment. Copy
+	// remove an operator's explicit rewrite assignment. Copy
 	// only this validated policy field; never merge stale tokens or health state.
 	if mode, ok := preservedClaudeIdentityMode(path, email, accountUUID); ok {
 		raw["claude_identity_mode"] = string(mode)
@@ -450,7 +450,7 @@ func preservedClaudeIdentityMode(path, newEmail, newAccountUUID string) (ClaudeI
 		return "", false
 	}
 	mode, err := ParseClaudeIdentityMode(rawMode)
-	if err != nil || mode != ClaudeIdentityModeRewriteStripCCH {
+	if err != nil || mode != ClaudeIdentityModeRewrite {
 		return "", false
 	}
 	return mode, true

@@ -62,7 +62,7 @@ func TestWriterRoundTripAndQuery(t *testing.T) {
 	}
 }
 
-func TestClaudeAuditRoundTripContainsOnlyDigests(t *testing.T) {
+func TestClaudeAuditRoundTripContainsOnlyAccountDigest(t *testing.T) {
 	dir := t.TempDir()
 	w, err := Open(dir, 0)
 	if err != nil {
@@ -71,14 +71,10 @@ func TestClaudeAuditRoundTripContainsOnlyDigests(t *testing.T) {
 	w.Log(Record{
 		TS: time.Now().UTC(), Model: "claude-opus-5", Status: 200,
 		ClaudeAudit: &ClaudeAudit{
+			AccountHash:           "account-digest",
 			RequestClass:          "genuine",
-			IdentityMode:          "rewrite_strip",
+			IdentityMode:          "rewrite",
 			AccountIdentityMapped: true,
-			CCHStripped:           true,
-			CCPrevReqPresent:      true,
-			CCPrevReqPreserved:    true,
-			CCPrevReqHash:         "0123456789abcdef",
-			ResponseRequestIDHash: "fedcba9876543210",
 		},
 	})
 	w.Close()
@@ -91,15 +87,15 @@ func TestClaudeAuditRoundTripContainsOnlyDigests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "raw-prev") || strings.Contains(string(data), "raw-response") {
-		t.Fatalf("raw request identifier leaked: %s", data)
+	if strings.Contains(string(data), "account-uuid") || strings.Contains(string(data), "user@example.com") {
+		t.Fatalf("raw account identity leaked: %s", data)
 	}
 	var got Record
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ClaudeAudit == nil || got.ClaudeAudit.CCPrevReqHash != "0123456789abcdef" ||
-		got.ClaudeAudit.ResponseRequestIDHash != "fedcba9876543210" {
+	if got.ClaudeAudit == nil || got.ClaudeAudit.AccountHash != "account-digest" ||
+		got.ClaudeAudit.IdentityMode != "rewrite" || !got.ClaudeAudit.AccountIdentityMapped {
 		t.Fatalf("audit did not round-trip: %+v", got.ClaudeAudit)
 	}
 }

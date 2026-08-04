@@ -35,7 +35,7 @@ func standardGenuinePolicyBody() []byte {
 		ClaudeCodeSystemPrompt,
 		"中文问题 cch=leave-user-text-alone",
 		policySourceSession,
-		"x-anthropic-billing-header: cc_version=2.1.214.abc; cc_entrypoint=cli; cch=1a2b3; cc_prev_req=req_previous;",
+		"x-anthropic-billing-header: cc_version=2.1.214.abc; cc_entrypoint=cli;",
 	)
 }
 
@@ -94,8 +94,8 @@ func TestLegacyBodyMimicryRejectsJSONNullWithoutPanic(t *testing.T) {
 }
 
 func TestGenuinePreserveIsByteExactAndKeepsClientProfile(t *testing.T) {
-	// Deliberately retain whitespace, Chinese text, dateline, thinking, and a
-	// dynamic cch. Preserve mode must not parse-and-remarshal these bytes.
+	// Deliberately retain whitespace, Chinese text, dateline, and thinking.
+	// Preserve mode must not parse-and-remarshal these bytes.
 	var obj map[string]any
 	if err := json.Unmarshal(standardGenuinePolicyBody(), &obj); err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestGenuinePreserveIsByteExactAndKeepsClientProfile(t *testing.T) {
 	if !bytes.Equal(result.Body(), in) {
 		t.Fatalf("preserve changed bytes\nin:  %s\nout: %s", in, result.Body())
 	}
-	if result.AccountIdentityApplied() || result.CCHStripped() {
+	if result.AccountIdentityApplied() {
 		t.Fatalf("preserve reported mutation")
 	}
 
@@ -155,27 +155,15 @@ func TestGenuinePreserveIsByteExactAndKeepsClientProfile(t *testing.T) {
 	}
 }
 
-func TestGenuineRewriteStripIsAtomicAndConsistent(t *testing.T) {
+func TestGenuineRewriteIsAtomicAndConsistent(t *testing.T) {
 	in := standardGenuinePolicyBody()
 	id := testID()
-	result := mustTransform(t, in, id, GenuineRequestRewriteStripCCH)
-	if !result.AccountIdentityApplied() || !result.CCHPresentBefore() || !result.CCHStripped() {
+	result := mustTransform(t, in, id, GenuineRequestRewrite)
+	if !result.AccountIdentityApplied() {
 		t.Fatalf("unexpected outcome")
-	}
-	if strings.Contains(string(result.Body()), "cch=1a2b3") {
-		t.Fatalf("billing cch survived: %s", result.Body())
 	}
 	if !strings.Contains(string(result.Body()), "cch=leave-user-text-alone") {
 		t.Fatalf("user prose containing cch= was changed: %s", result.Body())
-	}
-	if !strings.Contains(string(result.Body()), "cc_prev_req=req_previous") {
-		t.Fatalf("cc_prev_req was lost: %s", result.Body())
-	}
-	if !result.CCPrevReqPresent() || !result.CCPrevReqPreserved() {
-		t.Fatalf("cc_prev_req audit flags: present=%v preserved=%v", result.CCPrevReqPresent(), result.CCPrevReqPreserved())
-	}
-	if got, want := result.CCPrevReqHash(), HashClaudeRequestID("req_previous"); got != want || got == "req_previous" {
-		t.Fatalf("cc_prev_req hash: got %q want %q", got, want)
 	}
 	if !strings.Contains(string(result.Body()), "cc_version="+CLICurrentVersion+".") {
 		t.Fatalf("billing version was not pinned: %s", result.Body())
@@ -235,49 +223,33 @@ func TestGenuineRewriteStripIsAtomicAndConsistent(t *testing.T) {
 
 func TestGenuineRewriteAcceptsOfficialSDKCLIEntrypoint(t *testing.T) {
 	in := bytes.ReplaceAll(standardGenuinePolicyBody(), []byte("cc_entrypoint=cli;"), []byte("cc_entrypoint=sdk-cli;"))
-	result := mustTransform(t, in, testID(), GenuineRequestRewriteStripCCH)
+	result := mustTransform(t, in, testID(), GenuineRequestRewrite)
 	if !bytes.Contains(result.Body(), []byte("cc_entrypoint=sdk-cli;")) {
 		t.Fatalf("sdk-cli entrypoint was not preserved: %s", result.Body())
-	}
-	if bytes.Contains(result.Body(), []byte("cch=1a2b3")) || !result.CCHStripped() {
-		t.Fatalf("sdk-cli cch was not stripped: %s", result.Body())
 	}
 	if !bytes.Contains(result.Body(), []byte("cc_version="+CLICurrentVersion+".")) {
 		t.Fatalf("sdk-cli billing version was not pinned: %s", result.Body())
 	}
 }
 
-func TestHashClaudeRequestIDIsTrimmedDomainSeparatedAndOpaque(t *testing.T) {
-	got := HashClaudeRequestID("  req-123  ")
-	if got == "" || got == "req-123" || got != HashClaudeRequestID("req-123") {
-		t.Fatalf("unexpected request-id hash %q", got)
-	}
-	if got == HashClaudeRequestID("req-124") {
-		t.Fatal("different request IDs produced the same audit hash")
-	}
-	if HashClaudeRequestID(" \t ") != "" {
-		t.Fatal("empty request ID should not produce a digest")
-	}
-}
-
-func TestHashClaudeAccountKeyIsStableOpaqueAndDomainSeparated(t *testing.T) {
+func TestHashClaudeAccountKeyIsStableAndOpaque(t *testing.T) {
 	got := HashClaudeAccountKey(" account-uuid ")
 	if got == "" || got == "account-uuid" || got != HashClaudeAccountKey("account-uuid") {
 		t.Fatalf("unexpected account hash %q", got)
 	}
-	if got == HashClaudeRequestID("account-uuid") || got == HashClaudeAccountKey("other-account") {
-		t.Fatal("account hash is not domain separated")
+	if got == HashClaudeAccountKey("other-account") {
+		t.Fatal("different accounts produced the same audit hash")
 	}
 }
 
 func TestGenuineRewriteChangesOnlyIdentityAndBillingTextValues(t *testing.T) {
-	const oldBilling = "x-anthropic-billing-header: cc_version = 2.1.214.abc ; cc_entrypoint=cli;  cch=1a2b3; cc_prev_req=req_previous; Unknown_Field = KeepMe ;"
+	const oldBilling = "x-anthropic-billing-header: cc_version = 2.1.214.abc ; cc_entrypoint=cli; Unknown_Field = KeepMe ;"
 	const oldUserID = `{"device_id":"downstream-device","account_uuid":"downstream-account","session_id":"11111111-1111-4111-8111-111111111111"}`
 	body := []byte(`{
   "model": "claude-sonnet-5",
   "messages": [{"role":"user","content":[{"type":"text","text":"<system-reminder>meta & >__LS__</system-reminder>"},{"type":"text","text":"中文问题"}]}],
   "system": [
-    {"type":"text","text":"x-anthropic-billing-header: cc_version = 2.1.214.abc ; cc_entrypoint=cli;  cch=1a2b3; cc_prev_req=req_previous; Unknown_Field = KeepMe ;"},
+    {"type":"text","text":"x-anthropic-billing-header: cc_version = 2.1.214.abc ; cc_entrypoint=cli; Unknown_Field = KeepMe ;"},
     {"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."}
   ],
   "tools": [{"name":"keep","description":"<tag>&keep>"}],
@@ -292,9 +264,8 @@ func TestGenuineRewriteChangesOnlyIdentityAndBillingTextValues(t *testing.T) {
 	body = bytes.Replace(body, []byte("__LS__"), []byte("\u2028"), 1)
 	original := bytes.Clone(body)
 
-	result := mustTransform(t, body, testID(), GenuineRequestRewriteStripCCH)
+	result := mustTransform(t, body, testID(), GenuineRequestRewrite)
 	newBilling := strings.Replace(oldBilling, "2.1.214.abc", CLICurrentVersion+"."+computeClaudeCodeFingerprint(body, CLICurrentVersion), 1)
-	newBilling = strings.Replace(newBilling, "  cch=1a2b3;", "", 1)
 	newUserID := buildJSONUserID(DeviceIDFor(testID().AccountKey), testID().AccountUUID, SessionIDForSource(testID(), policySourceSession))
 
 	oldBillingToken, _ := json.Marshal(oldBilling)
@@ -319,7 +290,7 @@ func TestGenuineRewriteRejectsDuplicateTargetKeys(t *testing.T) {
 		"user_id":  bytes.Replace(base, []byte(`"user_id":`), []byte(`"user_id":"decoy","user_id":`), 1),
 		"text":     bytes.Replace(base, []byte(`{"text":`), []byte(`{"text":"decoy","text":`), 1),
 	}
-	policy := mustPolicy(t, RequestClassGenuine, GenuineRequestRewriteStripCCH)
+	policy := mustPolicy(t, RequestClassGenuine, GenuineRequestRewrite)
 	for name, body := range tests {
 		t.Run(name, func(t *testing.T) {
 			result, err := PrepareClaudeCodeRequest(body, "claude-sonnet-5", testID(), policy, KindOAuth)
@@ -337,7 +308,7 @@ func TestGenuineRewriteRetainsRequestSpecificBetaVector(t *testing.T) {
 		"You are a helpful AI assistant tasked with summarizing conversations",
 		"title",
 		policySourceSession,
-		"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli; cch=123ab;",
+		"x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli;",
 	)
 	cases := []struct {
 		name string
@@ -352,7 +323,7 @@ func TestGenuineRewriteRetainsRequestSpecificBetaVector(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := mustTransform(t, tc.body, testID(), GenuineRequestRewriteStripCCH)
+			result := mustTransform(t, tc.body, testID(), GenuineRequestRewrite)
 			req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", nil)
 			req.Header.Set("Anthropic-Beta", tc.beta)
 			if err := ApplyClaudeCodePreparedRequest(req, "oauth-token", testID().AccountKey, KindOAuth, true, true, result); err != nil {
@@ -366,7 +337,7 @@ func TestGenuineRewriteRetainsRequestSpecificBetaVector(t *testing.T) {
 }
 
 func TestGenuineRewriteRejectsMissingBetaWithoutMutation(t *testing.T) {
-	result := mustTransform(t, standardGenuinePolicyBody(), testID(), GenuineRequestRewriteStripCCH)
+	result := mustTransform(t, standardGenuinePolicyBody(), testID(), GenuineRequestRewrite)
 	req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", strings.NewReader("original-body"))
 	req.Header.Set("User-Agent", "original")
 	beforeHeader := req.Header.Clone()
@@ -388,7 +359,7 @@ func TestGenuineRewriteRejectsMissingBetaWithoutMutation(t *testing.T) {
 }
 
 func TestGenuineRewriteUsesSourceSessionAcrossRequestClasses(t *testing.T) {
-	billing := "x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli; cch=123ab;"
+	billing := "x-anthropic-billing-header: cc_version=2.1.220.abc; cc_entrypoint=cli;"
 	main := genuinePolicyBody(ClaudeCodeSystemPrompt, "main question", policySourceSession, billing)
 	title := genuinePolicyBody("You are a helpful AI assistant tasked with summarizing conversations", "make a title", policySourceSession, billing)
 	suggestion := genuinePolicyBody("You are a Claude agent, built on Anthropic's Claude Agent SDK", "suggest next", policySourceSession, billing)
@@ -396,7 +367,7 @@ func TestGenuineRewriteUsesSourceSessionAcrossRequestClasses(t *testing.T) {
 	want := SessionIDForSource(testID(), policySourceSession)
 	for name, body := range map[string][]byte{"main": main, "title": title, "suggestion": suggestion} {
 		t.Run(name, func(t *testing.T) {
-			result := mustTransform(t, body, testID(), GenuineRequestRewriteStripCCH)
+			result := mustTransform(t, body, testID(), GenuineRequestRewrite)
 			if result.SessionID() != want {
 				t.Fatalf("got %s want %s", result.SessionID(), want)
 			}
@@ -406,26 +377,26 @@ func TestGenuineRewriteUsesSourceSessionAcrossRequestClasses(t *testing.T) {
 	otherAccount := testID()
 	otherAccount.AccountKey = "other-account@example.com"
 	otherAccount.AccountUUID = "22222222-2222-4222-8222-222222222222"
-	other := mustTransform(t, main, otherAccount, GenuineRequestRewriteStripCCH)
+	other := mustTransform(t, main, otherAccount, GenuineRequestRewrite)
 	if other.SessionID() == want || DeviceIDFor(otherAccount.AccountKey) == DeviceIDFor(testID().AccountKey) {
 		t.Fatal("switching accounts did not rotate the account-scoped identity")
 	}
 }
 
-func TestGenuineRewriteWithoutIncomingCCH(t *testing.T) {
-	in := bytes.ReplaceAll(standardGenuinePolicyBody(), []byte(" cch=1a2b3;"), nil)
-	result := mustTransform(t, in, testID(), GenuineRequestRewriteStripCCH)
-	if !result.AccountIdentityApplied() || result.CCHPresentBefore() || result.CCHStripped() {
-		t.Fatal("unexpected no-cch result flags")
-	}
-	if err := verifyRewrittenBilling(result.Body()); err != nil {
-		t.Fatal(err)
+func TestGenuineRewriteRejectsFirstPartyChainFields(t *testing.T) {
+	base := standardGenuinePolicyBody()
+	policy := mustPolicy(t, RequestClassGenuine, GenuineRequestRewrite)
+	for _, field := range []string{"cch=1a2b3;", "cc_prev_req=req_previous;"} {
+		body := bytes.Replace(base, []byte("cc_entrypoint=cli;"), []byte("cc_entrypoint=cli; "+field), 1)
+		if result, err := PrepareClaudeCodeRequest(body, "claude-sonnet-5", testID(), policy, KindOAuth); err == nil || result.IsValid() {
+			t.Fatalf("first-party field %q was accepted", field)
+		}
 	}
 }
 
 func TestGenuineRewriteFailuresAreFailClosed(t *testing.T) {
 	base := standardGenuinePolicyBody()
-	validPolicy := mustPolicy(t, RequestClassGenuine, GenuineRequestRewriteStripCCH)
+	validPolicy := mustPolicy(t, RequestClassGenuine, GenuineRequestRewrite)
 
 	tests := []struct {
 		name string
@@ -436,9 +407,7 @@ func TestGenuineRewriteFailuresAreFailClosed(t *testing.T) {
 		{"empty-account-uuid", base, SimIdentity{AccountKey: testID().AccountKey, ClientToken: testID().ClientToken}},
 		{"empty-client-token", base, SimIdentity{AccountKey: testID().AccountKey, AccountUUID: testID().AccountUUID}},
 		{"missing-source-session", bytes.ReplaceAll(base, []byte(policySourceSession), nil), testID()},
-		{"missing-billing", bytes.ReplaceAll(base, []byte("x-anthropic-billing-header: cc_version=2.1.214.abc; cc_entrypoint=cli; cch=1a2b3; cc_prev_req=req_previous;"), []byte("not a billing block")), testID()},
-		{"malformed-cch", bytes.ReplaceAll(base, []byte("cch=1a2b3;"), []byte("cch=bad;")), testID()},
-		{"duplicate-cch", bytes.ReplaceAll(base, []byte("cch=1a2b3;"), []byte("cch=1a2b3; cch=4d5e6;")), testID()},
+		{"missing-billing", bytes.ReplaceAll(base, []byte("x-anthropic-billing-header: cc_version=2.1.214.abc; cc_entrypoint=cli;"), []byte("not a billing block")), testID()},
 		{"duplicate-version", bytes.ReplaceAll(base, []byte("cc_version=2.1.214.abc;"), []byte("cc_version=2.1.214.abc; cc_version=2.1.220.def;")), testID()},
 		{"wrong-entrypoint", bytes.ReplaceAll(base, []byte("cc_entrypoint=cli;"), []byte("cc_entrypoint=sdk;")), testID()},
 	}
@@ -481,7 +450,7 @@ func TestPreparedHeaderApplicationRejectsInvalidResultWithoutMutation(t *testing
 }
 
 func TestPreparedRequestRejectsCredentialBindingMismatchWithoutMutation(t *testing.T) {
-	result := mustTransform(t, standardGenuinePolicyBody(), testID(), GenuineRequestRewriteStripCCH)
+	result := mustTransform(t, standardGenuinePolicyBody(), testID(), GenuineRequestRewrite)
 	req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", strings.NewReader("original-body"))
 	req.Header.Set("User-Agent", "original")
 	req.Header.Set("Authorization", "original-auth")
@@ -532,8 +501,8 @@ func TestPrepareRejectsMissingCredentialBinding(t *testing.T) {
 	if result, err := PrepareClaudeCodeRequest(body, "claude-sonnet-5", testID(), policy, "other"); err == nil || result.IsValid() {
 		t.Fatal("unknown credential kind was accepted")
 	}
-	rewritePolicy := mustPolicy(t, RequestClassGenuine, GenuineRequestRewriteStripCCH)
+	rewritePolicy := mustPolicy(t, RequestClassGenuine, GenuineRequestRewrite)
 	if result, err := PrepareClaudeCodeRequest(body, "claude-sonnet-5", testID(), rewritePolicy, KindAPIKey); err == nil || result.IsValid() {
-		t.Fatal("API-key credential accepted rewrite_strip")
+		t.Fatal("API-key credential accepted rewrite")
 	}
 }

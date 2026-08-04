@@ -38,20 +38,20 @@ func TestClaudeIdentityModePersistence(t *testing.T) {
 	if got := a.Snapshot().ClaudeIdentityMode; got != ClaudeIdentityModePreserve {
 		t.Fatalf("snapshot default: got %q", got)
 	}
-	if err := a.UpdateClaudeIdentityMode(ClaudeIdentityModeRewriteStripCCH); err != nil {
+	if err := a.UpdateClaudeIdentityMode(ClaudeIdentityModeRewrite); err != nil {
 		t.Fatal(err)
 	}
 
 	b := load()
-	if got := b.ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewriteStripCCH {
-		t.Fatalf("rewrite_strip did not round-trip: %q", got)
+	if got := b.ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewrite {
+		t.Fatalf("rewrite did not round-trip: %q", got)
 	}
 	data, _ := os.ReadFile(path)
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)
 	}
-	if raw["claude_identity_mode"] != "rewrite_strip" || raw["unknown_keep"] != "yes" {
+	if raw["claude_identity_mode"] != "rewrite" || raw["unknown_keep"] != "yes" {
 		t.Fatalf("persisted JSON lost fields: %v", raw)
 	}
 
@@ -71,6 +71,13 @@ func TestClaudeIdentityModePersistence(t *testing.T) {
 	}
 }
 
+func TestClaudeIdentityModeAcceptsLegacyRewriteStripAlias(t *testing.T) {
+	mode, err := ParseClaudeIdentityMode("rewrite_strip")
+	if err != nil || mode != ClaudeIdentityModeRewrite || string(mode) != "rewrite" {
+		t.Fatalf("legacy alias was not normalized: mode=%q err=%v", mode, err)
+	}
+}
+
 func TestClaudeIdentityModeRejectsInvalidInput(t *testing.T) {
 	dir := t.TempDir()
 	for name, body := range map[string]string{
@@ -87,19 +94,19 @@ func TestClaudeIdentityModeRejectsInvalidInput(t *testing.T) {
 	}
 
 	apiKey := &Auth{Kind: KindAPIKey, Provider: ProviderAnthropic}
-	if err := apiKey.SetClaudeIdentityMode(ClaudeIdentityModeRewriteStripCCH); err == nil {
+	if err := apiKey.SetClaudeIdentityMode(ClaudeIdentityModeRewrite); err == nil {
 		t.Fatal("API key accepted a Claude identity mode")
 	}
 	if got := apiKey.ClaudeIdentityModeValue(); got != "" {
 		t.Fatalf("API key mode should be inapplicable, got %q", got)
 	}
 	codex := &Auth{Kind: KindOAuth, Provider: ProviderOpenAI}
-	if err := codex.SetClaudeIdentityMode(ClaudeIdentityModeRewriteStripCCH); err == nil {
+	if err := codex.SetClaudeIdentityMode(ClaudeIdentityModeRewrite); err == nil {
 		t.Fatal("OpenAI OAuth accepted a Claude identity mode")
 	}
 	legacy := &Auth{Kind: KindOAuth, Provider: ProviderAnthropic, Email: "legacy@example.com"}
-	if err := legacy.SetClaudeIdentityMode(ClaudeIdentityModeRewriteStripCCH); !errors.Is(err, ErrClaudeIdentityModeMissingAccountUUID) {
-		t.Fatalf("legacy credential accepted rewrite_strip: %v", err)
+	if err := legacy.SetClaudeIdentityMode(ClaudeIdentityModeRewrite); !errors.Is(err, ErrClaudeIdentityModeMissingAccountUUID) {
+		t.Fatalf("legacy credential accepted rewrite: %v", err)
 	}
 }
 
@@ -110,7 +117,7 @@ func TestPreservedClaudeIdentityModeOnRelogin(t *testing.T) {
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := preservedClaudeIdentityMode(path, "user@example.com", "account-1"); !ok || got != ClaudeIdentityModeRewriteStripCCH {
+	if got, ok := preservedClaudeIdentityMode(path, "user@example.com", "account-1"); !ok || got != ClaudeIdentityModeRewrite {
 		t.Fatalf("same account did not retain mode: got=%q ok=%v", got, ok)
 	}
 	if _, ok := preservedClaudeIdentityMode(path, "user@example.com", "different-account"); ok {
@@ -143,7 +150,7 @@ func TestAnthropicReloginReturnsObjectWithPreservedMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := a.ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewriteStripCCH {
+	if got := a.ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewrite {
 		t.Fatalf("replacement object lost mode: %q", got)
 	}
 	token, _ := a.Credentials()
@@ -162,7 +169,7 @@ func TestPoolIdentityModeSwitchRequiresDrainedDisabledCredential(t *testing.T) {
 		AccessToken: "token",
 	}
 	p := NewPool([]*Auth{a}, nil, time.Hour, false, "")
-	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewriteStripCCH); !errors.Is(err, ErrClaudeIdentityModeCredentialEnabled) {
+	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewrite); !errors.Is(err, ErrClaudeIdentityModeCredentialEnabled) {
 		t.Fatalf("enabled credential: %v", err)
 	}
 
@@ -175,15 +182,15 @@ func TestPoolIdentityModeSwitchRequiresDrainedDisabledCredential(t *testing.T) {
 		kind:        KindOAuth,
 		lastSeen:    time.Now(),
 	}
-	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewriteStripCCH); !errors.Is(err, ErrClaudeIdentityModeCredentialActive) {
+	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewrite); !errors.Is(err, ErrClaudeIdentityModeCredentialActive) {
 		t.Fatalf("active credential: %v", err)
 	}
 
 	p.sessions = make(map[string]*session)
-	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewriteStripCCH); err != nil {
+	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewrite); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewriteStripCCH {
+	if got := a.ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewrite {
 		t.Fatalf("mode not updated: %q", got)
 	}
 }
@@ -195,7 +202,7 @@ func TestPoolOAuthReplacementKeepsLatestModeForSameAccount(t *testing.T) {
 		Provider:           ProviderAnthropic,
 		Email:              "user@example.com",
 		AccountUUID:        "account-1",
-		claudeIdentityMode: ClaudeIdentityModeRewriteStripCCH,
+		claudeIdentityMode: ClaudeIdentityModeRewrite,
 	}
 	p := NewPool([]*Auth{current}, nil, time.Hour, false, "")
 	staleReplacement := &Auth{
@@ -208,7 +215,7 @@ func TestPoolOAuthReplacementKeepsLatestModeForSameAccount(t *testing.T) {
 	if err := p.AddOAuth(staleReplacement); err != nil {
 		t.Fatal(err)
 	}
-	if got := p.FindByID(current.ID).ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewriteStripCCH {
+	if got := p.FindByID(current.ID).ClaudeIdentityModeValue(); got != ClaudeIdentityModeRewrite {
 		t.Fatalf("same-account replacement lost latest mode: %q", got)
 	}
 	missingUUIDReplacement := &Auth{
@@ -242,7 +249,7 @@ func TestPoolOAuthReplacementKeepsLatestModeForSameAccount(t *testing.T) {
 func TestPoolRewriteRequiresAccountUUID(t *testing.T) {
 	a := &Auth{ID: "legacy", Kind: KindOAuth, Provider: ProviderAnthropic, Email: "legacy@example.com", Disabled: true}
 	p := NewPool([]*Auth{a}, nil, time.Hour, false, "")
-	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewriteStripCCH); !errors.Is(err, ErrClaudeIdentityModeMissingAccountUUID) {
+	if err := p.UpdateClaudeIdentityMode(a.ID, ClaudeIdentityModeRewrite); !errors.Is(err, ErrClaudeIdentityModeMissingAccountUUID) {
 		t.Fatalf("missing UUID: %v", err)
 	}
 }
@@ -263,7 +270,7 @@ func TestStaleIdentityModeUpdateCannotOverwriteReplacedAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := stale.UpdateClaudeIdentityMode(ClaudeIdentityModeRewriteStripCCH); !errors.Is(err, ErrCredentialFileAccountMismatch) {
+	if err := stale.UpdateClaudeIdentityMode(ClaudeIdentityModeRewrite); !errors.Is(err, ErrCredentialFileAccountMismatch) {
 		t.Fatalf("stale mode update: %v", err)
 	}
 	reloadedData, err := os.ReadFile(path)
@@ -303,7 +310,7 @@ func TestConcurrentInstallAndIdentityModeUpdateNeverMixAccounts(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			errCh <- stale.UpdateClaudeIdentityMode(ClaudeIdentityModeRewriteStripCCH)
+			errCh <- stale.UpdateClaudeIdentityMode(ClaudeIdentityModeRewrite)
 		}()
 		go func() {
 			defer wg.Done()
@@ -357,7 +364,7 @@ func TestConcurrentSameAccountReplacementAndPoolModeUpdateStayConsistent(t *test
 		errCh := make(chan error, 2)
 		go func() {
 			<-start
-			errCh <- p.UpdateClaudeIdentityMode(current.ID, ClaudeIdentityModeRewriteStripCCH)
+			errCh <- p.UpdateClaudeIdentityMode(current.ID, ClaudeIdentityModeRewrite)
 		}()
 		go func() {
 			<-start
@@ -370,7 +377,7 @@ func TestConcurrentSameAccountReplacementAndPoolModeUpdateStayConsistent(t *test
 			}
 		}
 		published := p.FindByID(current.ID)
-		if published == nil || published.ClaudeIdentityModeValue() != ClaudeIdentityModeRewriteStripCCH {
+		if published == nil || published.ClaudeIdentityModeValue() != ClaudeIdentityModeRewrite {
 			t.Fatalf("iteration %d: pool mode=%v", i, published)
 		}
 		finalData, err := os.ReadFile(path)
@@ -382,7 +389,7 @@ func TestConcurrentSameAccountReplacementAndPoolModeUpdateStayConsistent(t *test
 			t.Fatal(err)
 		}
 		token, _ := final.Credentials()
-		if token != "new-token" || final.ClaudeIdentityModeValue() != ClaudeIdentityModeRewriteStripCCH {
+		if token != "new-token" || final.ClaudeIdentityModeValue() != ClaudeIdentityModeRewrite {
 			t.Fatalf("iteration %d: disk token=%q mode=%q", i, token, final.ClaudeIdentityModeValue())
 		}
 	}
@@ -400,7 +407,7 @@ func TestInstallSameAccountPreservesIdentityMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if installed.ClaudeIdentityModeValue() != ClaudeIdentityModeRewriteStripCCH {
+	if installed.ClaudeIdentityModeValue() != ClaudeIdentityModeRewrite {
 		t.Fatalf("same account lost mode: %q", installed.ClaudeIdentityModeValue())
 	}
 	token, _ := installed.Credentials()

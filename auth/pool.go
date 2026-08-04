@@ -17,7 +17,7 @@ var (
 	ErrClaudeIdentityModeNotApplicable      = errors.New("claude identity mode only applies to Anthropic OAuth credentials")
 	ErrClaudeIdentityModeCredentialEnabled  = errors.New("credential must be disabled before changing Claude identity mode")
 	ErrClaudeIdentityModeCredentialActive   = errors.New("credential still has active sessions")
-	ErrClaudeIdentityModeMissingAccountUUID = errors.New("rewrite_strip requires an OAuth account UUID")
+	ErrClaudeIdentityModeMissingAccountUUID = errors.New("rewrite requires an OAuth account UUID")
 	ErrDuplicateClaudeAccountUUID           = errors.New("duplicate Anthropic OAuth account_uuid")
 	ErrCredentialFileAccountMismatch        = errors.New("credential file now belongs to a different account")
 )
@@ -734,7 +734,7 @@ func (p *Pool) UpdateClaudeIdentityMode(id string, mode ClaudeIdentityMode) erro
 	if active := p.activeCountLocked(id, now); active > 0 {
 		return fmt.Errorf("%w: %d", ErrClaudeIdentityModeCredentialActive, active)
 	}
-	if normalized == ClaudeIdentityModeRewriteStripCCH && strings.TrimSpace(a.AccountUUIDValue()) == "" {
+	if normalized == ClaudeIdentityModeRewrite && strings.TrimSpace(a.AccountUUIDValue()) == "" {
 		return ErrClaudeIdentityModeMissingAccountUUID
 	}
 	return a.UpdateClaudeIdentityMode(normalized)
