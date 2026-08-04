@@ -147,25 +147,6 @@ func parseFile(path string, data []byte) (*Auth, error) {
 	orgRateLimitTier, _ := raw["organization_rate_limit_tier"].(string)
 	hostProfile := parseHostProfile(raw["host_profile"])
 	stripThinking, _ := raw["strip_thinking"].(bool)
-	identityMode := ClaudeIdentityMode("")
-	if NormalizeProvider(provider) == ProviderAnthropic {
-		identityModeRaw := ""
-		if value, exists := raw["claude_identity_mode"]; exists {
-			var ok bool
-			identityModeRaw, ok = value.(string)
-			if !ok {
-				return nil, errors.New("claude_identity_mode must be a string")
-			}
-		}
-		var err error
-		identityMode, err = ParseClaudeIdentityMode(identityModeRaw)
-		if err != nil {
-			return nil, fmt.Errorf("claude_identity_mode: %w", err)
-		}
-		if identityMode == ClaudeIdentityModeRewrite && strings.TrimSpace(accountUUID) == "" {
-			return nil, fmt.Errorf("claude_identity_mode: %w", ErrClaudeIdentityModeMissingAccountUUID)
-		}
-	}
 	// model_map for OAuth: rewrite-only like API-key. When the file has no
 	// model_map key at all, a Claude (Anthropic) OAuth credential gets the
 	// default opus-4-6/4-7 → 4-8 upgrade injected; an explicit (even empty)
@@ -195,7 +176,6 @@ func parseFile(path string, data []byte) (*Auth, error) {
 		OrganizationRateLimitTier: orgRateLimitTier,
 		HostProfile:               hostProfile,
 		StripThinking:             stripThinking,
-		claudeIdentityMode:        identityMode,
 		ModelMap:                  modelMap,
 	}
 	return a, nil
@@ -535,11 +515,9 @@ func saveAuth(a *Auth) error {
 		} else {
 			delete(raw, "host_profile")
 		}
-		if provider == ProviderAnthropic && a.claudeIdentityModeLocked() == ClaudeIdentityModeRewrite {
-			raw["claude_identity_mode"] = string(ClaudeIdentityModeRewrite)
-		} else {
-			delete(raw, "claude_identity_mode")
-		}
+		// Identity rewriting is now the only genuine Claude Code OAuth path;
+		// remove the retired per-credential mode if an older file still has it.
+		delete(raw, "claude_identity_mode")
 	}
 	raw["disabled"] = a.Disabled
 	if a.StripThinking {
@@ -607,76 +585,10 @@ func saveAuth(a *Auth) error {
 // Persist writes the current admin-editable fields of the auth back to disk.
 func (a *Auth) Persist() error { return saveAuth(a) }
 
-// UpdateClaudeIdentityMode atomically updates only the genuine-request policy
-// in memory and on disk. Unlike a generic Set+Persist sequence, it never writes
-// access/refresh tokens from a potentially stale Auth object, and it shares
-// saveMu with OAuth re-login so neither operation can clobber the other.
-func (a *Auth) UpdateClaudeIdentityMode(mode ClaudeIdentityMode) error {
-	normalized, err := ParseClaudeIdentityMode(string(mode))
-	if err != nil {
-		return err
-	}
-
-	saveMu.Lock()
-	defer saveMu.Unlock()
-	a.mu.RLock()
-	applicable := a.Kind == KindOAuth && NormalizeProvider(a.Provider) == ProviderAnthropic
-	path := a.FilePath
-	accountUUID := a.AccountUUID
-	a.mu.RUnlock()
-	if !applicable {
-		return errors.New("claude identity mode only applies to Anthropic OAuth credentials")
-	}
-	if normalized == ClaudeIdentityModeRewrite && strings.TrimSpace(accountUUID) == "" {
-		return ErrClaudeIdentityModeMissingAccountUUID
-	}
-	if path != "" {
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		var raw map[string]any
-		if err := json.Unmarshal(data, &raw); err != nil || raw == nil {
-			return errors.New("credential file is not a JSON object")
-		}
-		diskAuth, parseErr := parseFile(path, data)
-		if parseErr != nil {
-			return fmt.Errorf("parse current credential file: %w", parseErr)
-		}
-		if !sameAnthropicOAuthAccount(a, diskAuth) {
-			return fmt.Errorf("%w: refusing stale mode update for %s", ErrCredentialFileAccountMismatch, a.ID)
-		}
-		if normalized == ClaudeIdentityModeRewrite {
-			raw["claude_identity_mode"] = string(normalized)
-		} else {
-			delete(raw, "claude_identity_mode")
-		}
-		out, marshalErr := json.MarshalIndent(raw, "", "  ")
-		if marshalErr != nil {
-			return marshalErr
-		}
-		tmp := path + ".tmp"
-		if err := os.WriteFile(tmp, out, 0600); err != nil {
-			return err
-		}
-		if err := os.Rename(tmp, path); err != nil {
-			_ = os.Remove(tmp)
-			return err
-		}
-	}
-	a.mu.Lock()
-	a.claudeIdentityMode = normalized
-	a.mu.Unlock()
-	return nil
-}
-
 // InstallCredentialFile validates and atomically installs an uploaded
-// credential while sharing saveMu with refresh, re-login, Persist, and mode
-// updates. Replacing the same Anthropic account preserves its existing
-// account-level identity mode; replacing the path with another account never
-// inherits that mode.
+// credential while sharing saveMu with refresh, re-login, and Persist.
 func InstallCredentialFile(path string, data []byte) (*Auth, error) {
-	candidate, err := parseFile(path, data)
+	_, err := parseFile(path, data)
 	if err != nil {
 		return nil, err
 	}
@@ -687,15 +599,7 @@ func InstallCredentialFile(path string, data []byte) (*Auth, error) {
 	if err := json.Unmarshal(data, &raw); err != nil || raw == nil {
 		return nil, errors.New("credential file is not a JSON object")
 	}
-	if currentData, readErr := os.ReadFile(path); readErr == nil {
-		if current, parseErr := parseFile(path, currentData); parseErr == nil && sameAnthropicOAuthAccount(current, candidate) {
-			if current.ClaudeIdentityModeValue() == ClaudeIdentityModeRewrite {
-				raw["claude_identity_mode"] = string(ClaudeIdentityModeRewrite)
-			} else {
-				delete(raw, "claude_identity_mode")
-			}
-		}
-	}
+	delete(raw, "claude_identity_mode")
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return nil, err

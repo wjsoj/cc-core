@@ -13,13 +13,8 @@ import (
 )
 
 var (
-	ErrClaudeIdentityModeAuthNotFound       = errors.New("claude identity mode credential not found")
-	ErrClaudeIdentityModeNotApplicable      = errors.New("claude identity mode only applies to Anthropic OAuth credentials")
-	ErrClaudeIdentityModeCredentialEnabled  = errors.New("credential must be disabled before changing Claude identity mode")
-	ErrClaudeIdentityModeCredentialActive   = errors.New("credential still has active sessions")
-	ErrClaudeIdentityModeMissingAccountUUID = errors.New("rewrite requires an OAuth account UUID")
-	ErrDuplicateClaudeAccountUUID           = errors.New("duplicate Anthropic OAuth account_uuid")
-	ErrCredentialFileAccountMismatch        = errors.New("credential file now belongs to a different account")
+	ErrDuplicateClaudeAccountUUID    = errors.New("duplicate Anthropic OAuth account_uuid")
+	ErrCredentialFileAccountMismatch = errors.New("credential file now belongs to a different account")
 )
 
 // Pool holds all credentials (OAuth + API keys) and assigns them to client
@@ -706,40 +701,6 @@ func (p *Pool) FindByID(id string) *Auth {
 	return nil
 }
 
-// UpdateClaudeIdentityMode changes an account's genuine-request policy while
-// holding the pool lock. Requiring the credential to be disabled with no live
-// sticky sessions prevents one virtual Claude Code process from changing its
-// identity/profile mid-session. Holding this lock also serializes the update
-// with AddOAuth replacement after a re-login or credential upload.
-func (p *Pool) UpdateClaudeIdentityMode(id string, mode ClaudeIdentityMode) error {
-	normalized, err := ParseClaudeIdentityMode(string(mode))
-	if err != nil {
-		return err
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	now := time.Now()
-	p.gcLocked(now)
-	a := p.findOAuthLocked(id)
-	if a == nil {
-		return ErrClaudeIdentityModeAuthNotFound
-	}
-	st := a.Snapshot()
-	if st.Kind != KindOAuth || NormalizeProvider(st.Provider) != ProviderAnthropic {
-		return ErrClaudeIdentityModeNotApplicable
-	}
-	if !st.Disabled {
-		return ErrClaudeIdentityModeCredentialEnabled
-	}
-	if active := p.activeCountLocked(id, now); active > 0 {
-		return fmt.Errorf("%w: %d", ErrClaudeIdentityModeCredentialActive, active)
-	}
-	if normalized == ClaudeIdentityModeRewrite && strings.TrimSpace(a.AccountUUIDValue()) == "" {
-		return ErrClaudeIdentityModeMissingAccountUUID
-	}
-	return a.UpdateClaudeIdentityMode(normalized)
-}
-
 // AddOAuth registers a newly uploaded OAuth credential into the live pool.
 // Any existing auth with the same ID is replaced.
 func (p *Pool) AddOAuth(a *Auth) error {
@@ -765,18 +726,6 @@ func (p *Pool) AddOAuth(a *Auth) error {
 	}
 	for i, existing := range p.oauths {
 		if existing.ID == a.ID {
-			// A re-login/upload may have parsed its replacement just before an
-			// operator changed the live account mode. For the same underlying
-			// Anthropic account, the pool's current value wins; reconcile both the
-			// replacement object and its file before publishing it.
-			if sameAnthropicOAuthAccount(existing, a) {
-				mode := existing.ClaudeIdentityModeValue()
-				if a.ClaudeIdentityModeValue() != mode {
-					if err := a.UpdateClaudeIdentityMode(mode); err != nil {
-						return fmt.Errorf("reconcile OAuth replacement identity mode: %w", err)
-					}
-				}
-			}
 			p.oauths[i] = a
 			return nil
 		}

@@ -369,7 +369,7 @@ func finishAnthropicLogin(
 	if g := NormalizeGroup(group); g != "" {
 		raw["group"] = g
 	}
-	a, err := writeAnthropicLoginCredential(full, email, tr.Account.UUID, raw)
+	a, err := writeAnthropicLoginCredential(full, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -377,12 +377,10 @@ func finishAnthropicLogin(
 	return a, nil
 }
 
-func writeAnthropicLoginCredential(path, email, accountUUID string, raw map[string]any) (*Auth, error) {
-	// Serialize with saveAuth so an admin Persist cannot race between reading
-	// the old mode and replacing the re-authorized credential file. Parsing the
-	// replacement also stays inside the lock: otherwise a mode-only update could
-	// land after rename but before parse and leave the pool object stale even
-	// though the credential file contains the new mode.
+func writeAnthropicLoginCredential(path string, raw map[string]any) (*Auth, error) {
+	// Serialize with saveAuth so an admin Persist cannot race the replacement.
+	// Parsing stays inside the lock so the returned pool object always matches
+	// the file installed by this login operation.
 	saveMu.Lock()
 	defer saveMu.Unlock()
 	candidateBytes, err := json.Marshal(raw)
@@ -399,12 +397,9 @@ func writeAnthropicLoginCredential(path, email, accountUUID string, raw map[stri
 		}
 	}
 
-	// Re-authorizing the same account refreshes tokens but must not silently
-	// remove an operator's explicit rewrite assignment. Copy
-	// only this validated policy field; never merge stale tokens or health state.
-	if mode, ok := preservedClaudeIdentityMode(path, email, accountUUID); ok {
-		raw["claude_identity_mode"] = string(mode)
-	}
+	// Retire the old experiment flag if the supplied map came from an older
+	// caller. Genuine Claude Code OAuth requests are always identity-rewritten.
+	delete(raw, "claude_identity_mode")
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return nil, err
@@ -422,38 +417,6 @@ func writeAnthropicLoginCredential(path, email, accountUUID string, raw map[stri
 		return nil, fmt.Errorf("parse newly written file: %w", err)
 	}
 	return a, nil
-}
-
-func preservedClaudeIdentityMode(path, newEmail, newAccountUUID string) (ClaudeIdentityMode, bool) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", false
-	}
-	var old map[string]any
-	if err := json.Unmarshal(data, &old); err != nil || old == nil {
-		return "", false
-	}
-	oldUUID, _ := old["account_uuid"].(string)
-	oldEmail, _ := old["email"].(string)
-	match := false
-	if strings.TrimSpace(newAccountUUID) != "" || strings.TrimSpace(oldUUID) != "" {
-		match = strings.TrimSpace(newAccountUUID) != "" && strings.TrimSpace(oldUUID) != "" &&
-			strings.TrimSpace(newAccountUUID) == strings.TrimSpace(oldUUID)
-	} else if strings.TrimSpace(newEmail) != "" && strings.TrimSpace(oldEmail) != "" {
-		match = strings.EqualFold(strings.TrimSpace(newEmail), strings.TrimSpace(oldEmail))
-	}
-	if !match {
-		return "", false
-	}
-	rawMode, ok := old["claude_identity_mode"].(string)
-	if !ok {
-		return "", false
-	}
-	mode, err := ParseClaudeIdentityMode(rawMode)
-	if err != nil || mode != ClaudeIdentityModeRewrite {
-		return "", false
-	}
-	return mode, true
 }
 
 // sanitizeLoginFilename builds an on-disk filename for a newly-persisted

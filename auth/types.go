@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"math/rand/v2"
 	"strings"
@@ -38,35 +37,6 @@ const (
 	KindOAuth Kind = iota
 	KindAPIKey
 )
-
-// ClaudeIdentityMode selects how a genuine Claude Code request is handled
-// when it is forwarded through an Anthropic OAuth subscription account.
-// Missing/empty values are deliberately preserve for backward compatibility.
-type ClaudeIdentityMode string
-
-const (
-	ClaudeIdentityModePreserve ClaudeIdentityMode = "preserve"
-	ClaudeIdentityModeRewrite  ClaudeIdentityMode = "rewrite"
-
-	// ClaudeIdentityModeRewriteStripCCH is kept as a source-compatibility alias
-	// for consumers built against the original experiment name. New state is
-	// always normalized and persisted as "rewrite".
-	// Deprecated: use ClaudeIdentityModeRewrite.
-	ClaudeIdentityModeRewriteStripCCH = ClaudeIdentityModeRewrite
-)
-
-// ParseClaudeIdentityMode validates the credential-file/admin representation.
-// Empty is the legacy-safe preserve default.
-func ParseClaudeIdentityMode(value string) (ClaudeIdentityMode, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", string(ClaudeIdentityModePreserve):
-		return ClaudeIdentityModePreserve, nil
-	case string(ClaudeIdentityModeRewrite), "rewrite_strip":
-		return ClaudeIdentityModeRewrite, nil
-	default:
-		return "", fmt.Errorf("unsupported Claude identity mode %q", value)
-	}
-}
 
 // Auth is a single upstream credential.
 // For OAuth: AccessToken/RefreshToken/ExpiresAt are managed by the refresher.
@@ -123,14 +93,6 @@ type Auth struct {
 	// touch (see hostprofile.go). Append-only field — old credential files
 	// without it keep loading.
 	HostProfile HostProfile
-
-	// claudeIdentityMode is the explicit genuine-request policy for this
-	// Anthropic OAuth account. preserve tells the consuming application to run
-	// its complete pre-policy forwarding path as the experiment control;
-	// rewrite maps metadata identity into this account's namespace. Kept private
-	// so callers must use the validating, lock-safe setter. Other providers/kinds
-	// ignore it.
-	claudeIdentityMode ClaudeIdentityMode
 
 	// Routing
 	ProxyURL      string // per-credential upstream proxy (empty = direct/use default)
@@ -376,30 +338,29 @@ func (a *Auth) Snapshot() AuthInfo {
 		}
 	}
 	return AuthInfo{
-		ID:                 a.ID,
-		Kind:               a.Kind,
-		Provider:           a.Provider,
-		Label:              a.Label,
-		Email:              a.Email,
-		ExpiresAt:          a.ExpiresAt,
-		ProxyURL:           a.ProxyURL,
-		MaxConcurrent:      a.MaxConcurrent,
-		Disabled:           a.Disabled,
-		QuotaExceededAt:    a.QuotaExceededAt,
-		QuotaResetAt:       a.QuotaResetAt,
-		FilePath:           a.FilePath,
-		BaseURL:            a.BaseURL,
-		Group:              a.Group,
-		Order:              a.Order,
-		PriceMultiplier:    a.PriceMultiplier,
-		QuarantineUntil:    a.QuarantineUntil,
-		QuarantineStrikes:  a.QuarantineStrikes,
-		ModelMap:           mm,
-		ClaudeIdentityMode: a.claudeIdentityModeLocked(),
-		CodexRateLimits:    rl,
-		CodexRateLimitsAt:  a.CodexRateLimitsAt,
-		CodexUsage:         a.CodexUsage,
-		CodexUsageAt:       a.CodexUsageAt,
+		ID:                a.ID,
+		Kind:              a.Kind,
+		Provider:          a.Provider,
+		Label:             a.Label,
+		Email:             a.Email,
+		ExpiresAt:         a.ExpiresAt,
+		ProxyURL:          a.ProxyURL,
+		MaxConcurrent:     a.MaxConcurrent,
+		Disabled:          a.Disabled,
+		QuotaExceededAt:   a.QuotaExceededAt,
+		QuotaResetAt:      a.QuotaResetAt,
+		FilePath:          a.FilePath,
+		BaseURL:           a.BaseURL,
+		Group:             a.Group,
+		Order:             a.Order,
+		PriceMultiplier:   a.PriceMultiplier,
+		QuarantineUntil:   a.QuarantineUntil,
+		QuarantineStrikes: a.QuarantineStrikes,
+		ModelMap:          mm,
+		CodexRateLimits:   rl,
+		CodexRateLimitsAt: a.CodexRateLimitsAt,
+		CodexUsage:        a.CodexUsage,
+		CodexUsageAt:      a.CodexUsageAt,
 	}
 }
 
@@ -424,14 +385,13 @@ type AuthInfo struct {
 	// so the admin panel can show a paused channel instead of leaving it
 	// looking healthy while it silently serves no traffic. Zero deadline =
 	// circuit closed.
-	QuarantineUntil    time.Time
-	QuarantineStrikes  int
-	ModelMap           map[string]string
-	ClaudeIdentityMode ClaudeIdentityMode
-	CodexRateLimits    map[string]string
-	CodexRateLimitsAt  time.Time
-	CodexUsage         *CodexUsageInfo
-	CodexUsageAt       time.Time
+	QuarantineUntil   time.Time
+	QuarantineStrikes int
+	ModelMap          map[string]string
+	CodexRateLimits   map[string]string
+	CodexRateLimitsAt time.Time
+	CodexUsage        *CodexUsageInfo
+	CodexUsageAt      time.Time
 }
 
 // IsQuotaExceeded reports true if Anthropic has signalled this auth is out of
@@ -1008,43 +968,6 @@ func (a *Auth) GroupName() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.Group
-}
-
-// SetClaudeIdentityMode updates the in-memory genuine Claude Code policy for
-// an Anthropic OAuth credential. Persistent runtime callers should use
-// UpdateClaudeIdentityMode so a concurrent token refresh cannot be overwritten.
-func (a *Auth) SetClaudeIdentityMode(mode ClaudeIdentityMode) error {
-	normalized, err := ParseClaudeIdentityMode(string(mode))
-	if err != nil {
-		return err
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.Kind != KindOAuth || NormalizeProvider(a.Provider) != ProviderAnthropic {
-		return errors.New("claude identity mode only applies to Anthropic OAuth credentials")
-	}
-	if normalized == ClaudeIdentityModeRewrite && strings.TrimSpace(a.AccountUUID) == "" {
-		return ErrClaudeIdentityModeMissingAccountUUID
-	}
-	a.claudeIdentityMode = normalized
-	return nil
-}
-
-// ClaudeIdentityModeValue returns the normalized policy under the lock.
-func (a *Auth) ClaudeIdentityModeValue() ClaudeIdentityMode {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.claudeIdentityModeLocked()
-}
-
-func (a *Auth) claudeIdentityModeLocked() ClaudeIdentityMode {
-	if a.Kind != KindOAuth || NormalizeProvider(a.Provider) != ProviderAnthropic {
-		return ""
-	}
-	if a.claudeIdentityMode == ClaudeIdentityModeRewrite {
-		return ClaudeIdentityModeRewrite
-	}
-	return ClaudeIdentityModePreserve
 }
 
 // SetModelMap replaces the credential's client→upstream model map. Empty/nil
