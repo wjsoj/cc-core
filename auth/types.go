@@ -579,9 +579,10 @@ func (a *Auth) MarkUsageLimitReached(resetAt time.Time) {
 }
 
 // ModelScopeAnthropicFable is the model-family scope for Anthropic's fable
-// models. Anthropic bills fable against an independent weekly (7d_oi) overage
-// window that rejects on its own while the shared 5h/7d quota stays available,
-// so a fable exhaustion must be scoped to the family — never the whole account.
+// models. Subscription OAuth accounts do not include this family: Anthropic
+// rejects it with details.error_code=credits_required even while the account's
+// included allowance remains available. Keep the scope separate so a rejection
+// can never be mistaken for an account-wide quota exhaustion.
 const ModelScopeAnthropicFable = "anthropic:fable"
 
 // AnthropicModelScope maps a client model string to the model-family rate-limit
@@ -590,10 +591,21 @@ const ModelScopeAnthropicFable = "anthropic:fable"
 // (claude-fable-5-2026…), 1M-context ("[1m]") and mixed casing all collapse to
 // the same family scope.
 func AnthropicModelScope(model string) string {
-	if strings.Contains(strings.ToLower(model), "fable") {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	normalized = strings.TrimPrefix(normalized, "anthropic/")
+	if normalized == "claude-fable-5" ||
+		strings.HasPrefix(normalized, "claude-fable-5-") ||
+		strings.HasPrefix(normalized, "claude-fable-5[") {
 		return ModelScopeAnthropicFable
 	}
 	return ""
+}
+
+// AnthropicModelRequiresAPIKey reports whether a model must bypass Anthropic
+// subscription OAuth credentials. Fable 5 is sold through usage credits; the
+// API-key pool is the only valid route for it in this service.
+func AnthropicModelRequiresAPIKey(model string) bool {
+	return AnthropicModelScope(model) == ModelScopeAnthropicFable
 }
 
 // MarkModelRateLimited records that a specific model-family scope on this

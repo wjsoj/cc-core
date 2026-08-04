@@ -148,6 +148,8 @@ func (p *Pool) activeCountLocked(authID string, now time.Time) int {
 type AcquireOptions struct {
 	// AllowAPIKeyFallback gates whether, when no OAuth credential in a tier is
 	// usable, the pool may fall back to an API-key credential in that tier.
+	// It also gates API-key-only models: when false, those models return no
+	// credential instead of violating the caller's billing opt-in.
 	// The plain Acquire wrapper sets this true (legacy behaviour); the SaaS
 	// fork sets it from the client token's opt-in so users who haven't enabled
 	// the upstream pool aren't silently served — and billed at a markup — by
@@ -488,6 +490,13 @@ func (p *Pool) findOAuthLocked(id string) *Auth {
 }
 
 func (p *Pool) oauthUsableLocked(a *Auth, now time.Time, clientModel string) bool {
+	// Fable 5 requires separately purchased usage credits. Anthropic
+	// subscription OAuth accounts return credits_required even when their
+	// included allowance is untouched, so never send this model to OAuth. The
+	// Acquire loop will proceed directly to the API-key pool in the same tier.
+	if NormalizeProvider(a.Provider) == ProviderAnthropic && AnthropicModelRequiresAPIKey(clientModel) {
+		return false
+	}
 	if a.Disabled {
 		return false
 	}
