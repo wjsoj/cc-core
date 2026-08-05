@@ -2,6 +2,7 @@ package mimicry
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -116,6 +117,12 @@ func TestGenericSynthesizeIsStrictAccountBoundForEveryModel(t *testing.T) {
 			}
 			if !bytes.Contains(result.Body(), []byte("cc_version="+CLICurrentVersion+".")) {
 				t.Fatalf("pinned billing version missing: %s", result.Body())
+			}
+			if result.BodyBytes() != len(result.Body()) || len(result.BodySHA256()) != sha256.Size*2 || !result.BillingVerified() {
+				t.Fatalf("prepared audit summary incomplete: bytes=%d sha=%q billing=%t", result.BodyBytes(), result.BodySHA256(), result.BillingVerified())
+			}
+			if got := result.ExtraMetadataKeys(); len(got) != 1 || got[0] != "trace" {
+				t.Fatalf("extra metadata keys = %v", got)
 			}
 
 			req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", nil)

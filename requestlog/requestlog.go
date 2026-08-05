@@ -80,14 +80,25 @@ type Record struct {
 // ClaudeAudit is privacy-safe evidence of Claude request preparation, identity
 // mapping, and any local fallback decision.
 type ClaudeAudit struct {
-	AccountHash           string `json:"account_hash,omitempty"`
-	RequestClass          string `json:"request_class"`
-	IdentityMode          string `json:"identity_mode"`
-	AccountIdentityMapped bool   `json:"account_identity_mapped"`
-	CredentialHardFailed  bool   `json:"credential_hard_failed,omitempty"`
-	PreparationFailed     bool   `json:"preparation_failed,omitempty"`
-	PreparationError      string `json:"preparation_error,omitempty"`
-	Fallback              string `json:"fallback,omitempty"`
+	AccountHash           string   `json:"account_hash,omitempty"`
+	RequestClass          string   `json:"request_class"`
+	IdentityMode          string   `json:"identity_mode"`
+	AccountIdentityMapped bool     `json:"account_identity_mapped"`
+	CredentialHardFailed  bool     `json:"credential_hard_failed,omitempty"`
+	PreparationFailed     bool     `json:"preparation_failed,omitempty"`
+	PreparationError      string   `json:"preparation_error,omitempty"`
+	Fallback              string   `json:"fallback,omitempty"`
+	BodyBytes             int      `json:"body_bytes,omitempty"`
+	BodySHA256            string   `json:"body_sha256,omitempty"`
+	SessionBinding        string   `json:"session_binding,omitempty"`
+	BillingValidation     string   `json:"billing_validation,omitempty"`
+	BetaHash              string   `json:"beta_hash,omitempty"`
+	ProfileHash           string   `json:"profile_hash,omitempty"`
+	ProxyConfigHash       string   `json:"proxy_config_hash,omitempty"`
+	ExtraMetadataCount    int      `json:"extra_metadata_count,omitempty"`
+	ExtraHeaderCount      int      `json:"extra_header_count,omitempty"`
+	ExtraMetadataKeys     []string `json:"extra_metadata_keys,omitempty"`
+	ExtraHeaderNames      []string `json:"extra_header_names,omitempty"`
 }
 
 type Writer struct {

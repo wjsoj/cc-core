@@ -75,6 +75,17 @@ func TestClaudeAuditRoundTripContainsOnlyAccountDigest(t *testing.T) {
 			RequestClass:          "genuine",
 			IdentityMode:          "rewrite",
 			AccountIdentityMapped: true,
+			BodyBytes:             123,
+			BodySHA256:            "body-digest",
+			SessionBinding:        "match",
+			BillingValidation:     "verified",
+			BetaHash:              "beta-digest",
+			ProfileHash:           "profile-digest",
+			ProxyConfigHash:       "proxy-digest",
+			ExtraMetadataCount:    1,
+			ExtraHeaderCount:      1,
+			ExtraMetadataKeys:     []string{"trace"},
+			ExtraHeaderNames:      []string{"x-custom"},
 		},
 	})
 	w.Close()
@@ -95,7 +106,9 @@ func TestClaudeAuditRoundTripContainsOnlyAccountDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.ClaudeAudit == nil || got.ClaudeAudit.AccountHash != "account-digest" ||
-		got.ClaudeAudit.IdentityMode != "rewrite" || !got.ClaudeAudit.AccountIdentityMapped {
+		got.ClaudeAudit.IdentityMode != "rewrite" || !got.ClaudeAudit.AccountIdentityMapped ||
+		got.ClaudeAudit.BodyBytes != 123 || got.ClaudeAudit.SessionBinding != "match" ||
+		len(got.ClaudeAudit.ExtraHeaderNames) != 1 {
 		t.Fatalf("audit did not round-trip: %+v", got.ClaudeAudit)
 	}
 }

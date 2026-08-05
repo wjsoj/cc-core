@@ -135,6 +135,8 @@ type BodyTransformResult struct {
 	credentialKind         string
 	sessionID              string
 	accountIdentityApplied bool
+	billingVerified        bool
+	extraMetadataKeys      []string
 	valid                  bool
 }
 
@@ -142,7 +144,13 @@ func (r BodyTransformResult) Body() []byte                 { return r.body }
 func (r BodyTransformResult) Policy() RequestPolicy        { return r.policy }
 func (r BodyTransformResult) SessionID() string            { return r.sessionID }
 func (r BodyTransformResult) AccountIdentityApplied() bool { return r.accountIdentityApplied }
-func (r BodyTransformResult) IsValid() bool                { return r.valid }
+func (r BodyTransformResult) BodyBytes() int               { return len(r.body) }
+func (r BodyTransformResult) BodySHA256() string           { return fmt.Sprintf("%x", r.bodyDigest) }
+func (r BodyTransformResult) BillingVerified() bool        { return r.billingVerified }
+func (r BodyTransformResult) ExtraMetadataKeys() []string {
+	return append([]string(nil), r.extraMetadataKeys...)
+}
+func (r BodyTransformResult) IsValid() bool { return r.valid }
 
 // HashClaudeAccountKey returns a privacy-safe stable account identifier for
 // experiment/audit logs. It never exposes an OAuth UUID, email, or credential
@@ -222,12 +230,12 @@ func PrepareClaudeCodeRequest(body []byte, model string, id SimIdentity, policy 
 			return transformGenericSynthesize(body, id, policy, credentialKind)
 		}
 		out := ApplyClaudeCodeBodyMimicry(body, model, id)
-		return newBodyTransformResult(out, policy, id, credentialKind, "", false), nil
+		return newBodyTransformResult(out, policy, id, credentialKind, "", false, false, nil), nil
 	case RequestClassGenuine:
 		switch policy.genuineMode {
 		case GenuineRequestPreserve:
 			source, _ := metadataIdentityFromBody(body)
-			return newBodyTransformResult(body, policy, id, credentialKind, source.SessionID, false), nil
+			return newBodyTransformResult(body, policy, id, credentialKind, source.SessionID, false, false, source.ExtraMetadataKeys), nil
 		case GenuineRequestRewrite:
 			return transformGenuineRewrite(body, id, policy, credentialKind)
 		default:
@@ -263,7 +271,7 @@ func transformGenuineRewrite(body []byte, id SimIdentity, policy RequestPolicy, 
 	if err != nil {
 		return BodyTransformResult{}, err
 	}
-	return newBodyTransformResult(out, policy, id, credentialKind, targetSession, true), nil
+	return newBodyTransformResult(out, policy, id, credentialKind, targetSession, true, true, source.ExtraMetadataKeys), nil
 }
 
 func transformGenericSynthesize(body []byte, id SimIdentity, policy RequestPolicy, credentialKind string) (BodyTransformResult, error) {
@@ -335,7 +343,7 @@ func transformGenericSynthesize(body []byte, id SimIdentity, policy RequestPolic
 	if err := verifyRewrittenBilling(out); err != nil {
 		return BodyTransformResult{}, fmt.Errorf("refusing partial generic synthesis: %w", err)
 	}
-	return newBodyTransformResult(out, policy, id, credentialKind, sessionID, true), nil
+	return newBodyTransformResult(out, policy, id, credentialKind, sessionID, true, true, extraMetadataKeys(metadata)), nil
 }
 
 // buildExternalBillingBlock matches the custom-base-url Claude Code shape:
@@ -348,7 +356,7 @@ func buildExternalBillingBlock(body []byte, cliVersion string) json.RawMessage {
 	return out
 }
 
-func newBodyTransformResult(body []byte, policy RequestPolicy, id SimIdentity, credentialKind, sessionID string, identityApplied bool) BodyTransformResult {
+func newBodyTransformResult(body []byte, policy RequestPolicy, id SimIdentity, credentialKind, sessionID string, identityApplied, billingVerified bool, extraMetadata []string) BodyTransformResult {
 	return BodyTransformResult{
 		body:                   body,
 		bodyDigest:             sha256.Sum256(body),
@@ -358,8 +366,21 @@ func newBodyTransformResult(body []byte, policy RequestPolicy, id SimIdentity, c
 		credentialKind:         credentialKind,
 		sessionID:              sessionID,
 		accountIdentityApplied: identityApplied,
+		billingVerified:        billingVerified,
+		extraMetadataKeys:      append([]string(nil), extraMetadata...),
 		valid:                  true,
 	}
+}
+
+func extraMetadataKeys(metadata map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(metadata))
+	for key := range metadata {
+		if key != "user_id" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // ApplyClaudeCodePreparedRequest atomically installs the prepared body and
@@ -568,9 +589,10 @@ func rewriteGenuineIdentity(body []byte, id SimIdentity, sessionID string) ([]by
 }
 
 type metadataIdentity struct {
-	DeviceID    string `json:"device_id"`
-	AccountUUID string `json:"account_uuid"`
-	SessionID   string `json:"session_id"`
+	DeviceID          string   `json:"device_id"`
+	AccountUUID       string   `json:"account_uuid"`
+	SessionID         string   `json:"session_id"`
+	ExtraMetadataKeys []string `json:"-"`
 }
 
 func metadataIdentityFromBody(body []byte) (metadataIdentity, error) {
@@ -590,6 +612,7 @@ func metadataIdentityFromBody(body []byte) (metadataIdentity, error) {
 	if err := json.Unmarshal([]byte(userID), &identity); err != nil {
 		return metadataIdentity{}, fmt.Errorf("metadata.user_id is not valid identity JSON: %w", err)
 	}
+	identity.ExtraMetadataKeys = extraMetadataKeys(md)
 	return identity, nil
 }
 
