@@ -77,14 +77,17 @@ type Record struct {
 	UserID int64 `json:"user_id,omitempty"`
 }
 
-// ClaudeAudit is privacy-safe evidence that a genuine Claude Code request was
-// mapped into the selected upstream account's identity namespace.
+// ClaudeAudit is privacy-safe evidence of Claude request preparation, identity
+// mapping, and any local fallback decision.
 type ClaudeAudit struct {
 	AccountHash           string `json:"account_hash,omitempty"`
 	RequestClass          string `json:"request_class"`
 	IdentityMode          string `json:"identity_mode"`
 	AccountIdentityMapped bool   `json:"account_identity_mapped"`
 	CredentialHardFailed  bool   `json:"credential_hard_failed,omitempty"`
+	PreparationFailed     bool   `json:"preparation_failed,omitempty"`
+	PreparationError      string `json:"preparation_error,omitempty"`
+	Fallback              string `json:"fallback,omitempty"`
 }
 
 type Writer struct {

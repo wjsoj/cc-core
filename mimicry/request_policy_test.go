@@ -93,6 +93,78 @@ func TestLegacyBodyMimicryRejectsJSONNullWithoutPanic(t *testing.T) {
 	}
 }
 
+func TestGenericSynthesizeIsStrictAccountBoundForEveryModel(t *testing.T) {
+	id := testID()
+	for _, model := range []string{"claude-sonnet-5", "claude-haiku-4-5-20251001"} {
+		t.Run(model, func(t *testing.T) {
+			body := []byte(`{"model":"` + model + `","system":"be helpful","messages":[{"role":"user","content":"hello"}],"metadata":{"trace":"keep","user_id":"malformed-downstream-identity"}}`)
+			result, err := PrepareClaudeCodeRequest(body, model, id, NewGenericClaudeCodeSynthesizePolicy(), KindOAuth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !result.AccountIdentityApplied() || result.SessionID() == "" {
+				t.Fatalf("generic identity was not applied: %+v", result)
+			}
+			if bytes.Contains(result.Body(), []byte("malformed-downstream-identity")) {
+				t.Fatalf("downstream identity leaked: %s", result.Body())
+			}
+			if !metadataMatchesIdentity(result.Body(), id, result.SessionID()) {
+				t.Fatalf("selected account identity mismatch: %s", result.Body())
+			}
+			if bytes.Contains(result.Body(), []byte("cch=")) || bytes.Contains(result.Body(), []byte("cc_prev_req=")) {
+				t.Fatalf("first-party billing field synthesized: %s", result.Body())
+			}
+			if !bytes.Contains(result.Body(), []byte("cc_version="+CLICurrentVersion+".")) {
+				t.Fatalf("pinned billing version missing: %s", result.Body())
+			}
+
+			req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", nil)
+			req.Header.Set("User-Agent", "downstream-client/1")
+			req.Header.Set("Anthropic-Beta", "downstream-only-beta")
+			req.Header.Set("X-Claude-Code-Session-Id", "downstream-session")
+			if err := ApplyClaudeCodePreparedRequest(req, "oauth-token", id.AccountKey, KindOAuth, true, true, result); err != nil {
+				t.Fatal(err)
+			}
+			if got := req.Header.Get("User-Agent"); got != ClaudeCLIUserAgent {
+				t.Fatalf("UA = %q", got)
+			}
+			if got := req.Header.Get("Anthropic-Beta"); got != ClaudeAnthropicBetaFull {
+				t.Fatalf("beta = %q", got)
+			}
+			if got := req.Header.Get("X-Claude-Code-Session-Id"); got != result.SessionID() {
+				t.Fatalf("session = %q want %q", got, result.SessionID())
+			}
+		})
+	}
+}
+
+func TestGenericSynthesizeFailsClosed(t *testing.T) {
+	policy := NewGenericClaudeCodeSynthesizePolicy()
+	for name, body := range map[string][]byte{
+		"invalid-json":     []byte(`not-json`),
+		"missing-messages": []byte(`{"model":"claude-haiku-4-5"}`),
+		"null-messages":    []byte(`{"model":"claude-haiku-4-5","messages":null}`),
+		"wrong-messages":   []byte(`{"model":"claude-haiku-4-5","messages":{}}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := PrepareClaudeCodeRequest(body, "claude-haiku-4-5", testID(), policy, KindOAuth)
+			if err == nil || result.IsValid() {
+				t.Fatalf("invalid generic body was prepared: err=%v result=%+v", err, result)
+			}
+		})
+	}
+
+	missingUUID := testID()
+	missingUUID.AccountUUID = ""
+	result, err := PrepareClaudeCodeRequest(
+		[]byte(`{"model":"claude-haiku-4-5","messages":[]}`),
+		"claude-haiku-4-5", missingUUID, policy, KindOAuth,
+	)
+	if err == nil || result.IsValid() {
+		t.Fatalf("missing account UUID was prepared: err=%v", err)
+	}
+}
+
 func TestGenuinePreserveIsByteExactAndKeepsClientProfile(t *testing.T) {
 	// Deliberately retain whitespace, Chinese text, dateline, and thinking.
 	// Preserve mode must not parse-and-remarshal these bytes.

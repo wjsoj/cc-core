@@ -155,6 +155,11 @@ type AcquireOptions struct {
 	// the upstream pool aren't silently served — and billed at a markup — by
 	// upstream API keys.
 	AllowAPIKeyFallback bool
+	// APIKeyOnly skips OAuth selection entirely. It is used when a request was
+	// rejected by a local OAuth preparation step and must be replayed from its
+	// untouched original body through an API-key credential. The option still
+	// requires AllowAPIKeyFallback so callers cannot bypass their billing opt-in.
+	APIKeyOnly bool
 	// ExcludeIDs are credential IDs to skip because the current request already
 	// tried and failed them.
 	ExcludeIDs []string
@@ -238,7 +243,7 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 	// group-scoped OAuth is available to upgrade to. Without that upgrade
 	// check a group client stays pinned to public for the whole active
 	// window even if its own credentials regain capacity.
-	if s.authID != "" && s.kind == KindOAuth && !excluded[s.authID] {
+	if !opts.APIKeyOnly && s.authID != "" && s.kind == KindOAuth && !excluded[s.authID] {
 		if a := p.findOAuthLocked(s.authID); a != nil && allowed(a.Group) && NormalizeProvider(a.Provider) == provider && p.oauthUsableLocked(a, now, clientModel) {
 			// Upgrade sticky pick to the client's own group when one becomes
 			// available. Covers sticky=public and sticky=NEW both — they
@@ -268,6 +273,11 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 			// Previous OAuth is unhealthy/gone/group-disallowed; reassign.
 			s.authID = ""
 		}
+	} else if opts.APIKeyOnly {
+		// A local request-preparation failure must not bounce through more OAuth
+		// credentials: the failure is about the request/identity binding, not an
+		// upstream credential. Clear stickiness and proceed to API keys only.
+		s.authID = ""
 	} else if excluded[s.authID] {
 		// Sticky pick was just tried and failed — release it so the next
 		// pickOAuthLocked is free to pick anything else.
@@ -279,23 +289,25 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 	// that tier. If the tier is empty or saturated, fall through to the
 	// next tier (public).
 	for _, tier := range tiers {
-		for {
-			chosen := p.pickOAuthLocked(now, excluded, tier, provider, clientModel)
-			if chosen == nil {
-				break
+		if !opts.APIKeyOnly {
+			for {
+				chosen := p.pickOAuthLocked(now, excluded, tier, provider, clientModel)
+				if chosen == nil {
+					break
+				}
+				s.authID = chosen.ID
+				s.kind = KindOAuth
+				s.lastSeen = now
+				p.mu.Unlock()
+				if err := chosen.EnsureFresh(ctx, 5*time.Minute, p.useUTLS); err != nil {
+					log.Warnf("auth: ensure-fresh %s failed, excluding: %v", chosen.ID, err)
+					excluded[chosen.ID] = true
+					p.mu.Lock()
+					s.authID = ""
+					continue
+				}
+				return chosen
 			}
-			s.authID = chosen.ID
-			s.kind = KindOAuth
-			s.lastSeen = now
-			p.mu.Unlock()
-			if err := chosen.EnsureFresh(ctx, 5*time.Minute, p.useUTLS); err != nil {
-				log.Warnf("auth: ensure-fresh %s failed, excluding: %v", chosen.ID, err)
-				excluded[chosen.ID] = true
-				p.mu.Lock()
-				s.authID = ""
-				continue
-			}
-			return chosen
 		}
 		// Per-token opt-in gate: when API-key fallback is disabled, never serve
 		// from an API key. continue to the next tier (whose OAuth may still be

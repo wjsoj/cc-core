@@ -60,11 +60,30 @@ func (m GenuineRequestMode) String() string {
 	}
 }
 
+// GenericRequestMode controls treatment of a non-Claude-Code messages body.
+// Legacy preserves the historical best-effort transformer. Synthesize is the
+// fail-closed account-bound path used before sending generic traffic through
+// an Anthropic OAuth credential.
+type GenericRequestMode uint8
+
+const (
+	GenericRequestLegacy GenericRequestMode = iota
+	GenericRequestSynthesize
+)
+
+func (m GenericRequestMode) String() string {
+	if m == GenericRequestSynthesize {
+		return "synthesize"
+	}
+	return "legacy"
+}
+
 // RequestPolicy is created once after classifying the original body. Its
 // fields are private so callers cannot fabricate a class/mode combination.
 type RequestPolicy struct {
 	class       RequestClass
 	genuineMode GenuineRequestMode
+	genericMode GenericRequestMode
 	valid       bool
 }
 
@@ -87,8 +106,21 @@ func NewClaudeCodeRequestPolicy(class RequestClass, genuineMode GenuineRequestMo
 	}
 }
 
+// NewGenericClaudeCodeSynthesizePolicy returns the strict policy for generic
+// traffic selected onto an Anthropic OAuth credential. It is intentionally a
+// separate constructor so existing callers of NewClaudeCodeRequestPolicy keep
+// the legacy best-effort generic behavior until they opt in.
+func NewGenericClaudeCodeSynthesizePolicy() RequestPolicy {
+	return RequestPolicy{
+		class:       RequestClassGeneric,
+		genericMode: GenericRequestSynthesize,
+		valid:       true,
+	}
+}
+
 func (p RequestPolicy) Class() RequestClass             { return p.class }
 func (p RequestPolicy) GenuineMode() GenuineRequestMode { return p.genuineMode }
+func (p RequestPolicy) GenericMode() GenericRequestMode { return p.genericMode }
 func (p RequestPolicy) IsValid() bool                   { return p.valid }
 
 // BodyTransformResult is an opaque prepared request. The header layer accepts
@@ -186,6 +218,9 @@ func PrepareClaudeCodeRequest(body []byte, model string, id SimIdentity, policy 
 
 	switch policy.class {
 	case RequestClassGeneric:
+		if policy.genericMode == GenericRequestSynthesize {
+			return transformGenericSynthesize(body, id, policy, credentialKind)
+		}
 		out := ApplyClaudeCodeBodyMimicry(body, model, id)
 		return newBodyTransformResult(out, policy, id, credentialKind, "", false), nil
 	case RequestClassGenuine:
@@ -229,6 +264,88 @@ func transformGenuineRewrite(body []byte, id SimIdentity, policy RequestPolicy, 
 		return BodyTransformResult{}, err
 	}
 	return newBodyTransformResult(out, policy, id, credentialKind, targetSession, true), nil
+}
+
+func transformGenericSynthesize(body []byte, id SimIdentity, policy RequestPolicy, credentialKind string) (BodyTransformResult, error) {
+	if credentialKind != KindOAuth {
+		return BodyTransformResult{}, errors.New("generic synthesis requires an OAuth credential")
+	}
+	if strings.TrimSpace(id.AccountKey) == "" {
+		return BodyTransformResult{}, errors.New("generic synthesis requires a non-empty account key")
+	}
+	if strings.TrimSpace(id.AccountUUID) == "" {
+		return BodyTransformResult{}, errors.New("generic synthesis requires the OAuth account UUID")
+	}
+	if strings.TrimSpace(id.ClientToken) == "" {
+		return BodyTransformResult{}, errors.New("generic synthesis requires a downstream client token")
+	}
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(body, &obj); err != nil || obj == nil {
+		return BodyTransformResult{}, errors.New("generic body is not a JSON object")
+	}
+	var messages []json.RawMessage
+	rawMessages, ok := obj["messages"]
+	trimmedMessages := bytes.TrimSpace(rawMessages)
+	if !ok || len(trimmedMessages) == 0 || trimmedMessages[0] != '[' || json.Unmarshal(rawMessages, &messages) != nil {
+		return BodyTransformResult{}, errors.New("generic body requires a messages array")
+	}
+
+	sessionID := SessionIDFor(id, body)
+	originalBlocks := extractSystemBlocks(obj["system"])
+	stripCacheControlFromBlocks(originalBlocks)
+	applySystemCacheBreakpoints(originalBlocks)
+	billing := buildExternalBillingBlock(body, CLICurrentVersion)
+	blocks := []json.RawMessage{billing, buildSystemTextBlock(ClaudeCodeSystemPrompt, false, false)}
+	blocks = append(blocks, originalBlocks...)
+	rawSystem, err := json.Marshal(blocks)
+	if err != nil {
+		return BodyTransformResult{}, fmt.Errorf("marshal generic system: %w", err)
+	}
+	obj["system"] = rawSystem
+
+	metadata := make(map[string]json.RawMessage)
+	if raw := obj["metadata"]; len(raw) > 0 && string(raw) != "null" {
+		// Preserve unrelated metadata fields when it is an object. Any other
+		// shape is replaced so an unparseable downstream identity can never leak.
+		_ = json.Unmarshal(raw, &metadata)
+		if metadata == nil {
+			metadata = make(map[string]json.RawMessage)
+		}
+	}
+	userID := buildJSONUserID(DeviceIDFor(id.AccountKey), id.AccountUUID, sessionID)
+	metadata["user_id"], err = json.Marshal(userID)
+	if err != nil {
+		return BodyTransformResult{}, fmt.Errorf("marshal generic metadata.user_id: %w", err)
+	}
+	obj["metadata"], err = json.Marshal(metadata)
+	if err != nil {
+		return BodyTransformResult{}, fmt.Errorf("marshal generic metadata: %w", err)
+	}
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return BodyTransformResult{}, fmt.Errorf("marshal generic body: %w", err)
+	}
+	out = stripMessageCacheControl(out)
+	out = addMessageCacheBreakpoints(out)
+	if !metadataMatchesIdentity(out, id, sessionID) {
+		return BodyTransformResult{}, errors.New("refusing partial generic synthesis: metadata verification failed")
+	}
+	if err := verifyRewrittenBilling(out); err != nil {
+		return BodyTransformResult{}, fmt.Errorf("refusing partial generic synthesis: %w", err)
+	}
+	return newBodyTransformResult(out, policy, id, credentialKind, sessionID, true), nil
+}
+
+// buildExternalBillingBlock matches the custom-base-url Claude Code shape:
+// account attribution and entrypoint are present, while first-party-only cch
+// and cc_prev_req are absent because a relay cannot regenerate or rebind them.
+func buildExternalBillingBlock(body []byte, cliVersion string) json.RawMessage {
+	fingerprint := computeClaudeCodeFingerprint(body, cliVersion)
+	text := fmt.Sprintf("x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli;", cliVersion, fingerprint)
+	out, _ := json.Marshal(map[string]any{"type": "text", "text": text})
+	return out
 }
 
 func newBodyTransformResult(body []byte, policy RequestPolicy, id SimIdentity, credentialKind, sessionID string, identityApplied bool) BodyTransformResult {
@@ -277,6 +394,18 @@ func ApplyClaudeCodePreparedRequest(req *http.Request, credentialToken, credenti
 	switch result.policy.class {
 	case RequestClassGeneric:
 		ApplyClaudeCodeHeaders(req, credentialToken, credentialKind, stream, isAnthropicBase, result.identity, result.body)
+		if result.policy.genericMode == GenericRequestSynthesize {
+			// Generic ingress headers are not evidence of a real Claude Code
+			// feature/profile vector. Replace every identity-bearing value with the
+			// same pinned profile and account-bound session used by the body.
+			forcePinnedClaudeCodeProfile(req.Header)
+			req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaFull)
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("X-Claude-Code-Session-Id", result.sessionID)
+			if isAnthropicBase {
+				req.Header.Set("x-client-request-id", NewRequestUUID())
+			}
+		}
 	case RequestClassGenuine:
 		if result.policy.genuineMode == GenuineRequestPreserve {
 			// Preserve the genuine client's own version/profile headers. Only the
@@ -323,8 +452,24 @@ func validatePreparedResult(result BodyTransformResult) error {
 	if sha256.Sum256(result.body) != result.bodyDigest {
 		return errors.New("prepared Claude request body was mutated")
 	}
-	if ClassifyClaudeCodeRequest(result.body) != result.policy.class {
+	preparedClass := ClassifyClaudeCodeRequest(result.body)
+	if result.policy.class == RequestClassGeneric && result.policy.genericMode == GenericRequestSynthesize {
+		if preparedClass != RequestClassGenuine {
+			return errors.New("prepared generic synthesis is not a Claude Code body")
+		}
+	} else if preparedClass != result.policy.class {
 		return errors.New("prepared Claude request class no longer matches its body")
+	}
+	if result.policy.class == RequestClassGeneric && result.policy.genericMode == GenericRequestSynthesize {
+		if result.credentialKind != KindOAuth || !result.accountIdentityApplied || result.sessionID == "" {
+			return errors.New("prepared generic synthesis has no OAuth account identity")
+		}
+		if !metadataMatchesIdentity(result.body, result.identity, result.sessionID) {
+			return errors.New("prepared generic synthesis metadata no longer matches its account identity")
+		}
+		if err := verifyRewrittenBilling(result.body); err != nil {
+			return fmt.Errorf("prepared generic synthesis billing verification failed: %w", err)
+		}
 	}
 	if result.policy.class == RequestClassGenuine && result.policy.genuineMode == GenuineRequestRewrite {
 		if !result.accountIdentityApplied || result.sessionID == "" {
