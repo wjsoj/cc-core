@@ -45,13 +45,21 @@ type Record struct {
 	Output      int64     `json:"output_tokens"`
 	CacheRead   int64     `json:"cache_read_tokens"`
 	CacheCreate int64     `json:"cache_create_tokens"`
-	CostUSD     float64   `json:"cost_usd"`
-	Status      int       `json:"status"`
-	DurationMs  int64     `json:"duration_ms"`
-	Stream      bool      `json:"stream"`
-	Path        string    `json:"path,omitempty"`
-	Attempts    int       `json:"attempts,omitempty"` // credential attempts before terminal
-	Error       string    `json:"error,omitempty"`
+	// CacheCreate1h is the 1-hour-TTL SUBSET of CacheCreate (Anthropic's
+	// `usage.cache_creation.ephemeral_1h_input_tokens`). Omitted when the
+	// upstream reports no breakdown, so older rows and non-Anthropic providers
+	// are unaffected. Recorded ahead of any pricing decision: a 1h write costs
+	// 2× input against a 5m write's 1.25×, and mimicry sets ttl:"1h" on every
+	// breakpoint, so this column is what makes the two separable in an audit.
+	// Never subtract it from CacheCreate — CacheCreate stays the full total.
+	CacheCreate1h int64   `json:"cache_create_1h_tokens,omitempty"`
+	CostUSD       float64 `json:"cost_usd"`
+	Status        int     `json:"status"`
+	DurationMs    int64   `json:"duration_ms"`
+	Stream        bool    `json:"stream"`
+	Path          string  `json:"path,omitempty"`
+	Attempts      int     `json:"attempts,omitempty"` // credential attempts before terminal
+	Error         string  `json:"error,omitempty"`
 	// AttemptOnly marks a credential-attempt audit row that was withheld from
 	// the client and followed by failover. Dashboard/query aggregates ignore
 	// these rows so retry telemetry does not inflate user-visible counts.
@@ -99,6 +107,27 @@ type ClaudeAudit struct {
 	ExtraHeaderCount      int      `json:"extra_header_count,omitempty"`
 	ExtraMetadataKeys     []string `json:"extra_metadata_keys,omitempty"`
 	ExtraHeaderNames      []string `json:"extra_header_names,omitempty"`
+}
+
+// BilledOrCost returns what the customer actually paid, tolerating both log
+// generations in one directory.
+//
+// Until v0.8.61 one fork wrote the billed amount into CostUSD and left
+// BilledUSD unset, while the other wrote the official price into CostUSD and
+// the debit into BilledUSD — the same column meaning opposite things depending
+// on which binary produced the row. Both now use the second convention, but a
+// 90-day retention window means mixed files for a quarter.
+//
+// Reading BilledUSD when non-zero and CostUSD otherwise resolves to the charged
+// amount under either convention, which is what every spend/reconciliation view
+// wants. Writers set both fields together, so a zero BilledUSD on a new row
+// means the request was not billed at all — and CostUSD is zero there too, so
+// the fallback returns 0 rather than inventing a charge.
+func (r Record) BilledOrCost() float64 {
+	if r.BilledUSD != 0 {
+		return r.BilledUSD
+	}
+	return r.CostUSD
 }
 
 type Writer struct {

@@ -34,14 +34,23 @@ func BucketLocation() *time.Location { return bucketLoc }
 
 // Aggregate sums counters over a set of records.
 type Aggregate struct {
-	Count             int64   `json:"count"`
-	InputTokens       int64   `json:"input_tokens"`
-	OutputTokens      int64   `json:"output_tokens"`
-	CacheReadTokens   int64   `json:"cache_read_tokens"`
-	CacheCreateTokens int64   `json:"cache_create_tokens"`
-	CostUSD           float64 `json:"cost_usd"`
-	Errors            int64   `json:"errors"`
-	TotalDurationMs   int64   `json:"total_duration_ms"`
+	Count             int64 `json:"count"`
+	InputTokens       int64 `json:"input_tokens"`
+	OutputTokens      int64 `json:"output_tokens"`
+	CacheReadTokens   int64 `json:"cache_read_tokens"`
+	CacheCreateTokens int64 `json:"cache_create_tokens"`
+	// CacheCreate1hTokens is the 1h-TTL subset of CacheCreateTokens, not an
+	// addend. Summed here so an operator can read the real 5m/1h mix off the
+	// admin panel before deciding whether to enable the split rate.
+	CacheCreate1hTokens int64   `json:"cache_create_1h_tokens,omitempty"`
+	CostUSD             float64 `json:"cost_usd"`
+	// BilledUSD sums what wallets were actually debited. Rows written before
+	// CostUSD/BilledUSD were split carry the billed figure in CostUSD and no
+	// BilledUSD at all, so this falls back to CostUSD per row — under either
+	// shape the sum is "what customers paid", which is what a spend view means.
+	BilledUSD       float64 `json:"billed_usd"`
+	Errors          int64   `json:"errors"`
+	TotalDurationMs int64   `json:"total_duration_ms"`
 }
 
 func (a *Aggregate) add(r Record) {
@@ -50,7 +59,9 @@ func (a *Aggregate) add(r Record) {
 	a.OutputTokens += r.Output
 	a.CacheReadTokens += r.CacheRead
 	a.CacheCreateTokens += r.CacheCreate
+	a.CacheCreate1hTokens += r.CacheCreate1h
 	a.CostUSD += r.CostUSD
+	a.BilledUSD += r.BilledOrCost()
 	a.TotalDurationMs += r.DurationMs
 	if r.Status >= 400 || r.Error != "" {
 		a.Errors++

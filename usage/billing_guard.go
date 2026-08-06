@@ -7,12 +7,11 @@ const (
 	// succeeds without returning billable usage.
 	MissingUsageError = "missing usage"
 
-	// MissingUsageFallbackMinInputTokens and MissingUsageFallbackMinOutputTokens
-	// are deliberately small, non-zero floors for already-streamed responses
-	// where the content reached the client before the missing usage could be
-	// detected. Non-streaming callers should fail closed instead.
-	MissingUsageFallbackMinInputTokens  int64 = 1000
-	MissingUsageFallbackMinOutputTokens int64 = 1000
+	// ClientCanceledError marks a stream the CLIENT abandoned. It is NOT a
+	// missing-usage fault: the credential did nothing wrong, so it must not be
+	// cooled down, and whatever usage was observed before the hang-up is what
+	// gets billed — never an estimate.
+	ClientCanceledError = "client canceled mid-stream"
 )
 
 // EnsureOpenAIStreamUsage rewrites a Chat Completions JSON request so
@@ -50,21 +49,94 @@ func EnsureOpenAIStreamUsage(body []byte) ([]byte, error) {
 // MissingUsage reports whether a successful upstream response produced no
 // usage accounting. Successful billable responses should increment Requests
 // when usage is observed; zero means billing cannot be computed accurately.
+//
+// # Why there is no estimate to pair with this
+//
+// An earlier revision answered "no usage" on an already-streamed response with
+// MissingUsageFallbackCounts: input ≈ len(requestBody)/4, output a flat 1000,
+// both floored at 1000. It was removed in v0.8 after a production audit of
+// 825,929 request-log rows showed what it actually did across 233 charged rows:
+//
+//	estimated input   p50 140,712   p90 272,575   max 2,258,861 tokens
+//	charged           $170.28 total, largest single request $11.32
+//
+// The estimate was wrong in both directions at once. It billed 100% of the
+// prompt at the uncached rate when Codex-CLI traffic runs ~92% cache-hit
+// (≈10× over on the input axis), while pinning output to 1000 regardless of
+// what the stream had actually delivered (86% under on a long generation that
+// died near the end). Worse, it could not tell "the relay dropped the usage
+// chunk" from "the user pressed Ctrl-C", so every client cancellation was
+// billed a full-prompt estimate AND tripped the credential's circuit breaker.
+//
+// The replacement policy — matching what sub2api settled on — is:
+//
+//	client canceled        → bill the partial usage observed, health-neutral
+//	upstream sent no usage → bill nothing, log the row, cool the credential
+//
+// Losing a fraction of a cent on a broken relay is cheap; the circuit breaker
+// bounds how many such requests can happen. Presenting a fabricated token count
+// to a customer as an itemised invoice line is not cheap. Do not reintroduce an
+// estimator here: if a number cannot be observed, it must not be billed.
 func MissingUsage(c Counts) bool {
 	return c.Requests == 0
 }
 
-// MissingUsageFallbackCounts returns a conservative non-zero estimate for an
-// already-delivered response whose upstream omitted usage. The input estimate
-// is based on request JSON size so very large prompts pay more than the floor.
-func MissingUsageFallbackCounts(requestBody []byte) Counts {
-	input := int64(len(requestBody)+3) / 4
-	if input < MissingUsageFallbackMinInputTokens {
-		input = MissingUsageFallbackMinInputTokens
+// StreamOutcome classifies how a streamed upstream response ended, so callers
+// can apply the three different billing/health policies without each re-deriving
+// the distinction (which is how the Anthropic, Codex-OAuth and Codex-API-key
+// paths drifted apart in the first place).
+type StreamOutcome int
+
+const (
+	// StreamComplete — a terminal event arrived and usage was observed. Bill it.
+	StreamComplete StreamOutcome = iota
+
+	// StreamClientCanceled — the downstream client went away mid-stream. Bill
+	// whatever partial usage was observed (possibly zero); leave credential
+	// health untouched. This is the user's choice, not a fault.
+	StreamClientCanceled
+
+	// StreamUpstreamNoUsage — the stream completed or truncated on the upstream
+	// side without ever reporting usage. Bill nothing, emit a request-log row
+	// carrying MissingUsageError, and report a fault so the breaker can rotate
+	// away from a relay that cannot account for what it serves.
+	StreamUpstreamNoUsage
+)
+
+// ClassifyStreamOutcome maps an observed (counts, clientGone) pair onto the
+// policy above. clientGone should come from the request context / write-side
+// error, never from the read error alone — an upstream RST and a client hang-up
+// surface identically at the reader.
+func ClassifyStreamOutcome(c Counts, clientGone bool) StreamOutcome {
+	switch {
+	case clientGone:
+		return StreamClientCanceled
+	case MissingUsage(c):
+		return StreamUpstreamNoUsage
+	default:
+		return StreamComplete
 	}
-	return Counts{
-		InputTokens:  input,
-		OutputTokens: MissingUsageFallbackMinOutputTokens,
-		Requests:     1,
+}
+
+// Billable reports whether a request that ended this way should reach the
+// pricing catalogue at all. Only observed usage is ever billed.
+func (o StreamOutcome) Billable(c Counts) bool {
+	return o != StreamUpstreamNoUsage && !MissingUsage(c)
+}
+
+// CredentialFault reports whether this outcome should be charged against the
+// serving credential's health. A client hang-up must not be.
+func (o StreamOutcome) CredentialFault() bool { return o == StreamUpstreamNoUsage }
+
+// LogError returns the stable request-log `error` marker for this outcome, or
+// "" when the request ended normally.
+func (o StreamOutcome) LogError() string {
+	switch o {
+	case StreamClientCanceled:
+		return ClientCanceledError
+	case StreamUpstreamNoUsage:
+		return MissingUsageError
+	default:
+		return ""
 	}
 }
