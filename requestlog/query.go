@@ -126,6 +126,9 @@ func AggregateHourly(dir string, hours int) ([]HourBucket, error) {
 	if hours <= 0 {
 		hours = 24
 	}
+	if st := indexFor(dir); st != nil {
+		return st.storeAggregateHourly(hours)
+	}
 	now := time.Now().UTC().Truncate(time.Hour)
 	start := now.Add(-time.Duration(hours-1) * time.Hour)
 	files, err := listLogFiles(dir)
@@ -193,6 +196,9 @@ func AggregateHourly(dir string, hours int) ([]HourBucket, error) {
 // from the request log, bypassing the in-memory counter (which resets on
 // restart / state rebuild).
 func AggregateByAuth(dir string, from, to time.Time) (map[string]Aggregate, error) {
+	if st := indexFor(dir); st != nil {
+		return st.storeAggregateByAuth(from, to)
+	}
 	files, err := listLogFiles(dir)
 	if err != nil {
 		return nil, err
@@ -252,6 +258,9 @@ func Query(f Filter) (*Result, error) {
 	}
 	if f.Offset < 0 {
 		f.Offset = 0
+	}
+	if st := indexFor(f.Dir); st != nil {
+		return st.storeQuery(f)
 	}
 	// keep is the most newest-first entries we could ever return; collecting
 	// beyond it is wasted memory since Query only returns [Offset, Offset+Limit).
