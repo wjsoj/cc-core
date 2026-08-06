@@ -207,10 +207,10 @@ func TestPersistGroups(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "tokens.json")
 	s1, _ := Open(p)
-	_ = s1.Add(Token{Token: "sk-multi", Groups: []string{"kiro", "claude"}})
+	_ = s1.Add(Token{Token: "sk-multi", Groups: []string{"backup", "claude"}})
 	s2, _ := Open(p)
 	tok, ok := s2.Lookup("sk-multi")
-	if !ok || len(tok.Groups) != 2 || tok.Groups[0] != "kiro" {
+	if !ok || len(tok.Groups) != 2 || tok.Groups[0] != "backup" {
 		t.Fatalf("Groups did not persist: %+v ok=%v", tok, ok)
 	}
 }

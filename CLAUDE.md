@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-cc-core (`github.com/wjsoj/cc-core`) is the **shared library** behind two sibling reverse-proxy forks — **CPA-Claude** (`/home/wjs/Documents/project/Go/CPA-Claude`, the leaner one) and **hypitoken** (`/home/wjs/Documents/project/Go/hypitoken`, which adds SaaS/shop/market/Kiro product layers). Both Go modules are confusingly *both* named `CPA-Claude`; both import this module. It has **no binary and no `main`** of its own — it is consumed, not run.
+cc-core (`github.com/wjsoj/cc-core`) is the **shared library** behind two sibling reverse-proxy forks — **CPA-Claude** (`/home/wjs/Documents/project/Go/CPA-Claude`, the leaner one) and **hypitoken** (`/home/wjs/Documents/project/Go/hypitoken`, which adds SaaS/shop product layers). Both Go modules are confusingly *both* named `CPA-Claude`; both import this module. It has **no binary and no `main`** of its own — it is consumed, not run.
 
 Everything that is identity-, credential-, billing-, or fingerprint-bearing lives here so the two forks can't drift apart on the parts that must stay byte-identical to a real client. A change here reaches production only when a fork **bumps the `cc-core` dependency and redeploys** — so the release unit is a git tag (`v0.8.x`), and "fix it in cc-core, then bump both forks" is the standard loop.
 
@@ -56,7 +56,7 @@ Also in `auth`: Anthropic login (`login.go` PKCE, `login_session.go` session-coo
 
 ### `crack/` — capture archive = fingerprint ground truth
 
-Recorded real-client traffic anchoring every constant in `mimicry`/`sidecar`/`auth/codex_*`/`kiro*`. Current Claude target **2.1.220** in `crack/cc2220/` (`SPEC.md` = authoritative diff + edit checklist; `chain-redacted.json` = hashed multi-turn linkage; `rows/` = structurally-redacted requests). `codex/` (`codex-tui/0.144.4`), `kiro/`, `oauth/`, `apikey/`, `login/` cover the rest. `scripts/extract_live.py` keeps fingerprint-bearing structure and `<masked>`s all identity/prose; raw dumps are never committed.
+Recorded real-client traffic anchoring every constant in `mimicry`/`sidecar`/`auth/codex_*`. Current Claude target **2.1.220** in `crack/cc2220/` (`SPEC.md` = authoritative diff + edit checklist; `chain-redacted.json` = hashed multi-turn linkage; `rows/` = structurally-redacted requests). `codex/` (`codex-tui/0.144.4`), `oauth/`, `apikey/`, `login/` cover the rest. `scripts/extract_live.py` keeps fingerprint-bearing structure and `<masked>`s all identity/prose; raw dumps are never committed.
 
 **Bumping the CC version target** (a cc-core-only change): capture a fresh dump → `extract_live.py <dump> crack/cc<ver>/rows` → write `crack/cc<ver>/SPEC.md` → update constants in `mimicry`/`sidecar` (User-Agent, betas, body layout, sidecar steps all together) → tag a release → bump the dependency in **both** forks. See `crack/cc2220/SPEC.md` for a worked diff with independent and 10-turn captures.
 
@@ -72,7 +72,6 @@ Recorded real-client traffic anchoring every constant in `mimicry`/`sidecar`/`au
 ### Other transports & helpers
 
 - `codexws` — Codex-over-WebSocket upstream transport (real codex-tui speaks `/v1/responses` over WS; forks relay per-turn).
-- `kiroapi` / `kirobridge` / `kiroauth` / `kirocognito` / `kirotransport` — the AWS CodeWhisperer / Kiro bridge (typed client + Anthropic↔Kiro translation + Cognito PKCE), used by hypitoken's Kiro path.
 - `thinkingsig` — mid-conversation credential-switch detection + `thinking`-signature sanitization/recovery.
 - `advisor` — parses `message_delta.usage.iterations[]` (advisor sub-call billing).
 - `stream` — framework-agnostic SSE relay (keepalive + lazy commit + terminal detection); the forks' streamers wrap it.

@@ -12,7 +12,7 @@ Usage:
     python3 crack/scripts/extract_live.py /path/to/whistle-dump.json [outdir]
 
 Default outdir = crack/cc2220/rows/ (current Claude Code target — pass an
-explicit outdir for codex/kiro or a new version dir). The source dump is NOT
+explicit outdir for codex or a new version dir). The source dump is NOT
 copied or committed.
 """
 import json, base64, gzip, subprocess, sys, os, collections, re

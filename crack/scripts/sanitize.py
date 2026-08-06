@@ -2,7 +2,7 @@
 """跨整个 crack/ 的统一脱敏脚本。
 
 把抓包里的真实账号 / 会话 / token / STS 凭据值替换为固定占位符；再用一组
-正则做兜底（CF cookie、未识别的 oauth token 长尾、裸主机名、AWS STS 等）。
+正则做兜底（CF cookie、未识别的 oauth token 长尾、裸主机名等）。
 幂等：在已经脱敏过的文件上再跑一次，输出 0 changed。
 
 **重要：** 字面量替换映射存放在同目录的 `redaction_map.json`（gitignored）。
@@ -71,25 +71,6 @@ REGEX_SUBS = [
     # LAN IP
     (re.compile(r'10\.3\.31\.133'),                                  '10.0.0.10'),
     (re.compile(r'10\.129\.81\.88'),                                 '10.0.0.20'),
-    # -------- Kiro/Amazon-Q 抓包通用正则 --------
-    # Kiro accessToken（形如 `aoaAAAAA...:base64sig`，~220 char）；幂等：跳过已替换
-    (re.compile(r'aoaAAAAA(?!REDACTED)[A-Za-z0-9_+/\-]{20,}(?::[A-Za-z0-9_+/=\-]+)?'),
-                                                                     'aoaAAAAAREDACTED_KIRO_ACCESS_TOKEN'),
-    # Kiro refreshToken（`aorAAAAA...`）
-    (re.compile(r'aorAAAAA(?!REDACTED)[A-Za-z0-9_+/\-]{20,}(?::[A-Za-z0-9_+/=\-]+)?'),
-                                                                     'aorAAAAAREDACTED_KIRO_REFRESH_TOKEN'),
-    # 任意 AWS STS AccessKeyId 残留（前缀 ASIA + 16 字母数字）
-    (re.compile(r'ASIA(?!REDACTED)[A-Z0-9]{16}'),                    'REDACTED-AWS-STS-KEYID-0'),
-    # AWS SessionToken（IQoJ 开头的 base64，~1500 char）；幂等
-    (re.compile(r'IQoJb3JpZ2luX2Vj(?!_STS)[A-Za-z0-9+/=]{50,}'),     'IQoJb3JpZ2luX2Vj_STS_SESSION_TOKEN_REDACTED'),
-    # SigV4 Authorization 里的 Signature=hex
-    (re.compile(r'Signature=(?!REDACTED)[0-9a-f]{64}'),              'Signature=REDACTED_SIGNATURE_HEX_64'),
-    # amz-sdk-invocation-id（每请求随机 uuid），仅在 header / amz-sdk-invocation-id JSON 字段里替换
-    (re.compile(r'(amz-sdk-invocation-id["\s:=]+)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
-                re.IGNORECASE),                                      r'\g<1>00000000-0000-0000-0000-000000000050'),
-    # x-amz-security-token header 值（与 SessionToken 同源；冗余兜底，防止某些 header 截断的 IQoJ 前缀不完整）
-    (re.compile(r'(x-amz-security-token["\s:=]+)(?!IQoJb3JpZ2luX2Vj_STS)[A-Za-z0-9+/=_\-]{200,}',
-                re.IGNORECASE),                                      r'\g<1>IQoJb3JpZ2luX2Vj_STS_SESSION_TOKEN_REDACTED'),
 ]
 
 # README 文件是手写文档，里面的"脱敏说明表"故意保留原始值用作映射查阅。
