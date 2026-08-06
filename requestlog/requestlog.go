@@ -54,12 +54,20 @@ type Record struct {
 	// Never subtract it from CacheCreate — CacheCreate stays the full total.
 	CacheCreate1h int64   `json:"cache_create_1h_tokens,omitempty"`
 	CostUSD       float64 `json:"cost_usd"`
-	Status      int       `json:"status"`
-	DurationMs  int64     `json:"duration_ms"`
-	Stream      bool      `json:"stream"`
-	Path        string    `json:"path,omitempty"`
-	Attempts    int       `json:"attempts,omitempty"` // credential attempts before terminal
-	Error       string    `json:"error,omitempty"`
+	Status        int     `json:"status"`
+	DurationMs    int64   `json:"duration_ms"`
+	Stream        bool    `json:"stream"`
+	Path          string  `json:"path,omitempty"`
+	Attempts      int     `json:"attempts,omitempty"` // credential attempts before terminal
+	Error         string  `json:"error,omitempty"`
+	// AttemptOnly marks a credential-attempt audit row that was withheld from
+	// the client and followed by failover. Dashboard/query aggregates ignore
+	// these rows so retry telemetry does not inflate user-visible counts.
+	AttemptOnly bool `json:"attempt_only,omitempty"`
+	// ClaudeAudit contains only policy outcomes and a domain-separated account
+	// digest. It never stores an account UUID, email, prompt, bearer, or client
+	// token.
+	ClaudeAudit *ClaudeAudit `json:"claude_audit,omitempty"`
 
 	// SaaS-tier optional fields. Zero on requests that didn't go through
 	// a billing/multi-tenant layer.
@@ -77,10 +85,34 @@ type Record struct {
 	UserID int64 `json:"user_id,omitempty"`
 }
 
+// ClaudeAudit is privacy-safe evidence of Claude request preparation, identity
+// mapping, and any local fallback decision.
+type ClaudeAudit struct {
+	AccountHash           string   `json:"account_hash,omitempty"`
+	RequestClass          string   `json:"request_class"`
+	IdentityMode          string   `json:"identity_mode"`
+	AccountIdentityMapped bool     `json:"account_identity_mapped"`
+	CredentialHardFailed  bool     `json:"credential_hard_failed,omitempty"`
+	PreparationFailed     bool     `json:"preparation_failed,omitempty"`
+	PreparationError      string   `json:"preparation_error,omitempty"`
+	Fallback              string   `json:"fallback,omitempty"`
+	BodyBytes             int      `json:"body_bytes,omitempty"`
+	BodySHA256            string   `json:"body_sha256,omitempty"`
+	SessionBinding        string   `json:"session_binding,omitempty"`
+	BillingValidation     string   `json:"billing_validation,omitempty"`
+	BetaHash              string   `json:"beta_hash,omitempty"`
+	ProfileHash           string   `json:"profile_hash,omitempty"`
+	ProxyConfigHash       string   `json:"proxy_config_hash,omitempty"`
+	ExtraMetadataCount    int      `json:"extra_metadata_count,omitempty"`
+	ExtraHeaderCount      int      `json:"extra_header_count,omitempty"`
+	ExtraMetadataKeys     []string `json:"extra_metadata_keys,omitempty"`
+	ExtraHeaderNames      []string `json:"extra_header_names,omitempty"`
+}
+
 // BilledOrCost returns what the customer actually paid, tolerating both log
 // generations in one directory.
 //
-// Until v0.8.60 one fork wrote the billed amount into CostUSD and left
+// Until v0.8.61 one fork wrote the billed amount into CostUSD and left
 // BilledUSD unset, while the other wrote the official price into CostUSD and
 // the debit into BilledUSD — the same column meaning opposite things depending
 // on which binary produced the row. Both now use the second convention, but a

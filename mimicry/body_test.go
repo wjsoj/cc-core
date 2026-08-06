@@ -392,3 +392,11 @@ func TestCCHIsNeverPlaceholder(t *testing.T) {
 		t.Error("cch signing is not deterministic for a fixed body")
 	}
 }
+
+func TestBuildJSONUserIDUsesClaudeCodeFieldOrder(t *testing.T) {
+	got := BuildJSONUserID("device", "account", "session")
+	want := `{"device_id":"device","account_uuid":"account","session_id":"session"}`
+	if got != want {
+		t.Fatalf("got %s want %s", got, want)
+	}
+}

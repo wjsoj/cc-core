@@ -13,6 +13,8 @@ func TestAnthropicModelScope(t *testing.T) {
 		"claude-fable-5[1m]":       ModelScopeAnthropicFable,
 		"CLAUDE-FABLE-5":           ModelScopeAnthropicFable,
 		"anthropic/claude-fable-5": ModelScopeAnthropicFable,
+		"my-fable-model":           "",
+		"claude-fable-50":          "",
 		"claude-opus-4-8":          "",
 		"claude-sonnet-5":          "",
 		"":                         "",
@@ -20,6 +22,24 @@ func TestAnthropicModelScope(t *testing.T) {
 	for model, want := range cases {
 		if got := AnthropicModelScope(model); got != want {
 			t.Errorf("AnthropicModelScope(%q) = %q, want %q", model, got, want)
+		}
+	}
+}
+
+func TestAnthropicModelRequiresAPIKey(t *testing.T) {
+	for _, model := range []string{
+		"claude-fable-5",
+		"claude-fable-5-20260601",
+		"claude-fable-5[1m]",
+		"anthropic/CLAUDE-FABLE-5",
+	} {
+		if !AnthropicModelRequiresAPIKey(model) {
+			t.Errorf("AnthropicModelRequiresAPIKey(%q) = false", model)
+		}
+	}
+	for _, model := range []string{"claude-opus-5", "claude-sonnet-5", "my-fable-model"} {
+		if AnthropicModelRequiresAPIKey(model) {
+			t.Errorf("AnthropicModelRequiresAPIKey(%q) = true", model)
 		}
 	}
 }
@@ -67,28 +87,56 @@ func TestClearQuotaClearsModelScopes(t *testing.T) {
 	}
 }
 
-// TestScheduleSkipsFableLimitedButKeepsOtherModels is the core end-to-end guard:
-// a fable-limited credential is skipped for fable requests but still selected
-// for other models, and a non-limited credential is preferred for fable.
-func TestScheduleSkipsFableLimitedButKeepsOtherModels(t *testing.T) {
+// TestScheduleRoutesFableOnlyToAPIKey is the core end-to-end guard: every
+// Fable request bypasses OAuth, while the same OAuth remains available to all
+// included subscription models.
+func TestScheduleRoutesFableOnlyToAPIKey(t *testing.T) {
 	limited := mustOAuth(t, "limited", "anthropic", "g", 1)
 	limited.MarkModelRateLimited(ModelScopeAnthropicFable, time.Now().Add(time.Hour))
 
-	// Only the fable-limited credential exists: a fable request finds nothing…
+	// An OAuth-only pool cannot serve Fable at all.
 	p := NewPool([]*Auth{limited}, nil, time.Minute, false, "")
 	if _, got := p.AcquireMulti(context.Background(), "anthropic", "c1", []string{"g"}, "claude-fable-5", "sess-fable"); got != nil {
-		t.Fatalf("fable request must skip the fable-limited credential, got %s", got.ID)
+		t.Fatalf("fable request must bypass OAuth, got %s", got.ID)
 	}
 
-	// …but an Opus request through the same credential is served.
+	// An included model still uses the OAuth credential.
 	if _, got := p.AcquireMulti(context.Background(), "anthropic", "c2", []string{"g"}, "claude-opus-4-8", "sess-opus"); got == nil || got.ID != "limited" {
 		t.Fatalf("non-fable request must still use the credential, got %v", got)
 	}
 
-	// With a healthy sibling present, the fable request routes to it.
+	// A healthy OAuth sibling is also skipped; the API key is selected.
 	healthy := mustOAuth(t, "healthy", "anthropic", "g", 1)
-	p2 := NewPool([]*Auth{limited, healthy}, nil, time.Minute, false, "")
-	if _, got := p2.AcquireMulti(context.Background(), "anthropic", "c3", []string{"g"}, "claude-fable-5", "sess-fable2"); got == nil || got.ID != "healthy" {
-		t.Fatalf("fable request should route to the healthy sibling, got %v", got)
+	key := &Auth{ID: "key", Kind: KindAPIKey, Provider: ProviderAnthropic, Group: "g"}
+	p2 := NewPool([]*Auth{limited, healthy}, []*Auth{key}, time.Minute, false, "")
+	if _, got := p2.AcquireMulti(context.Background(), "anthropic", "c3", []string{"g"}, "claude-fable-5", "sess-fable2"); got == nil || got.ID != "key" {
+		t.Fatalf("fable request should route to the API key, got %v", got)
+	}
+}
+
+func TestFableBreaksStickyOAuthAssignment(t *testing.T) {
+	oauth := mustOAuth(t, "oauth", "anthropic", "g", 2)
+	key := &Auth{ID: "key", Kind: KindAPIKey, Provider: ProviderAnthropic, Group: "g"}
+	p := NewPool([]*Auth{oauth}, []*Auth{key}, time.Minute, false, "")
+
+	const token, session = "client", "same-session"
+	if got := p.Acquire(context.Background(), ProviderAnthropic, token, "g", "claude-opus-5", session); got == nil || got.ID != "oauth" {
+		t.Fatalf("initial included model should stick to OAuth, got %v", got)
+	}
+	if got := p.Acquire(context.Background(), ProviderAnthropic, token, "g", "claude-fable-5", session); got == nil || got.ID != "key" {
+		t.Fatalf("fable must break the sticky OAuth route and use API key, got %v", got)
+	}
+}
+
+func TestFableRespectsDisabledAPIKeyFallback(t *testing.T) {
+	oauth := mustOAuth(t, "oauth", "anthropic", "g", 1)
+	key := &Auth{ID: "key", Kind: KindAPIKey, Provider: ProviderAnthropic, Group: "g"}
+	p := NewPool([]*Auth{oauth}, []*Auth{key}, time.Minute, false, "")
+
+	got := p.AcquireWithOptions(context.Background(), ProviderAnthropic, "client", "g", "claude-fable-5", "session", AcquireOptions{
+		AllowAPIKeyFallback: false,
+	})
+	if got != nil {
+		t.Fatalf("API-key opt-out must return nil rather than use OAuth, got %s", got.ID)
 	}
 }

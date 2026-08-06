@@ -25,12 +25,10 @@ import (
 // A's signed thinking blocks are about to be sent to account B,
 // B's verifier returns 400.
 //
-// Conversation identity is the sha256 of the first user message —
-// the same anchor any caller-side `SessionIDFor` uses to keep
-// multi-turn requests on a stable session id. New topics rotate this
-// hash, which correctly forces a "switch" decision on a fresh
-// credential too (no prior thinking blocks to worry about there,
-// but the bookkeeping stays consistent).
+// Genuine Claude Code conversation identity comes from metadata.user_id's
+// source session_id. This avoids collisions between separate conversations
+// whose first user block is the same generated system reminder. Generic
+// callers without that metadata fall back to a hash of the first user text.
 //
 // Why per (clientToken, convKey) and not per clientToken alone —
 // one downstream client token may run several concurrent
@@ -106,13 +104,18 @@ func (t *SwitchTracker) gcLoop() {
 	}
 }
 
-// conversationKey hashes the first user message so multi-turn
-// requests of the same conversation share one key.
+// conversationKey prefers Claude Code's source session identifier. The first
+// user text is only a compatibility fallback for generic callers.
 func conversationKey(body []byte) string {
-	first := firstUserText(body)
-	if first == "" {
+	anchor := sourceSessionID(body)
+	domain := "source-session/v1\x00"
+	if anchor == "" {
+		anchor = firstUserText(body)
+		domain = "first-user/v1\x00"
+	}
+	if anchor == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(first))
+	sum := sha256.Sum256([]byte(domain + anchor))
 	return hex.EncodeToString(sum[:])[:16]
 }

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -118,7 +119,10 @@ func parseFile(path string, data []byte) (*Auth, error) {
 		label = filepath.Base(path)
 	}
 	disabled, _ := raw["disabled"].(bool)
-	proxyURL, _ := raw["proxy_url"].(string)
+	proxyURL, err := validatedProxyValue(raw["proxy_url"])
+	if err != nil {
+		return nil, err
+	}
 	group, _ := raw["group"].(string)
 	maxConc := 0
 	if v, ok := raw["max_concurrent"].(float64); ok {
@@ -237,7 +241,10 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 		label = filepath.Base(path)
 	}
 	disabled, _ := raw["disabled"].(bool)
-	proxyURL, _ := raw["proxy_url"].(string)
+	proxyURL, err := validatedProxyValue(raw["proxy_url"])
+	if err != nil {
+		return nil, err
+	}
 	baseURL, _ := raw["base_url"].(string)
 	group, _ := raw["group"].(string)
 	modelMap := parseModelMap(raw["model_map"])
@@ -288,7 +295,10 @@ func parseCodexOAuthFile(path string, raw map[string]any, provider string) (*Aut
 		label = filepath.Base(path)
 	}
 	disabled, _ := raw["disabled"].(bool)
-	proxyURL, _ := raw["proxy_url"].(string)
+	proxyURL, err := validatedProxyValue(raw["proxy_url"])
+	if err != nil {
+		return nil, err
+	}
 	group, _ := raw["group"].(string)
 	idToken, _ := raw["id_token"].(string)
 	accountID, _ := raw["account_id"].(string)
@@ -326,6 +336,21 @@ func parseCodexOAuthFile(path string, raw map[string]any, provider string) (*Aut
 		Disabled:      disabled,
 		Group:         NormalizeGroup(group),
 	}, nil
+}
+
+func validatedProxyValue(value any) (string, error) {
+	if value == nil {
+		return "", nil
+	}
+	proxyURL, ok := value.(string)
+	if !ok {
+		return "", errors.New("proxy_url must be a string")
+	}
+	proxyURL = strings.TrimSpace(proxyURL)
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return "", fmt.Errorf("proxy_url: %w", err)
+	}
+	return proxyURL, nil
 }
 
 // parseModelMap normalizes the model_map entry from a parsed JSON object into
@@ -382,6 +407,20 @@ func LoadAuthDir(dir string) (oauths, apikeys []*Auth, err error) {
 			oauths = append(oauths, a)
 		}
 	}
+	seenClaudeAccounts := make(map[string]string)
+	for _, a := range oauths {
+		if NormalizeProvider(a.Provider) != ProviderAnthropic {
+			continue
+		}
+		uuid := strings.TrimSpace(a.AccountUUIDValue())
+		if uuid == "" {
+			continue
+		}
+		if firstID, exists := seenClaudeAccounts[uuid]; exists {
+			return nil, nil, fmt.Errorf("%w: %s conflicts with %s", ErrDuplicateClaudeAccountUUID, a.ID, firstID)
+		}
+		seenClaudeAccounts[uuid] = a.ID
+	}
 	return oauths, apikeys, nil
 }
 
@@ -427,6 +466,7 @@ func saveAuth(a *Auth) error {
 		delete(raw, "plan_type")
 		delete(raw, "last_refresh")
 		delete(raw, "max_concurrent")
+		delete(raw, "claude_identity_mode")
 	} else {
 		if provider == ProviderOpenAI {
 			raw["type"] = "codex"
@@ -475,6 +515,9 @@ func saveAuth(a *Auth) error {
 		} else {
 			delete(raw, "host_profile")
 		}
+		// Identity rewriting is now the only genuine Claude Code OAuth path;
+		// remove the retired per-credential mode if an older file still has it.
+		delete(raw, "claude_identity_mode")
 	}
 	raw["disabled"] = a.Disabled
 	if a.StripThinking {
@@ -541,6 +584,40 @@ func saveAuth(a *Auth) error {
 
 // Persist writes the current admin-editable fields of the auth back to disk.
 func (a *Auth) Persist() error { return saveAuth(a) }
+
+// InstallCredentialFile validates and atomically installs an uploaded
+// credential while sharing saveMu with refresh, re-login, and Persist.
+func InstallCredentialFile(path string, data []byte) (*Auth, error) {
+	_, err := parseFile(path, data)
+	if err != nil {
+		return nil, err
+	}
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil || raw == nil {
+		return nil, errors.New("credential file is not a JSON object")
+	}
+	delete(raw, "claude_identity_mode")
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, out, 0600); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return nil, err
+	}
+	installed, err := parseFile(path, out)
+	if err != nil {
+		return nil, fmt.Errorf("parse newly installed credential: %w", err)
+	}
+	return installed, nil
+}
 
 // UpdateSubscriptionInfo records the subscription tier captured from a
 // /api/claude_cli/bootstrap response so future GrowthBook calls can

@@ -101,7 +101,7 @@ func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byt
 		return body
 	}
 	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(body, &obj); err != nil {
+	if err := json.Unmarshal(body, &obj); err != nil || obj == nil {
 		return body
 	}
 
@@ -603,10 +603,14 @@ func BuildJSONUserID(deviceID, accountUUID, sessionID string) string {
 }
 
 func buildJSONUserID(deviceID, accountUUID, sessionID string) string {
-	b, _ := json.Marshal(map[string]string{
-		"device_id":    deviceID,
-		"account_uuid": accountUUID,
-		"session_id":   sessionID,
+	b, _ := json.Marshal(struct {
+		DeviceID    string `json:"device_id"`
+		AccountUUID string `json:"account_uuid"`
+		SessionID   string `json:"session_id"`
+	}{
+		DeviceID:    deviceID,
+		AccountUUID: accountUUID,
+		SessionID:   sessionID,
 	})
 	return string(b)
 }

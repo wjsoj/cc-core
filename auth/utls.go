@@ -27,10 +27,53 @@ type transportPool struct {
 
 var globalPool = &transportPool{pool: make(map[string]http.RoundTripper)}
 
+// ValidateProxyURL validates every non-empty per-credential/default proxy.
+// A configured proxy is an isolation boundary: malformed configuration must
+// fail closed instead of silently constructing a direct transport.
+func ValidateProxyURL(proxyURL string) error {
+	if proxyURL == "" {
+		return nil
+	}
+	if strings.TrimSpace(proxyURL) != proxyURL {
+		return fmt.Errorf("proxy URL must not contain surrounding whitespace")
+	}
+	u, err := url.Parse(proxyURL)
+	if err != nil {
+		return fmt.Errorf("parse proxy URL: %w", err)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return fmt.Errorf("unsupported proxy scheme %q", u.Scheme)
+	}
+	if u.Opaque != "" || u.Host == "" || u.Hostname() == "" {
+		return fmt.Errorf("proxy URL must include a host")
+	}
+	if u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return fmt.Errorf("proxy URL must not include a path, query, or fragment")
+	}
+	if u.User != nil && u.User.Username() == "" {
+		return fmt.Errorf("proxy URL username must not be empty")
+	}
+	if (u.Scheme == "socks5" || u.Scheme == "socks5h") && u.Port() == "" {
+		return fmt.Errorf("SOCKS proxy URL must include a port")
+	}
+	return nil
+}
+
+type invalidProxyRoundTripper struct{ err error }
+
+func (t invalidProxyRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, t.err
+}
+
 // ClientFor returns an *http.Client that dials api.anthropic.com with the
 // Chrome uTLS fingerprint via the given proxyURL (empty = direct).
 // Clients are cached per (proxyURL).
 func ClientFor(proxyURL string, useUTLS bool) *http.Client {
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return &http.Client{Transport: invalidProxyRoundTripper{err: fmt.Errorf("invalid configured proxy: %w", err)}}
+	}
 	globalPool.mu.Lock()
 	defer globalPool.mu.Unlock()
 	key := proxyURL
@@ -67,6 +110,9 @@ func ClientFor(proxyURL string, useUTLS bool) *http.Client {
 // — required for chatgpt.com where Cloudflare JA3/JA4-fingerprints crypto/tls
 // default ClientHello and returns 403.
 func NewPlainHTTPClient(proxyURL string, useUTLS bool) *http.Client {
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return &http.Client{Transport: invalidProxyRoundTripper{err: fmt.Errorf("invalid configured proxy: %w", err)}}
+	}
 	if useUTLS {
 		return &http.Client{Transport: newUTLSTransport(proxyURL)}
 	}
@@ -77,22 +123,26 @@ func NewPlainHTTPClient(proxyURL string, useUTLS bool) *http.Client {
 		tr = tr.Clone()
 	}
 	if proxyURL != "" {
-		if u, err := url.Parse(proxyURL); err == nil {
-			scheme := strings.ToLower(u.Scheme)
-			if scheme == "socks5" || scheme == "socks5h" {
-				tr.Proxy = nil
-				if dc := socks5DialContext(u); dc != nil {
-					tr.DialContext = dc
-				}
+		u, _ := url.Parse(proxyURL)
+		scheme := strings.ToLower(u.Scheme)
+		if scheme == "socks5" || scheme == "socks5h" {
+			tr.Proxy = nil
+			if dc := socks5DialContext(u); dc != nil {
+				tr.DialContext = dc
 			} else {
-				tr.Proxy = http.ProxyURL(u)
+				return &http.Client{Transport: invalidProxyRoundTripper{err: fmt.Errorf("failed to build configured SOCKS proxy")}}
 			}
+		} else {
+			tr.Proxy = http.ProxyURL(u)
 		}
 	}
 	return &http.Client{Transport: tr}
 }
 
 func newStdTransport(proxyURL string) http.RoundTripper {
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return invalidProxyRoundTripper{err: fmt.Errorf("invalid configured proxy: %w", err)}
+	}
 	tr := &http.Transport{
 		ForceAttemptHTTP2: true,
 		// Prune idle connections aggressively. The transport is globally
@@ -107,17 +157,17 @@ func newStdTransport(proxyURL string) http.RoundTripper {
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 	if proxyURL != "" {
-		u, err := url.Parse(proxyURL)
-		if err == nil {
-			scheme := strings.ToLower(u.Scheme)
-			if scheme == "socks5" || scheme == "socks5h" {
-				// http.Transport.Proxy does not support SOCKS; use DialContext instead.
-				if dc := socks5DialContext(u); dc != nil {
-					tr.DialContext = dc
-				}
+		u, _ := url.Parse(proxyURL)
+		scheme := strings.ToLower(u.Scheme)
+		if scheme == "socks5" || scheme == "socks5h" {
+			// http.Transport.Proxy does not support SOCKS; use DialContext instead.
+			if dc := socks5DialContext(u); dc != nil {
+				tr.DialContext = dc
 			} else {
-				tr.Proxy = http.ProxyURL(u)
+				return invalidProxyRoundTripper{err: fmt.Errorf("failed to build configured SOCKS proxy")}
 			}
+		} else {
+			tr.Proxy = http.ProxyURL(u)
 		}
 	}
 	// Turn on HTTP/2 PING-based health checks. Without this, a stale h2
@@ -280,6 +330,9 @@ func (t *utlsTransport) dialTLS(ctx context.Context, host, addr string) (*utls.U
 // (utlsTransport.dialTLS) and the Codex WebSocket transport (cc-core/codexws),
 // so the Chrome fingerprint stays byte-identical across HTTP and WS paths.
 func DialTLSConn(ctx context.Context, host, addr, proxyURL string, useUTLS bool, nextProtos []string) (net.Conn, error) {
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return nil, fmt.Errorf("invalid configured proxy: %w", err)
+	}
 	var rawConn net.Conn
 	var err error
 	if proxyURL != "" {
@@ -372,6 +425,9 @@ func (b *connBoundBody) Close() error {
 
 // dialViaProxy supports http:// and socks5:// proxies for HTTPS CONNECT.
 func dialViaProxy(ctx context.Context, proxyURL, targetAddr string) (net.Conn, error) {
+	if err := ValidateProxyURL(proxyURL); err != nil {
+		return nil, fmt.Errorf("invalid configured proxy: %w", err)
+	}
 	u, err := url.Parse(proxyURL)
 	if err != nil {
 		return nil, err

@@ -34,11 +34,11 @@ func BucketLocation() *time.Location { return bucketLoc }
 
 // Aggregate sums counters over a set of records.
 type Aggregate struct {
-	Count             int64   `json:"count"`
-	InputTokens       int64   `json:"input_tokens"`
-	OutputTokens      int64   `json:"output_tokens"`
-	CacheReadTokens   int64   `json:"cache_read_tokens"`
-	CacheCreateTokens int64   `json:"cache_create_tokens"`
+	Count             int64 `json:"count"`
+	InputTokens       int64 `json:"input_tokens"`
+	OutputTokens      int64 `json:"output_tokens"`
+	CacheReadTokens   int64 `json:"cache_read_tokens"`
+	CacheCreateTokens int64 `json:"cache_create_tokens"`
 	// CacheCreate1hTokens is the 1h-TTL subset of CacheCreateTokens, not an
 	// addend. Summed here so an operator can read the real 5m/1h mix off the
 	// admin panel before deciding whether to enable the split rate.
@@ -157,6 +157,9 @@ func AggregateHourly(dir string, hours int) ([]HourBucket, error) {
 			if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
 				continue
 			}
+			if r.AttemptOnly {
+				continue
+			}
 			if r.TS.Before(start) || r.TS.After(now.Add(time.Hour)) {
 				continue
 			}
@@ -212,6 +215,9 @@ func AggregateByAuth(dir string, from, to time.Time) (map[string]Aggregate, erro
 		for sc.Scan() {
 			var r Record
 			if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
+				continue
+			}
+			if r.AttemptOnly {
 				continue
 			}
 			if !from.IsZero() && r.TS.Before(from) {
@@ -379,6 +385,9 @@ func (e *entryHeap) Pop() any {
 }
 
 func matches(r Record, f Filter) bool {
+	if r.AttemptOnly {
+		return false
+	}
 	if f.UserID != 0 && r.UserID != f.UserID {
 		return false
 	}

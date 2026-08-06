@@ -36,6 +36,37 @@ func TestAcquireAPIKeyFallbackGate(t *testing.T) {
 	}
 }
 
+func TestAcquireAPIKeyOnlySkipsHealthyStickyOAuth(t *testing.T) {
+	dir := t.TempDir()
+	oauth := &Auth{
+		ID: "oauth", Kind: KindOAuth, Provider: ProviderAnthropic,
+		Group: "g", AccessToken: "oauth-token", MaxConcurrent: 5,
+	}
+	key := mustAPIKey(t, dir, "key", ProviderAnthropic)
+	key.Group = "g"
+	p := NewPool([]*Auth{oauth}, []*Auth{key}, time.Minute, false, "")
+
+	first := p.Acquire(context.Background(), ProviderAnthropic, "tok", "g", "claude-haiku-4-5", "session")
+	if first == nil || first.Kind != KindOAuth {
+		t.Fatalf("initial selection = %+v, want OAuth", first)
+	}
+	fallback := p.AcquireWithOptions(context.Background(), ProviderAnthropic, "tok", "g", "claude-haiku-4-5", "session", AcquireOptions{
+		AllowAPIKeyFallback: true,
+		APIKeyOnly:          true,
+	})
+	if fallback == nil || fallback.Kind != KindAPIKey || fallback.ID != key.ID {
+		t.Fatalf("API-key-only selection = %+v", fallback)
+	}
+
+	blocked := p.AcquireWithOptions(context.Background(), ProviderAnthropic, "other", "g", "claude-haiku-4-5", "other-session", AcquireOptions{
+		AllowAPIKeyFallback: false,
+		APIKeyOnly:          true,
+	})
+	if blocked != nil {
+		t.Fatalf("API-key-only bypassed fallback opt-in: %+v", blocked)
+	}
+}
+
 // TestPriceMultiplierPersists round-trips the per-key billing override through
 // saveAuth/parseFile, and asserts the default 0 is NOT written to disk (so old
 // files and unranked keys stay clean — same discipline as Order).

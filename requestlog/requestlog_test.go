@@ -62,6 +62,84 @@ func TestWriterRoundTripAndQuery(t *testing.T) {
 	}
 }
 
+func TestClaudeAuditRoundTripContainsOnlyAccountDigest(t *testing.T) {
+	dir := t.TempDir()
+	w, err := Open(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Log(Record{
+		TS: time.Now().UTC(), Model: "claude-opus-5", Status: 200,
+		ClaudeAudit: &ClaudeAudit{
+			AccountHash:           "account-digest",
+			RequestClass:          "genuine",
+			IdentityMode:          "rewrite",
+			AccountIdentityMapped: true,
+			BodyBytes:             123,
+			BodySHA256:            "body-digest",
+			SessionBinding:        "match",
+			BillingValidation:     "verified",
+			BetaHash:              "beta-digest",
+			ProfileHash:           "profile-digest",
+			ProxyConfigHash:       "proxy-digest",
+			ExtraMetadataCount:    1,
+			ExtraHeaderCount:      1,
+			ExtraMetadataKeys:     []string{"trace"},
+			ExtraHeaderNames:      []string{"x-custom"},
+		},
+	})
+	w.Close()
+
+	files, err := filepath.Glob(filepath.Join(dir, "requests-*.jsonl"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("log files: %v %v", files, err)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "account-uuid") || strings.Contains(string(data), "user@example.com") {
+		t.Fatalf("raw account identity leaked: %s", data)
+	}
+	var got Record
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ClaudeAudit == nil || got.ClaudeAudit.AccountHash != "account-digest" ||
+		got.ClaudeAudit.IdentityMode != "rewrite" || !got.ClaudeAudit.AccountIdentityMapped ||
+		got.ClaudeAudit.BodyBytes != 123 || got.ClaudeAudit.SessionBinding != "match" ||
+		len(got.ClaudeAudit.ExtraHeaderNames) != 1 {
+		t.Fatalf("audit did not round-trip: %+v", got.ClaudeAudit)
+	}
+}
+
+func TestAttemptOnlyRowsArePersistedButExcludedFromQueries(t *testing.T) {
+	dir := t.TempDir()
+	w, err := Open(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Log(Record{TS: time.Now().UTC(), AuthID: "auth-a", Model: "m", Status: 429, Error: "withheld", AttemptOnly: true})
+	w.Log(Record{TS: time.Now().UTC(), AuthID: "auth-b", Model: "m", Status: 200})
+	w.Close()
+
+	files, _ := filepath.Glob(filepath.Join(dir, "requests-*.jsonl"))
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"attempt_only":true`) {
+		t.Fatalf("attempt audit row was not persisted: %s", data)
+	}
+	result, err := Query(Filter{Dir: dir, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Count != 1 || len(result.Entries) != 1 || result.Entries[0].AuthID != "auth-b" {
+		t.Fatalf("attempt row polluted query aggregates: %+v", result)
+	}
+}
+
 func TestQueryFilterByUserIDAndAuthID(t *testing.T) {
 	dir := t.TempDir()
 	w, _ := Open(dir, 0)
