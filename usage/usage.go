@@ -70,15 +70,45 @@ type Counts struct {
 	CacheReadTokens   int64 `json:"cache_read_tokens"`
 	Requests          int64 `json:"requests"`
 	Errors            int64 `json:"errors"`
+
+	// CacheCreate1hTokens is the SUBSET of CacheCreateTokens written with a
+	// 1-hour TTL, taken from Anthropic's
+	// `usage.cache_creation.ephemeral_1h_input_tokens` breakdown. It is NOT
+	// an independent axis: CacheCreateTokens remains the full cache-write
+	// total, so every existing consumer (WeightedTotal, request logs, admin
+	// aggregation, the forks' cost math) keeps working untouched when this
+	// field is zero.
+	//
+	// Why it exists: Anthropic prices a 1h cache write at 2× base input while
+	// a 5m write is 1.25×, and mimicry injects `ttl: "1h"` on every
+	// breakpoint (mimicry/body.go, ClaudeDefaultCacheTTL). Without the
+	// breakdown there is no way to tell the two apart after the fact.
+	//
+	// Populating it changes NO cost by itself — ModelPrice.CacheCreate1hPer1M
+	// must also be non-zero for the split rate to apply. Left at zero, this
+	// is pure observability.
+	CacheCreate1hTokens int64 `json:"cache_create_1h_tokens,omitempty"`
 }
 
 func (c *Counts) Add(o Counts) {
 	c.InputTokens += o.InputTokens
 	c.OutputTokens += o.OutputTokens
 	c.CacheCreateTokens += o.CacheCreateTokens
+	c.CacheCreate1hTokens += o.CacheCreate1hTokens
 	c.CacheReadTokens += o.CacheReadTokens
 	c.Requests += o.Requests
 	c.Errors += o.Errors
+}
+
+// CacheCreate5hTokens returns the 5-minute-TTL portion of the cache writes —
+// the full total minus the observed 1h subset, floored at zero so a malformed
+// upstream breakdown (1h > total) can never produce a negative charge.
+func (c Counts) CacheCreate5mTokens() int64 {
+	n := c.CacheCreateTokens - c.CacheCreate1hTokens
+	if n < 0 {
+		return 0
+	}
+	return n
 }
 
 // WeightedTotal returns a cost-weighted token count used by the OAuth load
@@ -88,6 +118,10 @@ func (c *Counts) Add(o Counts) {
 // resource) dominate. Ratios: input=1, cache_create=1.25, cache_read=0.1,
 // output=5. Multiplied by 100 and returned as int64 so the caller can keep
 // integer comparisons (ties on identical load still break on auth ID).
+//
+// CacheCreate1hTokens is deliberately absent: it is a SUBSET of
+// CacheCreateTokens, so adding it would double-count the same tokens and skew
+// the load balancer toward avoiding cache-heavy credentials.
 func (c Counts) WeightedTotal() int64 {
 	return c.InputTokens*100 + c.CacheCreateTokens*125 + c.CacheReadTokens*10 + c.OutputTokens*500
 }

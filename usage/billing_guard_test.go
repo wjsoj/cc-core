@@ -64,15 +64,86 @@ func TestEnsureOpenAIStreamUsageSkipsResponsesAPI(t *testing.T) {
 	}
 }
 
-func TestMissingUsageFallbackCounts(t *testing.T) {
-	got := MissingUsageFallbackCounts([]byte(`{"input":"hi"}`))
-	if got.Requests != 1 {
-		t.Fatalf("Requests=%d want 1", got.Requests)
+// TestStreamOutcomeBillingPolicy is the regression barrier for the production
+// incident this replaced: 233 charged rows totalling $170.28 built from
+// fabricated token counts, the largest claiming 2,258,861 input tokens.
+//
+// The three cases below are the entire policy. If any of them starts allowing a
+// charge that wasn't observed, an estimator has crept back in.
+func TestStreamOutcomeBillingPolicy(t *testing.T) {
+	observed := Counts{InputTokens: 120, OutputTokens: 40, Requests: 1}
+	none := Counts{}
+
+	t.Run("complete stream bills observed usage", func(t *testing.T) {
+		o := ClassifyStreamOutcome(observed, false)
+		if o != StreamComplete {
+			t.Fatalf("outcome=%v want StreamComplete", o)
+		}
+		if !o.Billable(observed) {
+			t.Error("a completed stream with usage must be billable")
+		}
+		if o.CredentialFault() {
+			t.Error("a completed stream must not fault the credential")
+		}
+		if o.LogError() != "" {
+			t.Errorf("LogError=%q want empty", o.LogError())
+		}
+	})
+
+	t.Run("client cancel bills partial usage and spares the credential", func(t *testing.T) {
+		o := ClassifyStreamOutcome(observed, true)
+		if o != StreamClientCanceled {
+			t.Fatalf("outcome=%v want StreamClientCanceled", o)
+		}
+		if !o.Billable(observed) {
+			t.Error("usage observed before the hang-up is still owed")
+		}
+		if o.CredentialFault() {
+			t.Error("a client hang-up must never cool the credential — this is what " +
+				"turned every Ctrl-C into a spurious breaker trip")
+		}
+		if o.LogError() != ClientCanceledError {
+			t.Errorf("LogError=%q want %q", o.LogError(), ClientCanceledError)
+		}
+		// Cancel before any usage arrived → nothing observed, nothing billed.
+		if ClassifyStreamOutcome(none, true).Billable(none) {
+			t.Error("a cancel with zero observed usage must bill nothing")
+		}
+	})
+
+	t.Run("upstream without usage bills nothing and faults the credential", func(t *testing.T) {
+		o := ClassifyStreamOutcome(none, false)
+		if o != StreamUpstreamNoUsage {
+			t.Fatalf("outcome=%v want StreamUpstreamNoUsage", o)
+		}
+		if o.Billable(none) {
+			t.Fatal("BILLING REGRESSION: a response with no reported usage must cost $0. " +
+				"The removed estimator charged $170.28 across 233 such rows.")
+		}
+		if !o.CredentialFault() {
+			t.Error("a relay that cannot account for what it served must be cooled")
+		}
+		if o.LogError() != MissingUsageError {
+			t.Errorf("LogError=%q want %q", o.LogError(), MissingUsageError)
+		}
+	})
+}
+
+// TestNoUsageEstimatorRemains guards the invariant by construction: nothing in
+// this package may turn a request body into billable tokens. The audit that
+// motivated the removal found the estimator overstating input by ~10× (billing
+// a 92%-cached prompt at the uncached rate) while understating output by up to
+// 86%. A "conservative floor" that is wrong in both directions is not
+// conservative.
+func TestNoUsageEstimatorRemains(t *testing.T) {
+	c := Counts{}
+	if !MissingUsage(c) {
+		t.Fatal("zero Counts must read as missing usage")
 	}
-	if got.InputTokens < MissingUsageFallbackMinInputTokens {
-		t.Fatalf("InputTokens=%d below floor", got.InputTokens)
-	}
-	if got.OutputTokens != MissingUsageFallbackMinOutputTokens {
-		t.Fatalf("OutputTokens=%d want %d", got.OutputTokens, MissingUsageFallbackMinOutputTokens)
+	// The classifier's inputs are the observed counts and whether the client
+	// left — the request body is not among them, and must never become one.
+	// A 2 MiB Codex body is exactly what produced the $11.32 row.
+	if o := ClassifyStreamOutcome(c, false); o.Billable(c) || o != StreamUpstreamNoUsage {
+		t.Fatal("an unobserved response must be unbillable regardless of request size")
 	}
 }
