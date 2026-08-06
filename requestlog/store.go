@@ -362,6 +362,35 @@ CREATE TABLE meta (
     value TEXT NOT NULL
 );
 `,
+	// 2: indexes that actually cover the queries.
+	//
+	// The v1 indexes were keyed on the filter column plus ts alone, which
+	// left two holes measured against a real 1M-row archive:
+	//
+	//   - the entry page orders by (ts DESC, id DESC) for stable paging, and
+	//     an index on ts alone cannot satisfy a two-column sort. SQLite fell
+	//     back to SCAN req + TEMP B-TREE, sorting every row to return 50 of
+	//     them — 3.7s for what should be an index seek.
+	//   - Model and Client are compared with COLLATE NOCASE (mirroring the
+	//     scanning path's strings.EqualFold). A BINARY-collated index is
+	//     unusable for a NOCASE comparison, so those filters scanned too.
+	//
+	// Every predicate also carries attempt_only = 0, so the indexes are
+	// partial on it: smaller, and SQLite can still prove they apply.
+	`
+DROP INDEX IF EXISTS idx_req_ts;
+DROP INDEX IF EXISTS idx_req_auth;
+DROP INDEX IF EXISTS idx_req_ct;
+DROP INDEX IF EXISTS idx_req_model;
+DROP INDEX IF EXISTS idx_req_user;
+
+CREATE INDEX idx_req_ts     ON req(ts DESC, id DESC)                        WHERE attempt_only = 0;
+CREATE INDEX idx_req_auth   ON req(auth_id, ts DESC, id DESC)               WHERE attempt_only = 0;
+CREATE INDEX idx_req_ct     ON req(client_token, ts DESC, id DESC)          WHERE attempt_only = 0;
+CREATE INDEX idx_req_model  ON req(model COLLATE NOCASE, ts DESC, id DESC)  WHERE attempt_only = 0;
+CREATE INDEX idx_req_client ON req(client COLLATE NOCASE, ts DESC, id DESC) WHERE attempt_only = 0;
+CREATE INDEX idx_req_user   ON req(user_id, ts DESC, id DESC)               WHERE attempt_only = 0;
+`,
 }
 
 func (s *Store) migrate() error {
