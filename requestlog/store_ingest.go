@@ -261,13 +261,15 @@ func (s *Store) ingestFile(path, day string, from int64, paced bool) (int64, int
 		if err := json.Unmarshal(line, &r); err != nil {
 			continue
 		}
-		ok, err := insertRecord(stmt, day, r, name, lineStart)
-		if err != nil {
+		if err := insertRecord(stmt, day, r, name, lineStart); err != nil {
 			return added, offset, err
 		}
-		if ok {
-			added++
-		}
+		// Counts lines folded in, not rows inserted. Under dual write most of
+		// these are already present (the writer got there first) and insert as
+		// no-ops, but the line is accounted for either way — which is what
+		// keeps sum(ingest.rows) comparable to the file's line count, the
+		// cheapest health check there is on this index.
+		added++
 		batch++
 
 		if batch >= backfillBatch {
@@ -321,11 +323,9 @@ func commitInsert(tx *sql.Tx, stmt *sql.Stmt) error {
 	return tx.Commit()
 }
 
-// insertRecord returns whether the row landed. It can legitimately not land:
-// idx_req_src turns a duplicate offer of the same JSONL line into a no-op, and
-// the caller counts only real insertions so the ingest bookkeeping stays a true
-// row count.
-func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff int64) (bool, error) {
+// insertRecord adds one row, or does nothing if idx_req_src shows the same
+// JSONL line was already offered by the other producer.
+func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff int64) error {
 	var audit any
 	if r.ClaudeAudit != nil {
 		b, err := json.Marshal(r.ClaudeAudit)
@@ -333,7 +333,7 @@ func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff i
 			audit = string(b)
 		}
 	}
-	res, err := stmt.Exec(
+	_, err := stmt.Exec(
 		r.TS.UnixNano(),
 		day,
 		r.TS.In(bucketLoc).Format("2006-01-02"),
@@ -346,11 +346,7 @@ func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff i
 		r.Path, r.Attempts, r.Error, boolToInt(r.AttemptOnly),
 		r.UserID, audit, srcFile, srcOff,
 	)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n > 0, err
+	return err
 }
 
 func boolToInt(b bool) int {

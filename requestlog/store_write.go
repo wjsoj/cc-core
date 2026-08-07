@@ -49,7 +49,7 @@ func (s *Store) appendRows(rows []pendingRow) error {
 	days := make(map[string]struct{}, 2)
 	for _, p := range rows {
 		day := p.rec.TS.UTC().Format("2006-01-02")
-		if _, err := insertRecord(stmt, day, p.rec, p.file, p.off); err != nil {
+		if err := insertRecord(stmt, day, p.rec, p.file, p.off); err != nil {
 			_ = stmt.Close()
 			_ = tx.Rollback()
 			return err

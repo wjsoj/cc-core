@@ -59,6 +59,14 @@ func TestWriterDualWriteMatchesScan(t *testing.T) {
 		t.Fatalf("req rows = %d, want %d (double-counted?)", got, want)
 	}
 
+	// ingest.rows counts lines folded in, not inserts won. Under dual write
+	// the writer usually gets there first, so counting inserts would report
+	// ~0 for a file full of records and break the one cheap consistency check
+	// this index has against the archive.
+	if got, want := countRows(t, st, `SELECT COALESCE(SUM(rows),0) FROM ingest`), int64(len(recs)); got != want {
+		t.Errorf("ingest.rows total = %d, want %d (line count, not insert count)", got, want)
+	}
+
 	for _, tc := range filterCases(dir, base) {
 		t.Run(tc.name, func(t *testing.T) {
 			want, err := scanQuery(tc.f)
