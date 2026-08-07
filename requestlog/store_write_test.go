@@ -230,11 +230,18 @@ func TestExportRoundTrip(t *testing.T) {
 	base := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	recs := sampleRecords(base)
 	writeLog(t, dir, recs)
-	st := openReadyStore(t, dir)
-	_ = st
+	openReadyStore(t, dir)
+
+	// Through the read-only handle a CLI would use, not the server's own —
+	// that path must work against a database another process has open.
+	ro, err := OpenStoreForRead(dir)
+	if err != nil {
+		t.Fatalf("OpenStoreForRead: %v", err)
+	}
+	defer ro.Close()
 
 	var buf bytes.Buffer
-	n, err := Export(dir, "", "", &buf)
+	n, err := ro.Export("", "", &buf)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}

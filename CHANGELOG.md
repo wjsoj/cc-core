@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.8.63 — request log: aggregate cube, dual write, optional JSONL
+## v0.8.63–v0.8.65 — request log: aggregate cube, dual write, optional JSONL
 
 Finishes what the SQLite index started. The index made *unfiltered* aggregates
 cheap; filtered ones still walked `req` row by row, so the panel's `?model=…`
@@ -43,8 +43,11 @@ strictly derived — every record reached it by being re-read from a file.
   files, `pruneBefore` (`DELETE` + `incremental_vacuum`) enforces retention, and
   `RewriteClientMask` becomes one `UPDATE` instead of rewriting every archived
   file. The writer refuses to start in this mode without an open index.
-- `Export(dir, fromDay, toDay, w)` writes the stored rows back out as JSONL, so
-  turning the archive off stays reversible.
+- `OpenStoreForRead(dir)` + `(*Store).Export(fromDay, toDay, w)` write the
+  stored rows back out as JSONL, so turning the archive off stays reversible.
+  The read-only open matters: an export normally runs on a box where the server
+  already has the database open, and the read-write `OpenStore` would start a
+  second ingest loop competing with it.
 
 ### Changed — `store_query.go`
 

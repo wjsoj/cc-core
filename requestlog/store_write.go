@@ -14,6 +14,7 @@ package requestlog
 // on by default.
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -208,23 +209,66 @@ func (s *Store) reconcileIngestStats() error {
 	return nil
 }
 
-// Export writes the indexed records for a directory back out as JSONL, oldest
-// first, and returns how many it wrote. fromDay/toDay are inclusive
-// 'YYYY-MM-DD' UTC labels; empty means unbounded.
+// OpenStoreForRead opens an existing index without starting ingest, for tools
+// that run alongside a live server.
+//
+// The read-write OpenStore would be actively wrong here: it starts a scanner
+// that writes to the same database the server is already writing to, so a CLI
+// export on a production box would put two ingesters on one archive. The
+// inserts are idempotent so it would not corrupt anything, but the per-file row
+// bookkeeping would double-count and both processes would burn CPU re-reading
+// the same tail.
+//
+// It refuses a schema this binary does not know rather than migrating: a
+// read-only handle cannot migrate, and reading a newer schema through older
+// query code is how you get a silently partial answer.
+func OpenStoreForRead(dir string) (*Store, error) {
+	path := filepath.Join(dir, IndexFileName)
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("requestlog: no index at %s: %w", path, err)
+	}
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(10000)")
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if version != len(storeMigrations) {
+		_ = db.Close()
+		return nil, fmt.Errorf("requestlog: index schema is v%d, this build expects v%d",
+			version, len(storeMigrations))
+	}
+	// Pre-closed channels: there is no loop to stop, and Close must not block
+	// waiting for one to finish.
+	stop, done := make(chan struct{}), make(chan struct{})
+	close(stop)
+	close(done)
+	st := &Store{db: db, dir: dir, path: path, stopCh: stop, doneCh: done}
+	st.ready.Store(true)
+	return st, nil
+}
+
+// Export writes the indexed records back out as JSONL, oldest first, and
+// returns how many it wrote. fromDay/toDay are inclusive 'YYYY-MM-DD' UTC
+// labels; empty means unbounded.
 //
 // This is the escape hatch that makes turning the archive off reversible: the
-// operator can always materialize the same file format again. It requires an
-// open index for dir — with the archive on there is nothing to export that the
-// files do not already hold.
-func Export(dir, fromDay, toDay string, out io.Writer) (int, error) {
-	st := lookupStore(dir)
-	if st == nil {
-		return 0, fmt.Errorf("requestlog: no index open for %s", dir)
+// operator can always materialize the same file format again.
+func (s *Store) Export(fromDay, toDay string, out io.Writer) (int, error) {
+	if s == nil {
+		return 0, fmt.Errorf("requestlog: nil store")
 	}
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
 	n := 0
-	err := st.exportRange(fromDay, toDay, func(r Record) error {
+	err := s.exportRange(fromDay, toDay, func(r Record) error {
 		if err := enc.Encode(&r); err != nil {
 			return err
 		}
