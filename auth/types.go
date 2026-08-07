@@ -201,6 +201,15 @@ type Auth struct {
 	// fetched. CodexUsageAt mirrors CodexUsage.Updated.
 	CodexUsage   *CodexUsageInfo
 	CodexUsageAt time.Time
+
+	// CodexSubscription is the latest billing view from the chatgpt.com
+	// portal's subscriptions + accounts/check endpoints
+	// (FetchCodexSubscription). Where CodexUsage answers "how much quota is
+	// left", this answers "what plan was bought, when the term started, and
+	// whether it renews". Nil = never fetched; CodexSubscriptionAt mirrors
+	// CodexSubscription.Updated.
+	CodexSubscription   *CodexSubscriptionInfo
+	CodexSubscriptionAt time.Time
 }
 
 // healthGrace is how long after an isolated failure we still treat the
@@ -338,29 +347,31 @@ func (a *Auth) Snapshot() AuthInfo {
 		}
 	}
 	return AuthInfo{
-		ID:                a.ID,
-		Kind:              a.Kind,
-		Provider:          a.Provider,
-		Label:             a.Label,
-		Email:             a.Email,
-		ExpiresAt:         a.ExpiresAt,
-		ProxyURL:          a.ProxyURL,
-		MaxConcurrent:     a.MaxConcurrent,
-		Disabled:          a.Disabled,
-		QuotaExceededAt:   a.QuotaExceededAt,
-		QuotaResetAt:      a.QuotaResetAt,
-		FilePath:          a.FilePath,
-		BaseURL:           a.BaseURL,
-		Group:             a.Group,
-		Order:             a.Order,
-		PriceMultiplier:   a.PriceMultiplier,
-		QuarantineUntil:   a.QuarantineUntil,
-		QuarantineStrikes: a.QuarantineStrikes,
-		ModelMap:          mm,
-		CodexRateLimits:   rl,
-		CodexRateLimitsAt: a.CodexRateLimitsAt,
-		CodexUsage:        a.CodexUsage,
-		CodexUsageAt:      a.CodexUsageAt,
+		ID:                  a.ID,
+		Kind:                a.Kind,
+		Provider:            a.Provider,
+		Label:               a.Label,
+		Email:               a.Email,
+		ExpiresAt:           a.ExpiresAt,
+		ProxyURL:            a.ProxyURL,
+		MaxConcurrent:       a.MaxConcurrent,
+		Disabled:            a.Disabled,
+		QuotaExceededAt:     a.QuotaExceededAt,
+		QuotaResetAt:        a.QuotaResetAt,
+		FilePath:            a.FilePath,
+		BaseURL:             a.BaseURL,
+		Group:               a.Group,
+		Order:               a.Order,
+		PriceMultiplier:     a.PriceMultiplier,
+		QuarantineUntil:     a.QuarantineUntil,
+		QuarantineStrikes:   a.QuarantineStrikes,
+		ModelMap:            mm,
+		CodexRateLimits:     rl,
+		CodexRateLimitsAt:   a.CodexRateLimitsAt,
+		CodexUsage:          a.CodexUsage,
+		CodexUsageAt:        a.CodexUsageAt,
+		CodexSubscription:   a.CodexSubscription,
+		CodexSubscriptionAt: a.CodexSubscriptionAt,
 	}
 }
 
@@ -392,6 +403,11 @@ type AuthInfo struct {
 	CodexRateLimitsAt time.Time
 	CodexUsage        *CodexUsageInfo
 	CodexUsageAt      time.Time
+	// CodexSubscription is shared by pointer, like CodexUsage: the snapshot
+	// replaces the pointer wholesale on each fetch and never mutates the
+	// struct in place, so readers of an old snapshot keep a consistent view.
+	CodexSubscription   *CodexSubscriptionInfo
+	CodexSubscriptionAt time.Time
 }
 
 // IsQuotaExceeded reports true if Anthropic has signalled this auth is out of

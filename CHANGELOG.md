@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.8.66 — ChatGPT subscription/billing probe
+
+Adds the commercial-state counterpart to the wham/usage quota probe: which plan
+a ChatGPT OAuth credential is on, when its current term was paid for, whether it
+renews, whether it is actually free, and whether it is about to lapse for
+billing reasons. Delinquency in particular is invisible to every existing
+signal — a delinquent account serves traffic normally until its grace period
+ends, then stops — so this is the only warning a fork can act on ahead of time.
+
+### New — `auth/codex_subscription.go`
+
+- `(*Auth).FetchCodexSubscription(ctx, useUTLS) (*CodexSubscriptionInfo, error)`
+  — merges two portal endpoints in one call:
+  `GET /backend-api/subscriptions?account_id=` (term start/end, billing period,
+  `will_renew`, seats, delinquency) and
+  `GET /backend-api/accounts/check/v4-2023-04-27` (discounts, trial, account
+  created_time, purchase platform). Neither is a superset of the other.
+  **Partial success is a success** — they fail independently and either alone is
+  worth rendering; the error is non-nil only when both fail.
+- Stored on the credential as `CodexSubscription` / `CodexSubscriptionAt` and
+  exposed through `Snapshot()` / `AuthInfo`, same pointer-swap discipline as
+  `CodexUsage`.
+- Derived helpers so both forks answer identically: `PurchasedAt()`,
+  `ExpiresAt()`, `Plan()`, `IsFree()`, `AtRisk()`. `IsFree` reads both the
+  gratis flag **and** a 100%-off promo — a comped-by-discount account reports
+  `is_active_subscription_gratis: false` while paying $0, so the flag alone
+  misreports it.
+- Like `FetchCodexUsage`, a probe failure **never** touches credential health
+  (no `MarkFailure`, no cooldown) and delinquency does not auto-disable.
+- Requests are presented as a browser XHR (`browserUA` + `Sec-Ch-Ua*` /
+  `Sec-Fetch-*` / `Referer`, no `Origin` — browsers omit it on a same-origin
+  GET). Leaving User-Agent unset is not neutral: Go substitutes
+  `Go-http-client/1.1`, which on an OAuth subscription account is the loudest
+  third-party-client signal there is, and combining it with browser markers is
+  more anomalous than either alone. `TestCodexBillingRequestIdentity` pins it.
+- `AtRisk()` reads `will_renew` from either reporter — requiring the portal
+  made `last_active_subscription` dead code for exactly the credentials that
+  have no account id and therefore no portal payload. A cancelled renewal is
+  reported only with a **known** term end and an entitlement that is not
+  already inactive; without that, every never-paid free account warned that it
+  was about to lapse, dated `0001-01-01`.
+
+Field shapes are pinned to live captures in `auth/codex_subscription_test.go`.
+Full documentation, traps, and the fork wiring snippet: `docs/codex-subscription.md`.
+
+Consumed by adding a `POST /auths/:id/codex-subscription` admin route in each
+fork, mirroring the existing `codex-usage` handler.
+
 ## v0.8.63–v0.8.65 — request log: aggregate cube, dual write, optional JSONL
 
 Finishes what the SQLite index started. The index made *unfiltered* aggregates
