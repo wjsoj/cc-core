@@ -1026,6 +1026,23 @@ func (a *Auth) SetModelMap(m map[string]string) {
 // client's model name unchanged".
 //
 // Wildcard credentials (nil/empty ModelMap) always return (clientModel, true).
+//
+// Lookup order, mirroring pricing.Lookup so a name that finds a price card also
+// finds its rewrite:
+//
+//  1. the client model verbatim;
+//  2. the same name with a trailing "[1m]" context-mode label removed, with the
+//     label re-attached to whatever the map returns;
+//  3. progressively shorter "-"-trimmed prefixes of that base name, so a dated
+//     variant (claude-opus-4-8-20260315) resolves through its undated entry
+//     (claude-opus-4-8) without the map having to enumerate release dates.
+//
+// Step 3 is what lets DefaultClaudeOAuthModelMap fold a whole family with one
+// entry per generation. It also fixes the long-standing relay case the ModelMap
+// doc comment describes: a vendor that registered "claude-haiku-4-5" but is sent
+// the dated "claude-haiku-4-5-20251001" now matches instead of passing through.
+// The fallback only ever runs on an exact-match MISS, so no existing exact entry
+// changes meaning.
 func (a *Auth) ResolveUpstreamModel(clientModel string) (upstream string, ok bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -1033,10 +1050,40 @@ func (a *Auth) ResolveUpstreamModel(clientModel string) (upstream string, ok boo
 	// non-empty value is rewritten; anything else (unlisted, or mapped to "")
 	// passes through unchanged. ok is always true — the second return is kept
 	// for call-site symmetry.
+	if len(a.ModelMap) == 0 {
+		return clientModel, true
+	}
 	if mapped, exists := a.ModelMap[clientModel]; exists && mapped != "" {
 		return mapped, true
 	}
+	base, suffix := splitContextModeSuffix(clientModel)
+	if suffix != "" {
+		if mapped, exists := a.ModelMap[base]; exists && mapped != "" {
+			return mapped + suffix, true
+		}
+	}
+	for i := strings.LastIndex(base, "-"); i > 0; i = strings.LastIndex(base[:i], "-") {
+		if mapped, exists := a.ModelMap[base[:i]]; exists && mapped != "" {
+			return mapped + suffix, true
+		}
+	}
 	return clientModel, true
+}
+
+// splitContextModeSuffix splits a trailing "[value]" context-mode label off a
+// model name: "claude-opus-5[1m]" → ("claude-opus-5", "[1m]"). Names without
+// one return (model, ""). Kept local to auth so the package doesn't take a
+// dependency on pricing for one string split; pricing.StripContextModeSuffix is
+// the same rule stated for the billing side.
+func splitContextModeSuffix(model string) (base, suffix string) {
+	if !strings.HasSuffix(model, "]") {
+		return model, ""
+	}
+	i := strings.LastIndex(model, "[")
+	if i <= 0 {
+		return model, ""
+	}
+	return model[:i], model[i:]
 }
 
 // AcceptsModel reports whether this credential may serve a request for the

@@ -34,14 +34,39 @@ func TestOAuthModelMapDefault(t *testing.T) {
 	if a.Kind != KindOAuth || NormalizeProvider(a.Provider) != ProviderAnthropic {
 		t.Fatalf("expected claude OAuth, got kind=%v provider=%s", a.Kind, a.Provider)
 	}
-	if got, _ := a.ResolveUpstreamModel("claude-opus-4-7"); got != "claude-opus-4-8" {
-		t.Errorf("opus-4-7 should default-map to opus-4-8, got %q", got)
-	}
-	if got, _ := a.ResolveUpstreamModel("claude-opus-4-6"); got != "claude-opus-4-8" {
-		t.Errorf("opus-4-6 should default-map to opus-4-8, got %q", got)
-	}
-	if got, _ := a.ResolveUpstreamModel("claude-sonnet-4-6"); got != "claude-sonnet-4-6" {
-		t.Errorf("unlisted model must pass through, got %q", got)
+	// Every retired Opus / Sonnet generation folds onto the current one,
+	// including dated variants (via prefix fallback) and [1m]-labelled names
+	// (label re-attached to the rewrite).
+	for _, tc := range []struct{ in, want string }{
+		{"claude-opus-4-8", "claude-opus-5"},
+		{"claude-opus-4-7", "claude-opus-5"},
+		{"claude-opus-4-6", "claude-opus-5"},
+		{"claude-opus-4-1", "claude-opus-5"},
+		{"claude-opus-4", "claude-opus-5"},
+		{"claude-3-opus-20240229", "claude-opus-5"},
+		{"claude-opus-4-8-20260315", "claude-opus-5"},
+		{"claude-opus-4-8[1m]", "claude-opus-5[1m]"},
+		{"claude-sonnet-4-6", "claude-sonnet-5"},
+		{"claude-sonnet-4-5", "claude-sonnet-5"},
+		{"claude-sonnet-4-5-20250929", "claude-sonnet-5"},
+		{"claude-3-5-sonnet-20241022", "claude-sonnet-5"},
+		{"claude-sonnet-4-6[1m]", "claude-sonnet-5[1m]"},
+		// Already current → unchanged (no self-mapping, no double-suffix).
+		{"claude-opus-5", "claude-opus-5"},
+		{"claude-sonnet-5", "claude-sonnet-5"},
+		{"claude-opus-5[1m]", "claude-opus-5[1m]"},
+		// Out of scope by design: fable is API-key-only premium, haiku is a
+		// separate price tier that mimicry treats differently.
+		{"claude-fable-5", "claude-fable-5"},
+		{"claude-fable-5[1m]", "claude-fable-5[1m]"},
+		{"claude-haiku-4-5", "claude-haiku-4-5"},
+		{"claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001"},
+		// Unrelated providers/names never match a Claude prefix.
+		{"gpt-5.3-codex", "gpt-5.3-codex"},
+	} {
+		if got, ok := a.ResolveUpstreamModel(tc.in); !ok || got != tc.want {
+			t.Errorf("ResolveUpstreamModel(%q) = (%q,%v), want (%q,true)", tc.in, got, ok, tc.want)
+		}
 	}
 
 	// 2. Clear the map + persist → reload keeps it cleared (no re-inject).
