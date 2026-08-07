@@ -102,19 +102,23 @@ go test ./sidecar/ -timeout 60s             # sidecar 用真实时序，跑约 2
 
 ## 9. 已知的注释 / 文档漂移
 
-建立这份 Wiki 时的调研发现。**已在本次同步中修掉的注释漂移**（仅改注释，无行为变化）：`requestlog/store_ingest.go` 与 `store_query.go` 的 `agg_day` 残留、`sidecar/sidecar.go` 的去重键描述、`codexws/dial.go` 的 codex-tui 版本号、`backup/backup.go` 的 `.tar.gz.age` 后缀、`mimicry/body.go` 三处指向已不存在的 `crack/claude` 路径。
+建立这份 Wiki 时的调研发现**已全部处理完毕**，留在这里作为记录。
 
-**仍待处理**（改到附近代码时顺手看一眼）：
+**注释漂移**（仅改注释）：`requestlog` 的 `agg_day` 残留、`sidecar` 的去重键描述、`codexws` 写死的 codex-tui 版本号、`backup` 的 `.tar.gz.age` 后缀、`mimicry/body.go` 三处指向已不存在的 `crack/claude` 路径。
 
-| 位置 | 问题 |
+**死代码**：`requestlog` 的 `scanAggregateRow` 已删除。
+
+**行为修复**（各配回归测试）：
+
+| 位置 | 处理 |
 |---|---|
-| `pricing/pricing.go:374` | ⚠️ **`claude-sonnet-5` 引导价 2026-08-31 到期**，逾期不改每笔少收约 33% |
-| `requestlog/store_query.go:327` | `scanAggregateRow` 全包无调用点，是 `agg_day` 时代遗留 |
-| `mimicry/fingerprint.go:50` | `ClaudeStainlessOS = "Linux"` 与 cc2220 capture 的 `MacOS` 不同是**刻意**的，但常量处没有注释说明，只写在 SPEC 里 —— 下次升级容易被"照抄 capture"改错 |
-| `auth/codex_login.go:145` | Codex 登录落盘直接 `os.WriteFile`，既不持 `saveMu` 也不做账号比对，与 Anthropic 侧 `writeAnthropicLoginCredential` 不对称 |
-| `auth/oauth.go` | `organization_uuid` 登录时写入，但 `parseFile` 从不读取 |
-| `auth/pool.go:399-400` | `AcquireMulti` 的注释描述了 `tried` 集合的累积，但循环体内从不往里加元素 |
-| `auth/pool.go:504` | `oauthUsableLocked` 不调用 `IsHealthy()`；`IsHealthy` 在池内只被 `ResetUnhealthyAnthropicAPIKeys` 使用。是有意还是历史遗留待确认 |
+| `auth/pool.go` `AcquireMultiWithOptions` | **真 bug**：扇出时重建 `AcquireOptions` 漏传 `APIKeyOnly`，导致"身份改写失败后用原始 body 重放"的调用方拿回 OAuth 凭据 —— 正是该标志要防的情况。已修，见 `TestAcquireMultiWithOptionsPropagatesAPIKeyOnly` |
+| `auth/pool.go` `AcquireMulti` | `tried` 集合从不增长（`Acquire` 返回 nil 时无从得知它试过谁）。已简化为直接透传 `excludeIDs`，注释同步 |
+| `auth/codex_login.go` | 落盘改为 `writeCodexLoginCredential`：持 `saveMu`、拒绝覆盖属于**其他 ChatGPT 账号**的文件（`ErrCredentialFileAccountMismatch`，account_id 优先、email 兜底）、temp+rename 原子替换。见 `codex_login_write_test.go` |
+| `pricing/pricing.go` | 引导价到期改为**自动报警**：`pricing/intro_expiry_test.go` 从 2026-09-01 起会构建失败，直到卡片被改成 list price。今天价格仍在有效期内，故未动数字 |
+| `mimicry/fingerprint.go` | `ClaudeStainlessOS = "Linux"` 补上"刻意不跟 capture 走"的理由（要与 `HostProfile` 和 sidecar 平台字段自洽） |
+
+**经核实不成立的两条**：`organization_uuid` 其实是被读的（`auth/oauth.go:145`）；`oauthUsableLocked` 不调用 `IsHealthy()` 是**刻意**的 —— degraded 只是管理面口径，把它变成路由过滤器正是 2026-07-14 那次事故的成因（一次上游抖动同时把整池打成 degraded，`Acquire` 无人可返）。代码里已补长注释说明，路由行为**未改**。
 
 ---
 

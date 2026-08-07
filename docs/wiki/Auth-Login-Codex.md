@@ -255,7 +255,7 @@ Cookie: sessionKey=<sid02>
 | 字段 | 类型 | 含义 | 备注 |
 |---|---|---|---|
 | `account_uuid` | string | OAuth 返回的账号 UUID | 可选；`AccountKey()` 的首选锚点，全目录唯一性检查也用它 |
-| `organization_uuid` | string | 组织 UUID | 可选；登录时写入，`parseFile` **不读**（待确认是否有意）|
+| `organization_uuid` | string | 组织 UUID | 可选；登录时写入，`parseFile` 在 `auth/oauth.go:145` 读取并填入 `Auth.OrganizationUUID` |
 | `organization_type` | string | 如 `claude_max` / `claude_pro` / `claude_team` | 可选；由 `UpdateSubscriptionInfo` 从 bootstrap 响应回填 |
 | `organization_rate_limit_tier` | string | 如 `default_claude_max_20x` | 同上 |
 | `host_profile` | object | `{distro_id, kernel, terminal, shell}` | 可选；`EnsureHostProfile` 首次触碰时钉住 |
@@ -345,10 +345,12 @@ Anthropic 刷新（`refreshAnthropicLocked`，`auth/oauth.go:747`）复用同一
 | 交换请求头 | axios 全套 | 仅 `Content-Type` + `Accept: application/json` |
 | 交换响应 | `account` / `organization` 对象 | `id_token`（JWT）|
 | 登录期辅助探针 | 有（5 条）| 无 |
-| 落盘并发保护 | `saveMu` + 账号比对 | 直接 `os.WriteFile`（`auth/codex_login.go:145`，**无** `saveMu`、**无**账号比对）|
+| 落盘并发保护 | `writeAnthropicLoginCredential`：`saveMu` + 账号比对 + temp/rename | `writeCodexLoginCredential`：同一套（account_id 优先、email 兜底）|
 
-> 上表最后一行是一处真实的不对称：Codex 登录路径没有走 `saveAuth` 的串行化，
-> 也没有 `ErrCredentialFileAccountMismatch` 保护。是否有意为之**待确认**。
+> 这一行曾是一处真实的不对称 —— Codex 侧直接 `os.WriteFile`，既不串行化也不比对账号。
+> 现已对齐（`auth/codex_login.go`，回归测试 `auth/codex_login_write_test.go`）：`saveMu` 下
+> 解析候选 → 读现有文件 → 账号不同则返回 `ErrCredentialFileAccountMismatch` → temp+rename 原子替换。
+> 文件名由 email+plan+account 派生，正常不会撞车，但 `WriteFile` 先截断，中途失败会把一个可用凭据变成 0 字节文件。
 
 ### 凭据文件名约定
 

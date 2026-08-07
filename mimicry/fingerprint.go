@@ -47,8 +47,14 @@ const (
 	// together. UNCHANGED through 2.1.220 (still v26.3.0). (crack/cc2220/SPEC.md.)
 	ClaudeStainlessRuntimeV = "v26.3.0"
 	ClaudeStainlessPackageV = "0.94.0"
-	ClaudeStainlessOS       = "Linux"
-	ClaudeStainlessArch     = "x64"
+	// ClaudeStainlessOS deliberately does NOT track the capture. The cc2220
+	// dumps were taken on macOS, but the proxy runs on Linux and the OS it
+	// advertises has to agree with everything else it claims to be: the
+	// per-account synthetic host in auth.HostProfile and the platform fields
+	// the sidecar telemetry sends. A "MacOS" header over Linux host telemetry
+	// is a louder tell than either alone. Do not "fix" this to match crack/.
+	ClaudeStainlessOS   = "Linux"
+	ClaudeStainlessArch = "x64"
 	ClaudeStainlessTimeout  = "600"
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"

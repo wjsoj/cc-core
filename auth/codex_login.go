@@ -138,19 +138,75 @@ func finishCodexLogin(
 	if g := NormalizeGroup(group); g != "" {
 		raw["group"] = g
 	}
+	a, err := writeCodexLoginCredential(full, raw)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("codex oauth login: saved %s (email=%s plan=%s exp=%s)", a.ID, email, planType, expires.Format(time.RFC3339))
+	return a, nil
+}
+
+// writeCodexLoginCredential installs a freshly-minted Codex credential, mirroring
+// writeAnthropicLoginCredential: hold saveMu so a concurrent refresh or admin
+// Persist cannot interleave, refuse to overwrite a file that belongs to a
+// different ChatGPT account, and swap the file in atomically via temp+rename.
+//
+// The atomic swap matters more here than the filename suggests. The name is
+// derived from email+plan+account, so a re-login normally lands on its own file
+// — but a plain WriteFile truncates first, and a crash or a full disk between
+// truncate and write leaves a zero-length file where a working credential was.
+func writeCodexLoginCredential(path string, raw map[string]any) (*Auth, error) {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
 	out, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(full, out, 0600); err != nil {
+	candidate, err := parseFile(path, out)
+	if err != nil {
+		return nil, fmt.Errorf("parse replacement codex credential: %w", err)
+	}
+	if currentBytes, readErr := os.ReadFile(path); readErr == nil {
+		if current, parseErr := parseFile(path, currentBytes); parseErr == nil && !sameCodexOAuthAccount(current, candidate) {
+			return nil, fmt.Errorf("%w: refusing Codex login overwrite for %s", ErrCredentialFileAccountMismatch, filepath.Base(path))
+		}
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, out, 0600); err != nil {
 		return nil, err
 	}
-	a, err := parseFile(full, out)
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return nil, err
+	}
+	a, err := parseFile(path, out)
 	if err != nil {
 		return nil, fmt.Errorf("parse newly written codex file: %w", err)
 	}
-	log.Infof("codex oauth login: saved %s (email=%s plan=%s exp=%s)", a.ID, email, planType, expires.Format(time.RFC3339))
 	return a, nil
+}
+
+// sameCodexOAuthAccount reports whether a replacement credential belongs to the
+// same ChatGPT account as the one already on disk. The chatgpt_account_id claim
+// is authoritative; email is the fallback for older files written before the
+// claim was captured. An account id on exactly one side means we cannot prove
+// they match, so we assume they don't.
+func sameCodexOAuthAccount(old, replacement *Auth) bool {
+	if old == nil || replacement == nil || old.Kind != KindOAuth || replacement.Kind != KindOAuth ||
+		NormalizeProvider(old.Provider) != ProviderOpenAI || NormalizeProvider(replacement.Provider) != ProviderOpenAI {
+		return false
+	}
+	oldID, _ := old.CodexIdentity()
+	newID, _ := replacement.CodexIdentity()
+	oldID, newID = strings.TrimSpace(oldID), strings.TrimSpace(newID)
+	if oldID != "" || newID != "" {
+		return oldID != "" && newID != "" && oldID == newID
+	}
+	oldEmail := strings.TrimSpace(old.Snapshot().Email)
+	newEmail := strings.TrimSpace(replacement.Snapshot().Email)
+	return oldEmail != "" && newEmail != "" && strings.EqualFold(oldEmail, newEmail)
 }
 
 // buildCodexCredentialFilename matches the CLIProxyAPI convention:

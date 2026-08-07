@@ -300,7 +300,9 @@ flowchart TD
 
 「—」表示未设置（值为 0），即该模型的缓存写入不单独计价。
 
-**⚠️ `claude-sonnet-5` 是引导期价格，2026-08-31 到期**（`pricing/pricing.go:374-377`）。其**标价**与 sonnet-4-6 相同（3/15），当前卡片是标价的 2/3。自 2026-09-01 起 Anthropic 按标价出账；届时不改这张卡，每笔 sonnet-5 请求少收 33%。到期动作：把四个值改成 `3.00 / 15.00 / 0.30 / 3.75` 并删掉该注释。
+**⚠️ `claude-sonnet-5` 是引导期价格，2026-08-31 到期**（`pricing/pricing.go:374-377`）。其**标价**与 sonnet-4-6 相同（3/15），当前卡片是标价的 2/3。自 2026-09-01 起 Anthropic 按标价出账；届时不改这张卡，每笔 sonnet-5 请求少收 33%。到期动作：把四个值改成 `3.00 / 15.00 / 0.30 / 3.75`，删掉该注释，并从 `pricing/intro_expiry_test.go` 的 `introductoryRates` 里移除这一条。
+
+> 这条到期日不再靠人记：`TestIntroductoryRatesHaveNotLapsed` 会在 2026-09-01 当天开始失败，直到卡片被改成标价；`TestIntroductoryRatesAreBelowList` 反向兜底，防止引导价被误改到高于标价。新增任何限时折扣卡片时，往 `introductoryRates` 里加一行即可获得同样的保护。
 
 **dated variant 靠前缀回退覆盖**：`claude-fable-5-2026…`、`claude-sonnet-5-2026…` 都回落到各自的无日期条目，因此只需要维护一条（`pricing/pricing.go:354-356`、`:379-380`）。`claude-haiku-4-5` 例外地同时写了有日期和无日期两条。
 
@@ -534,6 +536,7 @@ API：
 | 精确/日期后缀/thinking 后缀/别名/provider 默认 | `pricing/pricing_test.go:24`、`:71`、`:80`、`:88`、`:103` |
 | Opus 各卡一致 | `pricing/pricing_test.go:46` `TestOpusTierCardsAreIdentical` |
 | Sonnet-5 引导价 | `pricing/pricing_test.go:63` `TestSonnet5IntroPrice` |
+| 引导价到期即构建失败 | `pricing/intro_expiry_test.go` `TestIntroductoryRatesHaveNotLapsed` / `TestIntroductoryRatesAreBelowList` |
 | 用户配置覆盖 / 裸键归 Anthropic | `pricing/pricing_test.go:112`、`:124` |
 | `[1m]` 后缀剥离 | `pricing/pricing_test.go:151`、`:177` |
 | 1h 拆分默认关闭 / 启用 / 可配 | `pricing/pricing_test.go:214`、`:242`、`:266` |

@@ -646,11 +646,14 @@ func (r Record) BilledOrCost() float64
 
 ---
 
-## 调研中发现的小问题
+## `agg_day` 时代的遗留（已清理）
 
-- **`scanAggregateRow`（`store_query.go:327-331`）目前无任何调用点**，全包内只有这一处定义。看起来是 `agg_day` 时代 `rollupSelect` 单行读取的遗留，随迁移 3 一起失效但未删除。
-- `store_ingest.go:18` 的注释仍写着 "one set of `agg_day` rows"，而 `agg_day` 已在迁移 3 被 `DROP`；应改为 `agg_cube`。
-- `store_query.go:23-26` 的 `storeAggregateByAuth` 注释仍称 "reads the daily rollups"，实际读的是 `agg_cube`。
+建立本页时发现、现已处理：
+
+- `scanAggregateRow` 全包无调用点，是 `agg_day` 时代 `rollupSelect` 单行读取的残留（随迁移 3 失效）——**已删除**。
+- `store_ingest.go` 的 "one set of `agg_day` rows" 与 `store_query.go` 的 "reads the daily rollups" 两处注释——**已改为 `agg_cube`**。
+
+留作提醒：迁移把表换掉时，读取该表的辅助函数和描述它的注释是最容易漏掉的两处。
 
 ---
 

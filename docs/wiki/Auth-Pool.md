@@ -286,7 +286,11 @@ sticky 复用需要**同时**满足：
 5. `scope := AnthropicModelScope(clientModel); scope != "" && a.IsModelRateLimited(scope, now)` → false（**只**屏蔽该模型族，账号继续服务其他模型）
 6. `isGroupIdleNow(a.Group, now)` → false
 
-> ⚠️ 注意：`oauthUsableLocked` **没有**调用 `a.IsHealthy()`。degraded / 连续失败的判定是通过 `MarkFailure` → `HardFailureAt`（≥5 次）或 `ReportUpstreamError` → `QuotaExceededAt` 冷却间接体现在这里的。`IsHealthy()` 在池内只被 `ResetUnhealthyAnthropicAPIKeys`（pool.go:949）使用，主要服务于管理面和 fork 侧。**待确认**：这是有意设计还是历史遗留——CLAUDE.md 的描述（"unhealthy → never Acquired"）与此处代码并不严格对应。
+> ⚠️ **`oauthUsableLocked` 刻意不是 `IsHealthy()`。** 它只排除"这次请求必然失败或不许发"的状态（disabled / hard-failed / 冷却中 / 该模型族限流 / 组休眠），而放行**仅仅 degraded**（`ConsecutiveFailures ≥ 2` 但未到 hard-fail 阈值）的凭据。
+>
+> 这个不对称是有意的：`IsHealthy` 的 degraded 窗口是**管理面口径**，把它变成路由过滤器正是 2026-07-14 事故的成因 —— 一次上游抖动在同一分钟内把整池打成 degraded，`Acquire` 无人可返，所有客户端拿到 503。跳过一个 degraded 凭据只有在"还有别人可用"时才安全，而调度器在这一层无从判断；在 degraded 凭据上失败一次的代价是一次重试，返回 nil 的代价是客户端 503。
+>
+> degraded 状态并没有失效：它喂给 `HealthSnapshot`，并且持续失败会把 `ConsecutiveFailures` 推到 `hardFailureThreshold` —— 那个状态本函数是**认**的。`IsHealthy()` 在池内只被 `ResetUnhealthyAnthropicAPIKeys`（pool.go:949）使用。理由已写进 `auth/pool.go` 的函数注释。
 
 ### `pickOAuthLocked`（auth/pool.go:550-590）
 
@@ -353,9 +357,13 @@ flowchart TD
 - `isGroupIdleNow(group, now)`（schedule.go:73）：`group == ""` 恒 false。
 - 强制点：`oauthUsableLocked`（pool.go:530）、`Acquire` 的 API-key 循环（pool.go:345）、`HasAPIKeyFor`（pool.go:696）。
 
-### `AcquireMulti` 的 exclude 传播（auth/pool.go:380-403）
+### `AcquireMulti` 的 exclude 传播（auth/pool.go:380-）
 
-`tried` 集合由 `excludeIDs` 初始化，逐个 group 调用 `Acquire`。注意 pool.go:399-400 的注释与代码存在落差：**循环体内并没有把本轮失败的凭据加进 `tried`**，所以 `tried` 在整个循环中实际保持不变。**待确认**：这是有意为之（`Acquire` 返回 nil 时确实无从得知它试过谁），还是待补的 TODO。
+`excludeIDs` **原样**传给每个 group 的 `Acquire`，逐个 group 尝试，第一个拿到凭据的 group 即返回。
+
+早期版本用一个 `tried` map 包装它，注释声称"边走边收集失败的凭据"，但循环体内从不往里加元素 —— `Acquire` 返回 nil 时确实无从得知它考虑过谁。该 map 已删除，注释同步为实际语义。
+
+`AcquireMultiWithOptions` 曾在扇出时重建 `AcquireOptions` 而**漏传 `APIKeyOnly`**：调用方在身份改写失败后想用原始 body 只走 API key，却拿回一个 OAuth 凭据。已修复，回归测试 `TestAcquireMultiWithOptionsPropagatesAPIKeyOnly`。
 
 ---
 

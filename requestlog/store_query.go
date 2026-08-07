@@ -324,12 +324,6 @@ func scanAggregate(rows scannable, key *string, a *Aggregate) error {
 		&a.CostUSD, &a.BilledUSD, &a.Errors, &a.TotalDurationMs)
 }
 
-func scanAggregateRow(row scannable, a *Aggregate) error {
-	return row.Scan(&a.Count, &a.InputTokens, &a.OutputTokens,
-		&a.CacheReadTokens, &a.CacheCreateTokens, &a.CacheCreate1hTokens,
-		&a.CostUSD, &a.BilledUSD, &a.Errors, &a.TotalDurationMs)
-}
-
 func scanRecord(rows scannable) (Record, error) {
 	var r Record
 	var ts int64
