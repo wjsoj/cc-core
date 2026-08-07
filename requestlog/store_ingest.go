@@ -15,7 +15,7 @@ package requestlog
 //                   in (size, mtime) triggers a re-ingest of that day.
 //
 // A day is the unit of repair because it is the unit of storage: one file,
-// one req.day value, one set of agg_day rows.
+// one req.day value, one set of agg_cube rows.
 
 import (
 	"bufio"

@@ -116,7 +116,7 @@ func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byt
 		return signBillingHeaderCCH(body)
 	}
 
-	// Step 1: rebuild system to match the CC 2.1.201 layout.
+	// Step 1: rebuild system to match the captured CC system layout.
 	out, err := rewriteSystemForOAuth(obj, body)
 	if err != nil {
 		return body
@@ -198,8 +198,8 @@ func systemHasBillingBlock(raw json.RawMessage) bool {
 	return false
 }
 
-// rewriteSystemForOAuth rebuilds the system field to match the real CC 2.1.201
-// layout captured in crack/claude (SPEC.md §2):
+// rewriteSystemForOAuth rebuilds the system field to match the real CC system
+// layout captured in crack/cc2220/SPEC.md:
 //
 //	system[0] = billing block (no cache_control)
 //	system[1] = "You are Claude Code, Anthropic's official CLI for Claude."
@@ -480,8 +480,8 @@ func stripMessageCacheControl(body []byte) []byte {
 }
 
 // addMessageCacheBreakpoints injects an ephemeral 1h cache_control on the
-// last block of the last message — exactly what real CC 2.1.201 does
-// (verified in crack/claude, SPEC.md §2).
+// last block of the last message — exactly what real CC does
+// (verified in crack/cc2220/SPEC.md).
 func addMessageCacheBreakpoints(body []byte) []byte {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(body, &obj); err != nil {

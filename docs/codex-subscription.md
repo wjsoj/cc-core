@@ -19,6 +19,19 @@ That last one matters operationally: a delinquent account keeps serving traffic
 normally until its grace period ends, then loses entitlement. No quota-based or
 health-based signal in the pool can predict that — only this probe can.
 
+### The three probes, and why they don't share a header set
+
+| Probe | File | Answers | Header set it imitates |
+|---|---|---|---|
+| `FetchCodexUsage` | `auth/codex_usage.go` | how much quota is left in the current window | the **codex-tui CLI** (the CLI is what calls wham/usage) |
+| `FetchCodexSubscription` | `auth/codex_subscription.go` | what was bought, when the term started, whether it renews | a **browser XHR** — these endpoints are web-portal-only (see [Traps](#traps)) |
+| `FetchCodexResetCredits` / `ResetCodexCredit` | `auth/codex_reset.go` | how many one-off rate-limit reset credits are left, and spends one | **Codex Desktop** |
+
+Each set is anchored in a capture. Do not unify them "for consistency" — the
+whole point is that each endpoint is reached by a different real client. And no
+probe may touch credential health on failure: a flaky portal response says
+nothing about whether `/responses` works.
+
 ## Upstream endpoints
 
 Both are plain `GET`s authorised by the OAuth access token the pool already

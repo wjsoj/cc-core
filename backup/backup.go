@@ -193,7 +193,7 @@ func resolveKey(ctx context.Context, cli *minio.Client, cfg S3Config, dateOrLate
 }
 
 // parseKeyDate extracts the YYYY-MM-DD date from a backup object key
-// ("<prefix>YYYY-MM-DD.tar.gz.age").
+// ("<prefix>YYYY-MM-DD" + objectSuffix).
 func parseKeyDate(key string) (time.Time, bool) {
 	base := path.Base(key)
 	if !strings.HasSuffix(base, objectSuffix) {

@@ -21,9 +21,9 @@ import (
 )
 
 // storeAggregateByAuth serves AggregateByAuth. The unbounded case — the
-// lifetime totals the admin summary polls — reads the daily rollups, turning
-// what was a full-archive parse into a scan of a few thousand rows. Bounded
-// windows go to req, where idx_req_ts keeps a 24h slice cheap.
+// lifetime totals the admin summary polls — reads the pre-summed agg_cube,
+// turning what was a full-archive parse into a scan of a few thousand rows.
+// Bounded windows go to req, where idx_req_ts keeps a 24h slice cheap.
 func (s *Store) storeAggregateByAuth(from, to time.Time) (map[string]Aggregate, error) {
 	s.maybeCatchUp()
 	out := make(map[string]Aggregate)

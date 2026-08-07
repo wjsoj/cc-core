@@ -63,8 +63,9 @@ func maskClientToken(t string) string {
 
 const (
 	// sidecarSessionIdleTTL controls when an idle virtual session is
-	// considered closed. The next request from the same (account,
-	// clientToken) re-fires the bootstrap burst and restarts heartbeat.
+	// considered closed. The next request from the same account (the anchor
+	// key is auth.AccountKey() alone) re-fires the bootstrap burst and
+	// restarts heartbeat.
 	sidecarSessionIdleTTL = 30 * time.Minute
 
 	// sidecarGCInterval is how often the background sweeper visits the
