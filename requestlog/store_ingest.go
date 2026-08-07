@@ -27,6 +27,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // catchUp brings the index in line with the directory. When initial is true
@@ -116,8 +118,15 @@ func (s *Store) catchUp(initial bool) error {
 		}
 	}
 
+	// Days the writer inserted into directly since the last pass. With the
+	// JSONL archive on these are already in `touched` (the file grew too),
+	// but with it off the scanner sees nothing and this is the only signal
+	// that the cube is stale.
+	for day := range s.takeDirtyDays() {
+		touched[day] = struct{}{}
+	}
 	for day := range touched {
-		if err := s.rebuildRollup(day); err != nil {
+		if err := s.rebuildCube(day); err != nil {
 			return err
 		}
 	}
@@ -161,7 +170,7 @@ func (s *Store) dropDay(day, file string) error {
 	if _, err := tx.Exec(`DELETE FROM req WHERE day = ?`, day); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM agg_day WHERE day = ?`, day); err != nil {
+	if _, err := tx.Exec(`DELETE FROM agg_cube WHERE day = ?`, day); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM ingest WHERE file = ?`, file); err != nil {
@@ -186,12 +195,15 @@ func (s *Store) recordIngest(file string, size, mtimeNS, offset, added int64, re
 	return err
 }
 
-const insertReq = `INSERT INTO req (
+// insertReq is OR IGNORE against idx_req_src: the same JSONL line can be
+// offered twice, once by the writer as it appends and once by the scanner as
+// it re-reads the file, and exactly one of them must land.
+const insertReq = `INSERT OR IGNORE INTO req (
 	ts, day, bday, client, client_token, provider, auth_id, auth_label, auth_kind,
 	model, input, output, cache_read, cache_create, cache_create_1h,
 	cost_usd, billed_usd, multiplier, status, duration_ms, stream,
-	path, attempts, error, attempt_only, user_id, audit
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	path, attempts, error, attempt_only, user_id, audit, src_file, src_off
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // ingestFile folds the records in path[from:] into req and returns how many
 // rows were added and the byte offset just past the last complete line.
@@ -213,6 +225,7 @@ func (s *Store) ingestFile(path, day string, from int64, paced bool) (int64, int
 		}
 	}
 
+	name := filepath.Base(path)
 	br := bufio.NewReaderSize(fh, 256*1024)
 	offset := from
 	var added int64
@@ -239,6 +252,7 @@ func (s *Store) ingestFile(path, day string, from int64, paced bool) (int64, int
 			}
 			return added, offset, err
 		}
+		lineStart := offset
 		offset += int64(len(line))
 
 		var r Record
@@ -247,10 +261,13 @@ func (s *Store) ingestFile(path, day string, from int64, paced bool) (int64, int
 		if err := json.Unmarshal(line, &r); err != nil {
 			continue
 		}
-		if err := insertRecord(stmt, day, r); err != nil {
+		ok, err := insertRecord(stmt, day, r, name, lineStart)
+		if err != nil {
 			return added, offset, err
 		}
-		added++
+		if ok {
+			added++
+		}
 		batch++
 
 		if batch >= backfillBatch {
@@ -304,7 +321,11 @@ func commitInsert(tx *sql.Tx, stmt *sql.Stmt) error {
 	return tx.Commit()
 }
 
-func insertRecord(stmt *sql.Stmt, day string, r Record) error {
+// insertRecord returns whether the row landed. It can legitimately not land:
+// idx_req_src turns a duplicate offer of the same JSONL line into a no-op, and
+// the caller counts only real insertions so the ingest bookkeeping stays a true
+// row count.
+func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff int64) (bool, error) {
 	var audit any
 	if r.ClaudeAudit != nil {
 		b, err := json.Marshal(r.ClaudeAudit)
@@ -312,7 +333,7 @@ func insertRecord(stmt *sql.Stmt, day string, r Record) error {
 			audit = string(b)
 		}
 	}
-	_, err := stmt.Exec(
+	res, err := stmt.Exec(
 		r.TS.UnixNano(),
 		day,
 		r.TS.In(bucketLoc).Format("2006-01-02"),
@@ -323,9 +344,13 @@ func insertRecord(stmt *sql.Stmt, day string, r Record) error {
 		r.CostUSD, r.BilledUSD, r.Multiplier,
 		r.Status, r.DurationMs, boolToInt(r.Stream),
 		r.Path, r.Attempts, r.Error, boolToInt(r.AttemptOnly),
-		r.UserID, audit,
+		r.UserID, audit, srcFile, srcOff,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 func boolToInt(b bool) int {
@@ -352,41 +377,69 @@ const aggSelect = `COUNT(*), COALESCE(SUM(input),0), COALESCE(SUM(output),0),
 const aggCols = `count, input, output, cache_read, cache_create, cache_create_1h,
 	cost_usd, billed_usd, errors, duration_ms`
 
-// rebuildRollup recomputes every rollup row for one day. Past days are only
-// ever touched once (at ingest); the current day is recomputed on each
-// catch-up, which is a grouped scan of that day's index slice.
+// cubeDims is the cube's key, in PRIMARY KEY order. Listed once so the insert,
+// its GROUP BY, and the query-side re-aggregation can never disagree.
+const cubeDims = `day, bday, model, client, client_token, provider, auth_id, status, user_id`
+
+// rebuildCube recomputes the cube rows for one day. Past days are only ever
+// touched once (at ingest); the current day is recomputed whenever new records
+// land, which is a grouped scan of that day's slice — 26k rows on the busiest
+// production day, collapsing to ~199 cube rows.
 //
 // attempt_only rows are excluded here because every consumer excludes them
 // (see matches, AggregateByAuth, AggregateHourly) — retry telemetry must not
 // inflate user-visible counts.
-func (s *Store) rebuildRollup(day string) error {
+func (s *Store) rebuildCube(day string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.Exec(`DELETE FROM agg_day WHERE day = ?`, day); err != nil {
+	if _, err := tx.Exec(`DELETE FROM agg_cube WHERE day = ?`, day); err != nil {
 		return err
 	}
-
-	// dim expression per kind. 'client' mirrors the scanning path's key
-	// choice: the masked token when present, else the friendly name.
-	kinds := []struct{ kind, dim, extra string }{
-		{"total", `''`, ``},
-		{"auth", `auth_id`, ` AND auth_id != ''`},
-		{"model", `model`, ``},
-		{"client", `CASE WHEN client_token != '' THEN client_token ELSE client END`, ``},
-		{"day", `bday`, ``},
+	if _, err := tx.Exec(`INSERT INTO agg_cube (`+cubeDims+`, `+aggCols+`)
+		SELECT `+cubeDims+`, `+aggSelect+`
+		FROM req WHERE day = ? AND attempt_only = 0
+		GROUP BY `+cubeDims, day); err != nil {
+		return err
 	}
-	for _, k := range kinds {
-		q := `INSERT INTO agg_day (day, kind, dim, ` + aggCols + `)
-			SELECT ?, ?, ` + k.dim + `, ` + aggSelect + `
-			FROM req WHERE day = ? AND attempt_only = 0` + k.extra + `
-			GROUP BY ` + k.dim + ` HAVING COUNT(*) > 0`
-		if _, err := tx.Exec(q, day, k.kind, day); err != nil {
+	return tx.Commit()
+}
+
+// ensureCube populates the cube for days that have rows in req but none in the
+// cube. It runs at open, which is what carries an index built by an older
+// binary across the migration that introduced the cube: the JSONL is already
+// folded into req, so this rebuilds from there in seconds rather than
+// re-parsing the archive.
+func (s *Store) ensureCube() error {
+	rows, err := s.db.Query(`SELECT DISTINCT day FROM req
+		WHERE day NOT IN (SELECT DISTINCT day FROM agg_cube)`)
+	if err != nil {
+		return err
+	}
+	var days []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			rows.Close()
+			return err
+		}
+		days = append(days, d)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(days) == 0 {
+		return nil
+	}
+	log.Infof("requestlog: building aggregate cube for %d day(s)", len(days))
+	for _, d := range days {
+		if err := s.rebuildCube(d); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }

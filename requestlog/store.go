@@ -10,7 +10,7 @@ package requestlog
 // panel polls on a timer, so operators saw 15-30s loads while the scans
 // competed with real proxy traffic for the box's two cores.
 //
-// This file adds a SQLite index derived from the same JSONL files. Query,
+// This file adds a SQLite index over the same records. Query,
 // AggregateByAuth and AggregateHourly consult it when one is open for their
 // directory and fall back to the original scan when it is absent or still
 // backfilling — so a broken/missing index degrades to the old behaviour
@@ -18,10 +18,17 @@ package requestlog
 //
 // # Ownership
 //
-// The index is derived state, never a source of truth: it can be deleted at
-// any time and will rebuild itself from the JSONL on the next open. That is
-// what licenses synchronous=NORMAL below, and it is why the writer path is
-// untouched — nothing in the hot request path knows this file exists.
+// By default the index is derived state: the writer appends JSONL, and it can
+// be deleted at any time and will rebuild itself from those files on the next
+// open. That is what licenses synchronous=NORMAL below. The writer also
+// inserts each batch directly (store_write.go) so the index is current within
+// a batch rather than a scan interval, but while the archive exists that is an
+// optimisation — anything an insert loses is re-read from the file.
+//
+// Options.JSONLArchive = false removes the archive and with it that safety
+// net, making this database the only copy. Nothing here changes shape in that
+// mode; what changes is the consequence of a failed write, which is why the
+// switch is off by default and documented where it is set rather than here.
 //
 // # Lookup by directory
 //
@@ -85,6 +92,11 @@ type Store struct {
 	// lastCatchUp is the unix-nano time of the last completed catch-up,
 	// consulted by the throttle in maybeCatchUp.
 	lastCatchUp atomic.Int64
+
+	// dirtyDays are days the writer inserted into directly, awaiting a cube
+	// rebuild. Separate from ingestMu because it is touched on the write path.
+	dirtyMu   sync.Mutex
+	dirtyDays map[string]struct{}
 
 	stopCh chan struct{}
 	doneCh chan struct{}
@@ -223,10 +235,27 @@ func (s *Store) Ready() bool { return s != nil && s.ready.Load() }
 func (s *Store) loop() {
 	defer close(s.doneCh)
 
+	// ensureCube runs first and gates everything: an index written by a binary
+	// older than the cube has rows in req but no cube to serve them from, and
+	// serving that would silently under-report rather than fail. It is here
+	// rather than in OpenStore because it is ~7s on a 90-day production
+	// archive; until ready flips, queries take the JSONL path they always did.
+	// Only while the index has yet to serve anything: once ready, the cube is
+	// complete and catch-up maintains it incrementally, so re-running the
+	// which-days-are-missing probe on every tick would be pure overhead.
+	pass := func(initial bool) error {
+		if !s.ready.Load() {
+			if err := s.ensureCube(); err != nil {
+				return err
+			}
+		}
+		return s.catchUp(initial)
+	}
+
 	// First pass: bring the index up to date with everything already on
 	// disk, then start serving. Errors leave ready false so queries keep
 	// using the JSONL path.
-	if err := s.catchUp(true); err != nil {
+	if err := pass(true); err != nil {
 		log.Warnf("requestlog: index backfill failed (%v); queries fall back to scanning", err)
 	} else {
 		s.ready.Store(true)
@@ -240,11 +269,12 @@ func (s *Store) loop() {
 		case <-s.stopCh:
 			return
 		case <-t.C:
-			if err := s.catchUp(false); err != nil {
+			// Retry the whole first pass while it has never succeeded, so a
+			// failed backfill recovers instead of pinning the index dark.
+			if err := pass(!s.ready.Load()); err != nil {
 				log.Warnf("requestlog: index catch-up: %v", err)
 				continue
 			}
-			// A failed backfill earlier can still recover here.
 			s.ready.Store(true)
 		}
 	}
@@ -391,6 +421,69 @@ CREATE INDEX idx_req_model  ON req(model COLLATE NOCASE, ts DESC, id DESC)  WHER
 CREATE INDEX idx_req_client ON req(client COLLATE NOCASE, ts DESC, id DESC) WHERE attempt_only = 0;
 CREATE INDEX idx_req_user   ON req(user_id, ts DESC, id DESC)               WHERE attempt_only = 0;
 `,
+	// 3: the aggregate cube, and the provenance columns that let the writer
+	// insert rows directly without racing the file scanner.
+	//
+	// ## agg_cube replaces agg_day
+	//
+	// agg_day pre-summed one grouping at a time and therefore only ever
+	// served *unfiltered* aggregates; anything with a predicate fell through
+	// to req. Measured on a 984k-row production archive, one such query
+	// (?model=claude-opus-4-7, 116k matching rows) cost ~2.9s, because the
+	// filter indexes cover the predicate but not the eleven counter columns —
+	// each matching row is a separate table lookup, done once per grouping.
+	//
+	// Carrying every low-cardinality dimension in one key instead collapses
+	// that same archive to 10,382 rows (~199 on the busiest day): a 95x
+	// reduction that still answers Summary/ByModel/ByClient/ByDay for any
+	// combination of model, client, provider, auth and status by grouping the
+	// cube. What stays on req is what the cube genuinely cannot express:
+	// sub-day time bounds, and the entry page itself.
+	//
+	// errors is a stored counter rather than a predicate on status, because a
+	// row can carry an error string with a 2xx status (a stream that died
+	// after headers) and those must still count as errors.
+	//
+	// ## src_file / src_off
+	//
+	// The pair identifies the JSONL line a row came from, making insertion
+	// idempotent: the writer inserts a record as it appends it, the scanner
+	// later re-reads that same line, and the unique index turns the second
+	// one into a no-op. Rows indexed before this migration have no known
+	// offset, so they default to -1 and the index is partial on off >= 0 —
+	// legacy rows are simply not deduplicated against, which is safe because
+	// their files are fully consumed and only ever re-read after a dropDay.
+	`
+DROP TABLE IF EXISTS agg_day;
+
+CREATE TABLE agg_cube (
+    day             TEXT    NOT NULL,
+    bday            TEXT    NOT NULL,
+    model           TEXT    NOT NULL,
+    client          TEXT    NOT NULL,
+    client_token    TEXT    NOT NULL,
+    provider        TEXT    NOT NULL,
+    auth_id         TEXT    NOT NULL,
+    status          INTEGER NOT NULL,
+    user_id         INTEGER NOT NULL,
+    count           INTEGER NOT NULL DEFAULT 0,
+    input           INTEGER NOT NULL DEFAULT 0,
+    output          INTEGER NOT NULL DEFAULT 0,
+    cache_read      INTEGER NOT NULL DEFAULT 0,
+    cache_create    INTEGER NOT NULL DEFAULT 0,
+    cache_create_1h INTEGER NOT NULL DEFAULT 0,
+    cost_usd        REAL    NOT NULL DEFAULT 0,
+    billed_usd      REAL    NOT NULL DEFAULT 0,
+    errors          INTEGER NOT NULL DEFAULT 0,
+    duration_ms     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, bday, model, client, client_token, provider, auth_id, status, user_id)
+) WITHOUT ROWID;
+
+ALTER TABLE req ADD COLUMN src_file TEXT    NOT NULL DEFAULT '';
+ALTER TABLE req ADD COLUMN src_off  INTEGER NOT NULL DEFAULT -1;
+
+CREATE UNIQUE INDEX idx_req_src ON req(src_file, src_off) WHERE src_off >= 0;
+`,
 }
 
 func (s *Store) migrate() error {
@@ -446,7 +539,7 @@ func (s *Store) rebuildAll(loc string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, q := range []string{`DELETE FROM req`, `DELETE FROM agg_day`, `DELETE FROM ingest`} {
+	for _, q := range []string{`DELETE FROM req`, `DELETE FROM agg_cube`, `DELETE FROM ingest`} {
 		if _, err := tx.Exec(q); err != nil {
 			return err
 		}

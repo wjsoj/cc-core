@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.8.63 — request log: aggregate cube, dual write, optional JSONL
+
+Finishes what the SQLite index started. The index made *unfiltered* aggregates
+cheap; filtered ones still walked `req` row by row, so the panel's `?model=…`
+view cost ~2.9s on a 984k-record production archive. And the index was still
+strictly derived — every record reached it by being re-read from a file.
+
+### New — `agg_cube` (migration 3), replacing `agg_day`
+
+- One pre-summed table keyed by every low-cardinality dimension at once:
+  `(day, bday, model, client, client_token, provider, auth_id, status,
+  user_id)`. On production that is **10,382 rows for 984,049 records** (~199 on
+  the busiest day), so any filter built from those columns is answered by
+  grouping the cube: **1.1s → 0.01s** measured on a copy of the real database.
+- `cubeEligible` diverts a query to `req` if it carries *any* time bound — a day
+  is the cube's finest grain, and guessing which bounds happen to land on a day
+  boundary would depend on the caller's zone.
+- Verified against a copy of the production database: 44 filter shapes
+  (per-model, per-token, per-auth, per-status, per-provider, and combinations),
+  every counter and both money columns **byte-identical** to the row-level
+  aggregate.
+- `agg_day` is dropped by the migration. An index built by an older binary has
+  rows but no cube; `ensureCube` fills it from `req` at open (~7s for 90 days)
+  rather than re-parsing the archive, in the background so startup does not wait.
+
+### New — writer inserts directly (`store_write.go`)
+
+- `Writer` folds each batch into `req` as it appends it, instead of waiting for
+  the scanner. Idempotent against that scanner via a unique `(src_file,
+  src_off)` — the byte offset the line was written at — so whichever producer
+  offers a line second is a no-op.
+- `Writer.curOff` resumes from the file's existing length on open; an offset
+  restarting at zero would collide with rows a previous run already indexed.
+- While the archive is on this is only an optimisation: anything an insert loses
+  is re-read from the file on the next pass.
+
+### New — `Options{JSONLArchive: false}` and `Export`
+
+- `OpenWithOptions(dir, Options{...})`; `Open(dir, retentionDays)` unchanged and
+  still defaults the archive on. With the archive off there are no `.jsonl`
+  files, `pruneBefore` (`DELETE` + `incremental_vacuum`) enforces retention, and
+  `RewriteClientMask` becomes one `UPDATE` instead of rewriting every archived
+  file. The writer refuses to start in this mode without an open index.
+- `Export(dir, fromDay, toDay, w)` writes the stored rows back out as JSONL, so
+  turning the archive off stays reversible.
+
+### Changed — `store_query.go`
+
+- `aggregatesFromReq` (the path time-bounded queries still take) computes the
+  summary and all three groupings in one `MATERIALIZED` CTE instead of four
+  passes. `MATERIALIZED` is explicit: SQLite may otherwise inline a CTE used
+  more than once and silently restore the four passes.
+
 ## v0.8.21 — Codex WebSocket upstream transport (`codexws`)
 
 Adds the Codex-over-WebSocket upstream that real codex-tui 0.135.0 uses

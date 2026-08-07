@@ -31,8 +31,8 @@ func (s *Store) storeAggregateByAuth(from, to time.Time) (map[string]Aggregate, 
 	var rows *sql.Rows
 	var err error
 	if from.IsZero() && to.IsZero() {
-		rows, err = s.db.Query(`SELECT dim, ` + rollupSelect + `
-			FROM agg_day WHERE kind = 'auth' GROUP BY dim`)
+		rows, err = s.db.Query(`SELECT auth_id, ` + rollupSelect + `
+			FROM agg_cube WHERE auth_id != '' GROUP BY auth_id`)
 	} else {
 		where, args := timeWhere(from, to)
 		rows, err = s.db.Query(`SELECT auth_id, `+aggSelect+`
@@ -144,8 +144,8 @@ func (s *Store) storeQuery(f Filter) (*Result, error) {
 		return res, nil
 	}
 
-	if isUnfiltered(f) {
-		if err := s.aggregatesFromRollup(res); err != nil {
+	if cubeEligible(f) {
+		if err := s.aggregatesFromCube(res, f); err != nil {
 			return nil, err
 		}
 	} else {
@@ -157,28 +157,35 @@ func (s *Store) storeQuery(f Filter) (*Result, error) {
 	return res, nil
 }
 
-// isUnfiltered reports whether the query covers the whole archive, in which
-// case the rollups already hold the answer. This is the shape the pricing
-// panel issues (limit=1, no predicates) — the single most expensive query in
-// the old implementation.
-func isUnfiltered(f Filter) bool {
-	return f.ClientToken == "" && f.Client == "" && f.Model == "" &&
-		f.Provider == "" && f.Status == 0 && f.AuthID == "" && f.UserID == 0 &&
-		f.From.IsZero() && f.To.IsZero()
+// cubeEligible reports whether the cube can answer this filter exactly.
+//
+// Every dimension the panel filters on is a cube column, so the only thing
+// that disqualifies a query is a time bound: Filter compares exact timestamps
+// while the cube's finest time grain is a day. Rather than try to detect the
+// cases where a bound happens to land on a day boundary — which depends on the
+// caller's zone and would be wrong the moment that assumption breaks — any
+// bound at all sends the query to req, where the day column prunes it anyway.
+func cubeEligible(f Filter) bool {
+	return f.From.IsZero() && f.To.IsZero()
 }
 
-func (s *Store) aggregatesFromRollup(res *Result) error {
+// aggregatesFromCube answers Summary/ByClient/ByModel/ByDay from the pre-summed
+// cube. The cube is small enough (~10k rows for a 90-day, 1M-record archive)
+// that four groupings over it are microseconds, so unlike the req path there is
+// nothing to gain from materializing it first.
+func (s *Store) aggregatesFromCube(res *Result, f Filter) error {
+	where, args := cubeWhere(f)
 	for _, spec := range []struct {
-		kind string
-		dst  map[string]Aggregate
+		dim string
+		dst map[string]Aggregate
 	}{
-		{"total", nil},
-		{"client", res.ByClient},
-		{"model", res.ByModel},
-		{"day", res.ByDay},
+		{`''`, nil},
+		{`CASE WHEN client_token != '' THEN client_token ELSE client END`, res.ByClient},
+		{`model`, res.ByModel},
+		{`bday`, res.ByDay},
 	} {
-		rows, err := s.db.Query(`SELECT dim, `+rollupSelect+`
-			FROM agg_day WHERE kind = ? GROUP BY dim`, spec.kind)
+		rows, err := s.db.Query(`SELECT `+spec.dim+`, `+rollupSelect+`
+			FROM agg_cube WHERE `+where+` GROUP BY `+spec.dim, args...)
 		if err != nil {
 			return err
 		}
@@ -203,40 +210,103 @@ func (s *Store) aggregatesFromRollup(res *Result) error {
 	return nil
 }
 
+// cubeWhere renders the non-time predicates of a Filter against cube columns.
+// It mirrors filterWhere clause for clause — the same collations, the same
+// legacy-provider fallback — minus attempt_only, which the cube excluded when
+// it was built.
+func cubeWhere(f Filter) (string, []any) {
+	var sb strings.Builder
+	var args []any
+	sb.WriteString(`1 = 1`)
+
+	if f.UserID != 0 {
+		sb.WriteString(` AND user_id = ?`)
+		args = append(args, f.UserID)
+	}
+	if f.ClientToken != "" {
+		sb.WriteString(` AND client_token = ?`)
+		args = append(args, f.ClientToken)
+	} else if f.Client != "" {
+		sb.WriteString(` AND client = ? COLLATE NOCASE`)
+		args = append(args, f.Client)
+	}
+	if f.Model != "" {
+		sb.WriteString(` AND model = ? COLLATE NOCASE`)
+		args = append(args, f.Model)
+	}
+	if f.Provider != "" {
+		sb.WriteString(` AND (CASE WHEN provider = '' THEN 'anthropic' ELSE provider END) = ? COLLATE NOCASE`)
+		args = append(args, f.Provider)
+	}
+	if f.Status != 0 {
+		sb.WriteString(` AND status = ?`)
+		args = append(args, f.Status)
+	}
+	if f.AuthID != "" {
+		sb.WriteString(` AND auth_id = ?`)
+		args = append(args, f.AuthID)
+	}
+	return sb.String(), args
+}
+
+// aggregatesFromReq computes the summary and all three groupings in a single
+// pass over the filtered rows.
+//
+// The obvious shape — one grouped query per dimension — costs four passes,
+// and a pass here is not cheap: the filter indexes cover the predicate but
+// not the eleven counter columns, so every matching row is a separate lookup
+// into the table. On production data a filter matching 116k rows took 0.54s
+// per dimension, so the panel's model filter spent ~3.9s doing four times the
+// same work. Materializing the filtered slice once and grouping it four ways
+// costs 0.57s total.
+//
+// MATERIALIZED is explicit rather than left to the planner: SQLite may inline
+// a CTE referenced more than once, which would silently restore the four
+// passes this exists to avoid.
 func (s *Store) aggregatesFromReq(res *Result, where string, args []any) error {
-	// Summary first: a single grouped row over the same predicate.
-	row := s.db.QueryRow(`SELECT `+aggSelect+` FROM req WHERE `+where, args...)
-	if err := scanAggregateRow(row, &res.Summary); err != nil {
+	q := `WITH m AS MATERIALIZED (
+			SELECT client, client_token, model, bday, input, output,
+			       cache_read, cache_create, cache_create_1h,
+			       cost_usd, billed_usd, status, error, duration_ms
+			FROM req WHERE ` + where + `
+		)
+		SELECT 'total' AS kind, '' AS dim, ` + aggSelect + ` FROM m
+		UNION ALL
+		SELECT 'client', CASE WHEN client_token != '' THEN client_token ELSE client END,
+			` + aggSelect + ` FROM m GROUP BY 2
+		UNION ALL
+		SELECT 'model', model, ` + aggSelect + ` FROM m GROUP BY 2
+		UNION ALL
+		SELECT 'day', bday, ` + aggSelect + ` FROM m GROUP BY 2`
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
 		return err
 	}
-	for _, spec := range []struct {
-		dim string
-		dst map[string]Aggregate
-	}{
-		{`CASE WHEN client_token != '' THEN client_token ELSE client END`, res.ByClient},
-		{`model`, res.ByModel},
-		{`bday`, res.ByDay},
-	} {
-		rows, err := s.db.Query(`SELECT `+spec.dim+`, `+aggSelect+`
-			FROM req WHERE `+where+` GROUP BY `+spec.dim, args...)
-		if err != nil {
+	defer rows.Close()
+	for rows.Next() {
+		var kind, key string
+		var a Aggregate
+		if err := rows.Scan(&kind, &key, &a.Count, &a.InputTokens, &a.OutputTokens,
+			&a.CacheReadTokens, &a.CacheCreateTokens, &a.CacheCreate1hTokens,
+			&a.CostUSD, &a.BilledUSD, &a.Errors, &a.TotalDurationMs); err != nil {
 			return err
 		}
-		for rows.Next() {
-			var key string
-			var a Aggregate
-			if err := scanAggregate(rows, &key, &a); err != nil {
-				rows.Close()
-				return err
-			}
-			spec.dst[key] = a
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
+		switch kind {
+		case "total":
+			// Ungrouped, so this row exists even when nothing matched — which
+			// is what makes an empty result report a zero summary rather than
+			// no summary at all.
+			res.Summary = a
+		case "client":
+			res.ByClient[key] = a
+		case "model":
+			res.ByModel[key] = a
+		case "day":
+			res.ByDay[key] = a
 		}
 	}
-	return nil
+	return rows.Err()
 }
 
 // rollupSelect re-aggregates pre-summed daily rows. It mirrors aggSelect's
