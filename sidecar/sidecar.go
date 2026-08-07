@@ -173,12 +173,17 @@ const (
 // advertise one identical host. platform/arch/node_version/is_running_with_bun
 // stay fixed (one ground-truth capture; runtime bundle moves with the release).
 const (
-	// build_time moves with each CC release; read from the live 2.1.220
-	// telemetry env (crack/cc2220/SPEC.md). Was 2026-07-17T23:24:50Z
-	// @ 2.1.214 and 2026-07-15T16:34:37Z @ 2.1.211.
-	ccBuildTime      = "2026-07-24T22:17:45Z"
-	ccTelemetryModel = "claude-opus-4-8[1m]" // event_logging event_data.model
-	ccDatadogModel   = "claude-opus-4-8"     // datadog model field + ddtags (no [1m])
+	// build_time moves with each CC release; read from the live 2.1.224
+	// telemetry env (crack/cc2224/SPEC.md). Was 2026-07-24T22:17:45Z
+	// @ 2.1.220, 2026-07-17T23:24:50Z @ 2.1.214 and 2026-07-15T16:34:37Z
+	// @ 2.1.211.
+	ccBuildTime = "2026-08-06T01:05:53Z"
+	// The reported model moves with what real CC actually runs. The 2.1.224
+	// capture reports claude-opus-5 (was claude-opus-4-8 @ 2.1.220): telemetry
+	// carries the [1m] suffix, datadog does not. Keeping the retired 4-8 here
+	// while the request bodies we forward name opus-5 is itself a mismatch.
+	ccTelemetryModel = "claude-opus-5[1m]" // event_logging event_data.model
+	ccDatadogModel   = "claude-opus-5"     // datadog model field + ddtags (no [1m])
 )
 
 // Manager tracks the lifecycle of every virtual session and dispatches

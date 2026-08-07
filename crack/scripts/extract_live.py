@@ -25,7 +25,8 @@ MASK_KEYS = {"device_id", "account_uuid", "organization_uuid", "email",
 MASK_HEADERS = {"authorization", "x-api-key", "cookie", "set-cookie",
                 "x-claude-code-session-id", "x-client-request-id", "request-id",
                 "x-organization-uuid", "anthropic-organization-id",
-                "anthropic-organization-uuid", "cf-ray"}
+                "anthropic-organization-uuid", "anthropic-workspace-id",
+                "cf-ray"}
 # Secret / identity values carried in OAuth login bodies. Masked by value (not
 # structure) so the request-param NAMES, response KEYS, and non-secret
 # fingerprint values (scope, token_type, expires_in, has_claude_max,

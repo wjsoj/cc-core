@@ -4,7 +4,7 @@
 
 ## 概览
 
-`sidecar` 包模拟真实 Claude Code **2.1.220** 客户端在 `/v1/messages` 业务流量之外发出的**辅助流量**：进程启动时的 bootstrap 突发（9 步）、以及运行期的 `event_logging` 心跳。目的是消除"一个健康 OAuth 账号的请求流里一次 Haiku 配额探测都没有"这种最强的第三方客户端特征。
+`sidecar` 包模拟真实 Claude Code **2.1.224** 客户端在 `/v1/messages` 业务流量之外发出的**辅助流量**：进程启动时的 bootstrap 突发（9 步）、以及运行期的 `event_logging` 心跳。目的是消除"一个健康 OAuth 账号的请求流里一次 Haiku 配额探测都没有"这种最强的第三方客户端特征。
 
 包注释（`sidecar/sidecar.go:34-62`）把它分成四个阶段：
 
@@ -62,7 +62,7 @@ if m == nil || !m.enabled || a == nil || a.Kind != auth.KindOAuth {
 | 1 | `growthbook_eval` | POST | `/api/eval/sdk-zAZezfDKGoZuXXKe` | T+0 | `Bun/1.4.0` | `oauth-2025-04-20` | body=`buildGrowthBookBody`；`Accept: */*`（Bun 特例，`:639-642`）；`Connection: keep-alive` |
 | 2 | `oauth_account_settings` | GET | `/api/oauth/account/settings` | T+160ms | `claude-cli/…` | `oauth-2025-04-20` | **不是** claude-code/axios，2.1.191+2.1.214 双次捕获确认（`:415`） |
 | 3 | `claude_code_grove` | GET | `/api/claude_code_grove` | T+160ms | `claude-cli/…` | `oauth-2025-04-20` | 同上（`:424`） |
-| 4 | `claude_cli_bootstrap` | GET | `/api/claude_cli/bootstrap?entrypoint=cli&model=claude-opus-4-8` | T+1250ms | `claude-code/2.1.220` | `oauth-2025-04-20` | 唯一带 `responseHandler`：`handleBootstrapResponse` |
+| 4 | `claude_cli_bootstrap` | GET | `/api/claude_cli/bootstrap?entrypoint=cli&model=claude-opus-5` | T+1250ms | `claude-code/2.1.224` | `oauth-2025-04-20` | 唯一带 `responseHandler`：`handleBootstrapResponse` |
 | 5 | `claude_code_penguin_mode` | GET | `/api/claude_code_penguin_mode` | T+1250ms | `axios/1.15.2` | `oauth-2025-04-20` | |
 | 6 | `quota_probe` | POST | `/v1/messages` | T+1270ms | `claude-cli/…` | `quotaProbeBeta`（6 项，`:145`） | body=`buildQuotaProbeBody`；额外 `X-App`、全套 `X-Stainless-*`、`Anthropic-Dangerous-Direct-Browser-Access: true`（`:461-472`），另加 `X-Claude-Code-Session-Id` + `X-Client-Request-Id`（`:659-663`）。**派发后关闭 `bootstrapReady`**（`:582-588`） |
 | 7 | `mcp_registry` | GET | `/mcp-registry/v0/servers?version=latest&limit=100&visibility=commercial%2Cgsuite%2Centerprise%2Chealth` | T+1950ms | `claude-cli/…` | 无 | `noAuth: true` —— 公共目录端点，带 Bearer 本身就是破绽（`:480-484`） |
@@ -85,7 +85,7 @@ if m == nil || !m.enabled || a == nil || a.Kind != auth.KindOAuth {
 | 项 | 值 | 位置 |
 |---|---|---|
 | 端点 | `POST <baseURL>/api/event_logging/v2/batch` | `:896` |
-| User-Agent | `claude-code/2.1.220`（`uaClaudeCode`） | `:907` |
+| User-Agent | `claude-code/2.1.224`（`uaClaudeCode`） | `:907` |
 | Anthropic-Beta | `oauth-2025-04-20` | `:906` |
 | 其他头 | `X-Service-Name: claude-code`、`Content-Type: application/json`、`Accept: application/json, text/plain, */*`、`Accept-Encoding: gzip, br`、`Connection: close`、`Authorization: Bearer …` | `:901-909` |
 | 首帧延迟 | 固定 8s（bootstrap 最后一步 T+2.4s 之后，真实 CC 首批 T+10s 之前） | `:822-826` |
@@ -98,9 +98,9 @@ body 两种形态：
 - **首批（startup dump）** `buildStartupHeartbeatBody`（`:997-1011`）：`startupEventNames` 共 **80** 条事件（`init()` `:950-985`，`tengu_skill_loaded` 35 条为主，`tengu_plugin_enabled_for_session` 9、`tengu_dir_search` 7、mcp 相关 3+3，其余多为单例，共 24 种事件名），时间戳按 `i*5ms` 铺开。**仅在 bootstrap 未被冷却抑制时才发**（`runHeartbeat(ctx, a, sess, !withinCooldown)` `:332`）。
 - **稳态** `buildHeartbeatBody`（`:935-941`）：单条 `tengu_dir_search`。
 
-单事件结构由 `buildHeartbeatEvent`（`:1017-1092`）构造：`event_type: "ClaudeCodeInternalEvent"`，`event_data` 含 `session_id`（= bootstrapSessionID）、`device_id`（`mimicry.DeviceIDFor(accountKey)`）、`betas`（`mimicry.ClaudeReportedBetas`）、`auth.{organization_uuid, account_uuid}`、`email`、`model: "claude-opus-4-8[1m]"`（`ccTelemetryModel` `:179`）、base64 编码的 `process` 与 `additional_metadata`，以及 `env` 块。
+单事件结构由 `buildHeartbeatEvent`（`:1017-1092`）构造：`event_type: "ClaudeCodeInternalEvent"`，`event_data` 含 `session_id`（= bootstrapSessionID）、`device_id`（`mimicry.DeviceIDFor(accountKey)`）、`betas`（`mimicry.ClaudeReportedBetas`）、`auth.{organization_uuid, account_uuid}`、`email`、`model: "claude-opus-5[1m]"`（`ccTelemetryModel` `:185`）、base64 编码的 `process` 与 `additional_metadata`，以及 `env` 块。
 
-`env` 块的固定轴：`platform=linux`、`node_version=mimicry.ClaudeStainlessRuntimeV`（v26.3.0）、`arch=x64`、`version/version_base=2.1.220`、`build_time=ccBuildTime`（`"2026-07-24T22:17:45Z"`，`:178`）、`is_running_with_bun=true`、`is_claude_ai_auth=true`、`deployment_environment=unknown-linux`、`vcs=git`。**机器相关轴来自 HostProfile**（见下节）。
+`env` 块的固定轴：`platform=linux`、`node_version=mimicry.ClaudeStainlessRuntimeV`（v26.3.0）、`arch=x64`、`version/version_base=2.1.224`、`build_time=ccBuildTime`（`"2026-08-06T01:05:53Z"`，`:180`）、`is_running_with_bun=true`、`is_claude_ai_auth=true`、`deployment_environment=unknown-linux`、`vcs=git`。**机器相关轴来自 HostProfile**（见下节）。
 
 `process` 指标由 `buildProcessMetrics(accountKey)`（`:1105-1140`）生成：按账号 sha256 锚定 RAM/rss/heap 基线，每 tick 抖动；`heapUsed` 派生自已抖动的 `heapTotal`（74–93%），保证 `heapUsed ≤ heapTotal`。`uptime` 是进程真实运行秒数（`processStart` `:1097`），单调增长。
 
@@ -115,7 +115,7 @@ body 两种形态：
 | 间隔 | 25s ±40%（`datadogBaseInterval` / `datadogJitter`） | `:137-138`, `:1198-1202` |
 | 空闲停止 | `isHeartbeatIdle`，5min（`heartbeatActiveWindow`） | `:100`, `:870-876` |
 | body | **JSON 数组**，单条 `tengu_feature_ok`，字段全部平铺 + `ddtags` 逗号串 | `buildDatadogHeartbeatBody` `:1265-1332` |
-| model | `claude-opus-4-8`（`ccDatadogModel`，**无 `[1m]` 后缀**，与 event_logging 不同） | `:180` |
+| model | `claude-opus-5`（`ccDatadogModel`，**无 `[1m]` 后缀**，与 event_logging 不同） | `:186` |
 
 ## 与 auth.HostProfile 的关系
 

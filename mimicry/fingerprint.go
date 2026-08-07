@@ -26,29 +26,40 @@ import (
 	"strings"
 )
 
-// Header values pinned to Claude Code 2.1.220 / @anthropic-ai/sdk 0.94.0.
-// Values verified against a live CC 2.1.220 OAuth capture with 10 independent
-// first turns plus one 10-turn conversation (2026-07-30 — see
-// crack/cc2220/SPEC.md). The version, build_time, title-request class, UTF-16
-// billing suffix semantics, and multi-turn cc_prev_req chain were verified.
-// Stainless 0.94.0 / v26.3.0 remain unchanged. The capture used ordinary
-// Sonnet 5, so context-1m behavior is intentionally NOT changed by this bump.
+// Header values pinned to Claude Code 2.1.224 / @anthropic-ai/sdk 0.94.0.
+// Values verified against a live CC 2.1.224 OAuth capture covering the full
+// login→conversation chain (2026-08-07, Arch Linux — see crack/cc2224/SPEC.md).
+// The 2.1.220 → 2.1.224 diff is a VERSION-STRING-ONLY bump: every Stainless
+// value (0.94.0 / node v26.3.0 / x64), the request body's top-level key set,
+// the 4-block system layout, cache_control ttl/scope, the metadata shape, and
+// the cc_version=X.Y.Z.{3-hex} billing block format are byte-identical to the
+// 2.1.220 Linux capture.
+//
+// ⚠️ Capture gap: that session ran entirely in 1M-context mode, so it re-verified
+// ClaudeAnthropicBeta1M item-for-item but observed NO non-1M main request and no
+// count_tokens request. ClaudeAnthropicBetaFull and ClaudeAnthropicBetaCountTokens
+// therefore carry forward from 2.1.220 unverified at 2.1.224 (see crack/cc2224/
+// SPEC.md §"Unresolved"); nothing in the capture contradicts them.
+//
 // CLICurrentVersion MUST match the version baked into ClaudeCLIUserAgent;
 // any drift will cause the cc_version=X.Y.Z.{fp} billing block to disagree
 // with the User-Agent and trigger Anthropic's third-party detection.
 const (
-	CLICurrentVersion      = "2.1.220"
-	ClaudeCLIUserAgent     = "claude-cli/2.1.220 (external, cli)"
+	CLICurrentVersion      = "2.1.224"
+	ClaudeCLIUserAgent     = "claude-cli/2.1.224 (external, cli)"
 	ClaudeStainlessLang    = "js"
 	ClaudeStainlessRuntime = "node"
 	// 2.1.191 jumped the bundled Node runtime v24.3.0 → v26.3.0. This single
 	// constant feeds BOTH the X-Stainless-Runtime-Version request header and the
 	// telemetry env.node_version (sidecar), which the live capture confirms move
-	// together. UNCHANGED through 2.1.220 (still v26.3.0). (crack/cc2220/SPEC.md.)
+	// together. UNCHANGED through 2.1.224 (still v26.3.0) — re-confirmed in both
+	// the request headers and the telemetry env of the 2.1.224 capture
+	// (crack/cc2224/SPEC.md).
 	ClaudeStainlessRuntimeV = "v26.3.0"
 	ClaudeStainlessPackageV = "0.94.0"
 	// ClaudeStainlessOS deliberately does NOT track the capture. The cc2220
-	// dumps were taken on macOS, but the proxy runs on Linux and the OS it
+	// dumps were taken on macOS (cc2224 happens to be Linux, which is not a
+	// reason to start tracking it), but the proxy runs on Linux and the OS it
 	// advertises has to agree with everything else it claims to be: the
 	// per-account synthetic host in auth.HostProfile and the platform fields
 	// the sidecar telemetry sends. A "MacOS" header over Linux host telemetry
@@ -59,7 +70,7 @@ const (
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"
 	// ClaudeAnthropicBetaFull is the Anthropic-Beta REQUEST HEADER real CC
-	// 2.1.220 sends on an ordinary (NON-1M) main /v1/messages request — exact
+	// sends on an ordinary (NON-1M) main /v1/messages request — exact
 	// value, exact order (13 items). Any beta we drop that real CLI sends will
 	// downgrade us to "extra usage" billing; any extra beta we add that real CLI
 	// doesn't send is also a fingerprint signal.
@@ -84,6 +95,10 @@ const (
 	// list (headers.go) — real CC passthrough keeps the client's own list, so a
 	// downstream client that wants 1M declares context-1m itself, exactly as
 	// the real CLI does.
+	//
+	// ⚠️ NOT re-verified at 2.1.224: that capture ran entirely in 1M mode and
+	// contains no non-1M main request. Carried forward from 2.1.220 unchanged.
+	// Re-capture a non-1M session before treating this as settled at 2.1.224.
 	ClaudeAnthropicBetaFull = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
 	// ClaudeAnthropicBeta1M is the same header when the 1M context window IS
 	// active (15 items): context-1m-2025-08-07 at position 3 and
@@ -95,14 +110,18 @@ const (
 	// NOT injected automatically: a request body carries no 1M marker (the
 	// `[1m]` suffix exists only in telemetry), so cc-core cannot infer the mode.
 	// Exported so a fork offering an explicit "1M mode" sends the real list
-	// instead of hand-assembling one. Single-sample — re-verify on the next
-	// capture before treating it as settled.
+	// instead of hand-assembling one. RE-CONFIRMED item-for-item at 2.1.224
+	// (crack/cc2224/rows/13-v1_messages.json, claude-opus-5 in 1M mode), so this
+	// is now two independent captures across two versions rather than one sample.
 	ClaudeAnthropicBeta1M = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,fallback-credit-2026-06-01,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
-	// ClaudeAnthropicBetaCountTokens is the beta list real CC 2.1.220 sends on
+	// ClaudeAnthropicBetaCountTokens is the beta list real CC sends on
 	// POST /v1/messages/count_tokens — a request class of its own, NOT the main
 	// list (5 items, 4 samples, crack/cc2220/SPEC.md §1b). count_tokens also
 	// omits X-Stainless-Timeout, which every main request carries; headers.go
 	// reproduces both differences.
+	//
+	// ⚠️ NOT re-verified at 2.1.224: the capture fired no count_tokens request.
+	// Carried forward from 2.1.220 unchanged.
 	ClaudeAnthropicBetaCountTokens = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,token-counting-2024-11-01"
 	// ClaudeReportedBetas is the SHORTER beta list real CC 2.1.191 reports in
 	// its telemetry bodies (event_logging `betas`, datadog `betas`/ddtags) — 9
@@ -116,7 +135,10 @@ const (
 	// with the `claude-opus-4-8[1m]` model (crack/cc2214/SPEC.md §3). Our sidecar
 	// keeps emitting the `[1m]` + 9-item pair. The ordinary Sonnet 5 capture at
 	// 2.1.220 independently observed the expected 8-item non-1M variant, but is
-	// not evidence for changing this 1M sidecar constant. Keep it semantically
+	// not evidence for changing this 1M sidecar constant. The 2.1.224 capture
+	// RE-CONFIRMS this exact 9-item list verbatim, again paired with a `[1m]`
+	// model (`claude-opus-5[1m]`), alongside the 8-item non-1M variant in the
+	// same batch (crack/cc2224/SPEC.md §3). Keep it semantically
 	// separate from ClaudeAnthropicBetaFull: request betas and reported telemetry
 	// betas vary on different axes even when this 1M list happens to be a prefix.
 	ClaudeReportedBetas = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07"

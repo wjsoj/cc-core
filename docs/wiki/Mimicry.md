@@ -2,7 +2,7 @@
 
 > [← Wiki 首页](Home) · [架构总览](Architecture)
 
-> 本页所有行号对应 `cc-core` 仓库 `main` 分支当前源码（Claude 目标 `2.1.220`，Codex 目标 `0.144.4`）。
+> 本页所有行号对应 `cc-core` 仓库 `main` 分支当前源码（Claude 目标 `2.1.224`，Codex 目标 `0.144.4`）。
 
 ## 概览
 
@@ -36,24 +36,24 @@
 
 | 常量 | 值 | 出处 capture | 行号 |
 |---|---|---|---|
-| `CLICurrentVersion` | `2.1.220` | `crack/cc2220/SPEC.md`（2026-07-30 macOS + 2026-07-31 Linux） | `fingerprint.go:40` |
-| `ClaudeCLIUserAgent` | `claude-cli/2.1.220 (external, cli)` | 同上，20/20 主请求一致 | `fingerprint.go:41` |
-| `ClaudeStainlessLang` | `js` | cc2220 SPEC「Main /v1/messages request」 | `fingerprint.go:42` |
+| `CLICurrentVersion` | `2.1.224` | `crack/cc2224/SPEC.md`（2026-08-07 Linux，完整 login→对话链路） | `fingerprint.go:48` |
+| `ClaudeCLIUserAgent` | `claude-cli/2.1.224 (external, cli)` | 同上 | `fingerprint.go:49` |
+| `ClaudeStainlessLang` | `js` | cc2224 SPEC §1（2.1.220→224 未变） | `fingerprint.go:50` |
 | `ClaudeStainlessRuntime` | `node` | 同上 | `fingerprint.go:43` |
-| `ClaudeStainlessRuntimeV` | `v26.3.0` | 2.1.191 起（Node v24.3.0→v26.3.0），cc2220 复核未变；同时喂给 sidecar 遥测 `env.node_version` | `fingerprint.go:48` |
-| `ClaudeStainlessPackageV` | `0.94.0` | cc2220 SPEC（@anthropic-ai/sdk 0.94.0） | `fingerprint.go:49` |
-| `ClaudeStainlessOS` | `Linux` | **刻意不取自 capture**：cc2220 抓包主机是 `MacOS`，SPEC 明确要求不要把抓包主机属性写进合成 host profile | `fingerprint.go:50` |
-| `ClaudeStainlessArch` | `x64` | cc2220 SPEC | `fingerprint.go:51` |
-| `ClaudeStainlessTimeout` | `600` | cc2220 SPEC（main 有；`count_tokens` **无**） | `fingerprint.go:52` |
-| `ClaudeStainlessRetryCnt` | `0` | cc2220 SPEC（两类都有） | `fingerprint.go:53` |
-| `ClaudeAnthropicVersion` | `2023-06-01` | cc2220 / COMPARE.md（OAuth 与 apikey 相同） | `fingerprint.go:54` |
-| `ClaudeAnthropicBetaFull` | 13 项，`claude-code-20250219,oauth-2025-04-20,interleaved-thinking-…,…,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07` | `crack/cc2220/SPEC.md` §1 + §1a 非 1M 列表（macOS Sonnet 5 20 条 + Linux opus-4-8 5 条，跨两主机两 OS） | `fingerprint.go:81` |
-| `ClaudeAnthropicBeta1M` | 15 项（第 3 位插 `context-1m-2025-08-07`，`effort` 与 `extended-cache-ttl` 之间插 `fallback-credit-2026-06-01`） | `crack/cc2220/SPEC.md` §1a，`rows-2026-07-31/15-v1_messages_1m.json`，**单样本** | `fingerprint.go:94` |
-| `ClaudeAnthropicBetaCountTokens` | 5 项，含独有的 `token-counting-2024-11-01` | `crack/cc2220/SPEC.md` §1b（4 个样本完全一致） | `fingerprint.go:100` |
-| `ClaudeReportedBetas` | 9 项，止于 `mid-conversation-system-2026-04-07` | 遥测体（event_logging / datadog），`crack/cc2214/SPEC.md` §3 复核，2.1.156→2.1.214 未变 | `fingerprint.go:116` |
-| `ClaudeAnthropicBetaApikey` | 8 项，无 `oauth-*` / `advanced-tool-use-*` / `cache-diagnosis-*`，含 `context-1m-2025-08-07` | `crack/apikey/rows/*-POST-…v1_messages`；差集分析见 `crack/COMPARE.md` §3.2 | `fingerprint.go:126` |
-| `ClaudeDefaultCacheTTL` | `1h` | cc2220 主体 system 块 | `fingerprint.go:134` |
-| `ClaudeDefaultCacheScope` | `global` | 同上（倒数第二块） | `fingerprint.go:135` |
+| `ClaudeStainlessRuntimeV` | `v26.3.0` | 2.1.191 起（Node v24.3.0→v26.3.0），cc2224 复核未变；同时喂给 sidecar 遥测 `env.node_version` | `fingerprint.go:58` |
+| `ClaudeStainlessPackageV` | `0.94.0` | cc2224 SPEC（@anthropic-ai/sdk 0.94.0，未变） | `fingerprint.go:59` |
+| `ClaudeStainlessOS` | `Linux` | **刻意不取自 capture**：cc2220 抓包主机是 `MacOS`（cc2224 恰好是 Linux，但这不构成新约束），SPEC 明确要求不要把抓包主机属性写进合成 host profile | `fingerprint.go:67` |
+| `ClaudeStainlessArch` | `x64` | cc2224 SPEC | `fingerprint.go:68` |
+| `ClaudeStainlessTimeout` | `600` | cc2224 SPEC（main 有；`count_tokens` **无**，后者 2.1.224 未复核） | `fingerprint.go:69` |
+| `ClaudeStainlessRetryCnt` | `0` | cc2224 SPEC | `fingerprint.go:70` |
+| `ClaudeAnthropicVersion` | `2023-06-01` | cc2224 / COMPARE.md（OAuth 与 apikey 相同） | `fingerprint.go:71` |
+| `ClaudeAnthropicBetaFull` | 13 项，`claude-code-20250219,oauth-2025-04-20,interleaved-thinking-…,…,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07` | `crack/cc2220/SPEC.md` §1 + §1a 非 1M 列表（macOS Sonnet 5 20 条 + Linux opus-4-8 5 条，跨两主机两 OS）。**cc2224 未复核**（该次抓包全程 1M，无非 1M 主请求） | `fingerprint.go:102` |
+| `ClaudeAnthropicBeta1M` | 15 项（第 3 位插 `context-1m-2025-08-07`，`effort` 与 `extended-cache-ttl` 之间插 `fallback-credit-2026-06-01`） | `crack/cc2220/SPEC.md` §1a + `crack/cc2224/SPEC.md` §1（opus-5 1M）逐项复核，**两版本两抓包** | `fingerprint.go:116` |
+| `ClaudeAnthropicBetaCountTokens` | 5 项，含独有的 `token-counting-2024-11-01` | `crack/cc2220/SPEC.md` §1b（4 个样本完全一致）。**cc2224 未复核**（无 count_tokens 请求） | `fingerprint.go:125` |
+| `ClaudeReportedBetas` | 9 项，止于 `mid-conversation-system-2026-04-07` | 遥测体（event_logging / datadog），`crack/cc2224/SPEC.md` §3 逐字节复核，2.1.156→2.1.224 未变 | `fingerprint.go:144` |
+| `ClaudeAnthropicBetaApikey` | 8 项，无 `oauth-*` / `advanced-tool-use-*` / `cache-diagnosis-*`，含 `context-1m-2025-08-07` | `crack/apikey/rows/*-POST-…v1_messages`；差集分析见 `crack/COMPARE.md` §3.2 | `fingerprint.go:154` |
+| `ClaudeDefaultCacheTTL` | `1h` | cc2224 主体 system 块（未变） | `fingerprint.go:162` |
+| `ClaudeDefaultCacheScope` | `global` | 同上（倒数第二块） | `fingerprint.go:163` |
 | `ClaudeCodeSystemPrompt` | `You are Claude Code, Anthropic's official CLI for Claude.` | cc2220 system[1]（57B，无 cache_control） | `fingerprint.go:140` |
 | `ClaudeCodePromptPrefixes` | 4 条前缀（Claude Code / Claude Agent SDK / file search specialist / summarizing conversations） | 官方各请求类前缀族 | `fingerprint.go:144-149` |
 | `fingerprintSalt` | `59cf53e54c78`（非导出） | 2.1.198 bundle 静态提取的 `awo`，cc2220 静态分析再确认 | `body.go:49` |
@@ -154,7 +154,7 @@ func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byt
 **改写四步（`body.go:119-146`）：**
 
 1. `rewriteSystemForOAuth`（`body.go:215`）重建 `system`：
-   - `system[0]` = 计费块（`buildBillingBlock`，`body.go:320`），文本 `x-anthropic-billing-header: cc_version=2.1.220.{3hex}; cc_entrypoint=cli; cch=00000;`
+   - `system[0]` = 计费块（`buildBillingBlock`，`body.go:320`），文本 `x-anthropic-billing-header: cc_version=2.1.224.{3hex}; cc_entrypoint=cli; cch=00000;`
    - `system[1]` = `ClaudeCodeSystemPrompt`，**裸块，无 cache_control**
    - `system[2..]` = 客户端原 system（先 `stripCacheControlFromBlocks`，再 `applySystemCacheBreakpoints`）。客户端 prompt **留在 system 里**，不搬进 messages —— 真实 CC 从不搬，`message[0..1]` 出现杂散 user/assistant 对本身就是第三方工具指纹（`body.go:212-214`）。
 2. `stripMessageCacheControl`（`body.go:432`）+ `addMessageCacheBreakpoints`（`body.go:485`）：只在**最后一条 message 的最后一个 block** 打 `{ephemeral, ttl:1h}`；若客户端已设 ttl 则尊重客户端（`body.go:543-547`）。
@@ -373,7 +373,7 @@ sequenceDiagram
 | Genuine 非 Preserve 且非合法 Rewrite | `invalid prepared genuine rewrite` | `:442-443` |
 | class 非法 | `invalid prepared request class` | `:450-451` |
 
-> **beta 向量为什么必须由下游提供**（`:405-409`）：真实 CC 的请求 beta 是"请求类 + 上下文模式"的特征向量——main、1M、title 三者不同——不是一个全局版本常量。缺了下游向量就无法安全合成正确的 2.1.220 列表，于是 fail-closed，而不是把所有请求默认成 `Full`。
+> **beta 向量为什么必须由下游提供**（`:405-409`）：真实 CC 的请求 beta 是"请求类 + 上下文模式"的特征向量——main、1M、title 三者不同——不是一个全局版本常量。缺了下游向量就无法安全合成正确的 2.1.224 列表，于是 fail-closed，而不是把所有请求默认成 `Full`。
 
 ### Apply 阶段各路径写的头
 
