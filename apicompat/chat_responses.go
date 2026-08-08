@@ -101,7 +101,16 @@ func ChatCompletionsToResponses(body []byte) ([]byte, error) {
 		out["text"] = map[string]any{"format": format}
 	}
 
-	instructions, input, err := chatMessagesToResponsesInput(msgs)
+	// `instructions` is passed through only when the client sent it. It is NOT
+	// synthesized from system messages: on the Codex backend that field always
+	// carries the CLI's own system prompt, so overwriting it with an arbitrary
+	// client prompt is both a fingerprint deviation and a departure from the
+	// placement that is proven in production. System messages become input
+	// items instead (see chatMessagesToResponsesInput).
+	if v, ok := raw["instructions"].(string); ok && v != "" {
+		out["instructions"] = v
+	}
+	input, err := chatMessagesToResponsesInput(msgs)
 	if err != nil {
 		return nil, err
 	}
@@ -109,9 +118,6 @@ func ChatCompletionsToResponses(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("chat/completions body produced no input items")
 	}
 	out["input"] = input
-	if instructions != "" {
-		out["instructions"] = instructions
-	}
 	if tools := chatToolsToResponses(raw["tools"], raw["functions"]); len(tools) > 0 {
 		out["tools"] = tools
 	}
@@ -151,10 +157,9 @@ func maxOutputTokens(raw map[string]any) (int, bool) {
 	return n, true
 }
 
-// chatMessagesToResponsesInput splits a Chat Completions messages array into
-// the out-of-band instructions string and the Responses input items.
-func chatMessagesToResponsesInput(msgs []any) (instructions string, input []any, err error) {
-	var systems []string
+// chatMessagesToResponsesInput converts a Chat Completions messages array into
+// Responses input items, preserving order.
+func chatMessagesToResponsesInput(msgs []any) (input []any, err error) {
 	input = make([]any, 0, len(msgs))
 	for _, mv := range msgs {
 		m, _ := mv.(map[string]any)
@@ -163,12 +168,18 @@ func chatMessagesToResponsesInput(msgs []any) (instructions string, input []any,
 		}
 		switch role, _ := m["role"].(string); role {
 		case "system", "developer":
-			// Responses carries the system prompt out-of-band. Concatenating
-			// keeps multi-system-message clients working; emitting developer
-			// input items instead reorders badly once tool results interleave.
-			if t := flattenContentText(m["content"]); t != "" {
-				systems = append(systems, t)
+			// Kept in place as an input item rather than hoisted into
+			// `instructions`, so a client's system prompt cannot displace the
+			// field the Codex backend expects to hold the CLI's own prompt.
+			// mimicry.SanitizeCodexRequestBody rewrites role "system" to
+			// "developer" for that backend, which rejects "system" here.
+			parts := contentParts(m["content"], "input_text")
+			if len(parts) == 0 {
+				continue
 			}
+			input = append(input, map[string]any{
+				"type": "message", "role": role, "content": parts,
+			})
 		case "tool", "function":
 			callID, _ := m["tool_call_id"].(string)
 			if callID == "" {
@@ -191,7 +202,7 @@ func chatMessagesToResponsesInput(msgs []any) (instructions string, input []any,
 			})
 		}
 	}
-	return strings.Join(systems, "\n\n"), input, nil
+	return input, nil
 }
 
 // assistantToResponsesItems renders one assistant turn as Responses items: at
@@ -363,10 +374,17 @@ func chatToolsToResponses(toolsV, functionsV any) []any {
 
 func flattenFunctionTool(fn map[string]any) map[string]any {
 	flat := map[string]any{"type": "function"}
-	for _, k := range []string{"name", "description", "strict"} {
+	for _, k := range []string{"name", "description"} {
 		if v, ok := fn[k]; ok {
 			flat[k] = v
 		}
+	}
+	// An absent `strict` is pinned to false rather than left to the backend's
+	// default, so schema enforcement never turns itself on for a tool whose
+	// schema was written without it.
+	flat["strict"] = false
+	if v, ok := fn["strict"].(bool); ok {
+		flat["strict"] = v
 	}
 	flat["parameters"] = normalizeToolParameters(fn["parameters"])
 	return flat

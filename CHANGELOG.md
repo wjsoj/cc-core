@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.8.73 — apicompat differentially verified against sub2api
+
+`apicompat` was written from the two APIs' semantics, so the mapping was only
+as good as the unit tests around it. This release checks it the honest way:
+the same corpus is pushed through sub2api's production converter and through
+ours, and the outputs are compared field by field. (sub2api runs this exact
+bridge for ChatGPT OAuth accounts, where the internal API only speaks
+Responses — so it is a real oracle, not a second opinion.)
+
+Request direction, 18 cases: 15 semantically identical, and the corpus found
+one real divergence, now fixed.
+
+- **System messages are no longer folded into `instructions`.** They stay as
+  input items, in order, exactly where the proven implementation puts them.
+  `instructions` is now passed through only when the client sent it. On the
+  Codex backend that field always carries the CLI's own system prompt, so
+  overwriting it with an arbitrary client prompt was both a fingerprint
+  deviation and a departure from the shape that is known to work.
+- `tools[].strict` defaults to `false` when the client omitted it, rather than
+  being left to the backend.
+
+Three differences are deliberate and kept, in both cases because the reference
+looks under-specified rather than intentional:
+
+- `tool_choice` for a forced function is flattened to the documented Responses
+  shape `{"type":"function","name":…}`; sub2api passes Chat's nested
+  `{"type":"function","function":{"name":…}}` straight through.
+- A tool whose `parameters` are absent gets `{"type":"object","properties":{}}`;
+  Responses requires `properties` on object schemas, and sub2api applies that
+  normalization on its Anthropic path but not this one.
+
+Response direction, 7 streaming cases: identical on every field a client
+consumes — text, reasoning, `finish_reason` (including length / content_filter
+/ failed), usage, and parallel tool calls' ids, names, assembled arguments and
+indexes. The only difference is that this package emits the `[DONE]` sentinel
+from the converter while sub2api writes it in its transport layer.
+
+Cosmetic, verified equivalent: this package emits `"type":"message"` on input
+items and the `[{"type":"input_text",…}]` content form, where sub2api omits the
+type and uses the bare-string form. Both are accepted; the array form is what
+real codex-tui sends and what `mimicry.SanitizeCodexRequestBody` already
+promotes bare strings into.
+
 ## v0.8.72 — chat/completions ⇄ Responses bridge + a lint gate
 
 ### New — `apicompat/`

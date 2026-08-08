@@ -37,10 +37,11 @@ func TestChatToResponsesBasic(t *testing.T) {
 	if got["model"] != "gpt-5.6-sol" {
 		t.Errorf("model = %v", got["model"])
 	}
-	// Multiple system messages concatenate into out-of-band instructions
-	// instead of becoming input items.
-	if got["instructions"] != "be terse\n\nand polite" {
-		t.Errorf("instructions = %q", got["instructions"])
+	// System messages stay as input items in order. `instructions` is left
+	// alone so a client prompt cannot displace the field the Codex backend
+	// expects to hold the CLI's own prompt.
+	if _, ok := got["instructions"]; ok {
+		t.Errorf("instructions synthesized from system messages: %v", got["instructions"])
 	}
 	reasoning, _ := got["reasoning"].(map[string]any)
 	if reasoning["effort"] != "high" || reasoning["summary"] != "auto" {
@@ -48,12 +49,23 @@ func TestChatToResponsesBasic(t *testing.T) {
 	}
 
 	input, _ := got["input"].([]any)
-	if len(input) != 1 {
-		t.Fatalf("input len = %d, want 1", len(input))
+	if len(input) != 3 {
+		t.Fatalf("input len = %d, want system+system+user", len(input))
 	}
-	item, _ := input[0].(map[string]any)
+	for i, want := range []string{"be terse", "and polite"} {
+		sys, _ := input[i].(map[string]any)
+		if sys["role"] != "system" {
+			t.Errorf("input[%d].role = %v, want system", i, sys["role"])
+		}
+		parts, _ := sys["content"].([]any)
+		part, _ := parts[0].(map[string]any)
+		if part["text"] != want {
+			t.Errorf("input[%d] text = %v, want %q", i, part["text"], want)
+		}
+	}
+	item, _ := input[2].(map[string]any)
 	if item["type"] != "message" || item["role"] != "user" {
-		t.Fatalf("input[0] = %v", item)
+		t.Fatalf("input[2] = %v", item)
 	}
 	parts, _ := item["content"].([]any)
 	part, _ := parts[0].(map[string]any)
@@ -152,6 +164,10 @@ func TestChatToResponsesToolRoundTrip(t *testing.T) {
 	tool, _ := tools[0].(map[string]any)
 	if tool["type"] != "function" || tool["name"] != "get_weather" || tool["description"] != "look up" {
 		t.Errorf("tool = %v", tool)
+	}
+	// An absent strict is pinned to false rather than left to the backend.
+	if tool["strict"] != false {
+		t.Errorf("tool.strict = %v, want false", tool["strict"])
 	}
 	if _, nested := tool["function"]; nested {
 		t.Errorf("tool kept chat's function nesting: %v", tool)
@@ -261,9 +277,8 @@ func TestChatToResponsesRejectsUnusableBodies(t *testing.T) {
 	for _, body := range []string{
 		`not json`,
 		`{"model":"m"}`,
-		// System-only conversations produce no input items; the caller rolls
-		// back to an API-key credential rather than 400ing the client.
-		`{"model":"m","messages":[{"role":"system","content":"x"}]}`,
+		// Nothing that maps to an input item at all.
+		`{"model":"m","messages":[{"role":"user","content":""}]}`,
 	} {
 		if _, err := ChatCompletionsToResponses([]byte(body)); err == nil {
 			t.Errorf("expected error for %s", body)
