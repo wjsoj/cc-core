@@ -1,6 +1,7 @@
 package mimicry
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 )
@@ -93,6 +94,22 @@ func CodexRoutingHint(model, serviceTier string) string {
 		hint += ";tier=" + CodexServiceTierFlex
 	}
 	return hint
+}
+
+// CodexModelAndTier reads the model and service_tier out of a Codex request
+// body. Callers pass it the body they are ABOUT TO SEND — after sanitization
+// and any model-map rewrite — so the routing hint and the body can never
+// disagree about which model this request is for. Missing fields come back
+// empty, which CodexRoutingHint handles by omitting the hint or the tier.
+func CodexModelAndTier(body []byte) (model, serviceTier string) {
+	var b struct {
+		Model       string `json:"model"`
+		ServiceTier string `json:"service_tier"`
+	}
+	if json.Unmarshal(body, &b) != nil {
+		return "", ""
+	}
+	return b.Model, b.ServiceTier
 }
 
 // validHeaderValue reports whether s is safe to use as an HTTP header value:

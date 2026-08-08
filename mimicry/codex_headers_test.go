@@ -110,3 +110,20 @@ func TestCodexVersionConsistency(t *testing.T) {
 		t.Errorf("User-Agent %q should carry the version twice (prefix + suffix)", CodexCLIUserAgent)
 	}
 }
+
+func TestCodexModelAndTier(t *testing.T) {
+	for _, tc := range []struct{ name, body, wantModel, wantTier string }{
+		{"both", `{"model":"gpt-5.6-sol","service_tier":"priority","input":[]}`, "gpt-5.6-sol", "priority"},
+		{"model only", `{"model":"gpt-5.5","input":[]}`, "gpt-5.5", ""},
+		{"neither", `{"input":[]}`, "", ""},
+		{"not json", `garbage`, "", ""},
+		{"empty", ``, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, tier := CodexModelAndTier([]byte(tc.body))
+			if m != tc.wantModel || tier != tc.wantTier {
+				t.Errorf("CodexModelAndTier() = (%q,%q), want (%q,%q)", m, tier, tc.wantModel, tc.wantTier)
+			}
+		})
+	}
+}
