@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.8.72 — chat/completions ⇄ Responses bridge + a lint gate
+
+### New — `apicompat/`
+
+The ChatGPT Codex backend hosts only `/codex/responses`. Every
+OpenAI-compatible client that speaks `/v1/chat/completions` (Cherry Studio,
+OpenWebUI, LangChain, a bare `openai` SDK) was therefore *structurally*
+unroutable to a subscription OAuth credential and could only be served by a paid
+relay API key — no matter how idle the subscription accounts were. That is a
+protocol gap, not a scheduling one, so no amount of pool tuning could fix it.
+
+`apicompat` is pure data translation in both directions: no HTTP, no gin, no
+credential awareness. Callers own transport, keepalive and billing.
+
+- `ChatCompletionsToResponses(body)` — request direction. Handles system/
+  developer messages folding into out-of-band `instructions`, tool round-trips
+  (`tool_calls` → `function_call`, `role:"tool"` → `function_call_output`),
+  legacy `functions[]` / `function_call`, tool-schema normalization (Responses
+  requires `properties` on object schemas), multimodal input with empty base64
+  data URIs dropped, prior assistant reasoning preserved across turns,
+  `reasoning_effort` → `reasoning.effort`, `json_schema` `response_format` →
+  `text.format`, `max_tokens`/`max_completion_tokens` → `max_output_tokens` with
+  a 128 floor, and sampling parameters withheld from reasoning models (which
+  reject them).
+- `ResponsesToChatCompletion(response, model, created)` — non-streaming reply,
+  with reasoning surfaced as `reasoning_content` rather than folded into the
+  answer, and `incomplete_details` mapped onto `finish_reason`.
+- `NewStreamState` / `Translate` / `Finalize` / `IsDoneFrame` — the streaming
+  state machine, mapping each Responses SSE event onto zero or more
+  `chat.completion.chunk` frames. Parallel tool calls keep distinct indexes
+  (tracked by both `output_index` and `item_id`, since backends disagree about
+  which they populate), and `Finalize` closes a truncated upstream so the client
+  sees a short answer instead of a disconnect.
+
+Callers targeting the Codex backend should still run the converted body through
+`mimicry.SanitizeCodexRequestBody`, which owns that backend's narrower
+whitelist.
+
+Field mappings follow the behaviour of the LGPL project
+github.com/Wei-Shaw/sub2api, which covers the same protocol pair in production.
+The mappings are facts about the two APIs; this is an independent MIT
+implementation of them, not a port of that code.
+
+### Chore — lint gate
+
+cc-core had no lint config, no CI and no Makefile. Adds `.golangci.yml` (default
+linter set + gofmt/goimports) and clears all 44 findings it reported. Notable:
+`auth.fileFormat` is deleted — dead since `parseFile` went map-based, and already
+drifted out of sync with the real on-disk shape.
+
 ## v0.8.66 — ChatGPT subscription/billing probe
 
 Adds the commercial-state counterpart to the wham/usage quota probe: which plan
