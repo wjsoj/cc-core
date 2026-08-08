@@ -161,3 +161,31 @@ func DemoteCapacityCode(payload []byte) ([]byte, bool) {
 	}
 	return out, true
 }
+
+// ClientFrame decides what one upstream frame should look like by the time it
+// reaches the client, for a relay that has no failover left — a WebSocket
+// session, or an HTTP stream that has already committed output. It reports
+// whether upstream shed the turn, and whether that shed was about capacity.
+//
+// Withholding the frame is strictly better whenever the caller can still fail
+// over; use Classify directly there. This is the other case, where the client
+// must be told something: the frame is forwarded with only the two
+// session-ending capacity codes demoted, so the CLI backs off and retries
+// instead of ending the session, and the human-readable message survives.
+//
+// capacity splits ClassRetryable in half, and the split decides who is to
+// blame. server_is_overloaded / slow_down are a property of the model and the
+// moment — the same request would shed on any account — so nothing about the
+// credential should change. Quota and rate codes ARE account-scoped, and are
+// the only half worth moving a session off its credential for. They are never
+// demoted: the CLI handles them non-terminally and parses its retry delay off
+// the original code.
+//
+// Record health and billing from the ORIGINAL payload, not the returned one.
+func ClientFrame(payload []byte) (out []byte, shed, capacity bool) {
+	if Classify(payload) != ClassRetryable {
+		return payload, false, false
+	}
+	demoted, isCapacity := DemoteCapacityCode(payload)
+	return demoted, true, isCapacity
+}

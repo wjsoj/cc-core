@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.8.74 — one place to decide what a shed frame looks like to the client
+
+`DemoteCapacityCode` gave callers the rewrite but left them to assemble the
+policy around it, and both consumers assembled the same one independently: a
+WS relay cannot fail over, so it must forward the frame with only the two
+session-ending capacity codes demoted. That policy is now `codexerr.ClientFrame`.
+
+- **`ClientFrame(payload) (out, shed, capacity)`** — for a relay with no
+  failover left (a WebSocket session, or an HTTP stream that already committed
+  output). Returns the frame as the client should see it, whether upstream shed
+  the turn, and whether the shed was capacity.
+
+  `capacity` splits `ClassRetryable` in half and the split decides who is to
+  blame: `server_is_overloaded` / `slow_down` belong to the model and the
+  moment — the same request would shed on any account, so nothing about the
+  credential should change — while quota and rate codes are account-scoped and
+  are the only half worth moving a session off its credential for. Those are
+  never demoted; the CLI handles them non-terminally and parses its retry delay
+  off the original code.
+
+  Withholding the frame is still strictly better when the caller *can* fail
+  over; use `Classify` directly there.
+
+The frame this exists for was captured in production once CPA-Claude's WS relay
+finally logged it — inside an otherwise-healthy 200 socket:
+
+```
+{"type":"error","error":{"type":"service_unavailable_error",
+ "code":"server_is_overloaded","message":"Our servers are currently
+ overloaded. Please try again later."}}
+```
+
+followed by `response.failed`. Relayed verbatim it reaches codex-rs as
+`ApiError::ServerOverloaded`, which is terminal — the session dies with
+"Selected model is at capacity. Please try a different model."
+
 ## v0.8.73 — apicompat differentially verified against sub2api
 
 `apicompat` was written from the two APIs' semantics, so the mapping was only
