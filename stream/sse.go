@@ -23,12 +23,12 @@ import (
 // payload, doesn't dispatch to handlers, doesn't manage backpressure.
 // Wire those concerns at the call site.
 type SSEScanner struct {
-	r          *bufio.Reader
-	curLine    []byte
-	curEvent   string
-	curData    []byte // non-nil when curLine started with "data:"
-	scanErr    error
-	bufSize    int
+	r        *bufio.Reader
+	curLine  []byte
+	curEvent string
+	curData  []byte // non-nil when curLine started with "data:"
+	scanErr  error
+	bufSize  int
 }
 
 // NewSSEScanner returns a scanner over r. bufSize is the bufio reader

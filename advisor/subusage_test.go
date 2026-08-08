@@ -57,12 +57,13 @@ func TestSnapshotIsCopy(t *testing.T) {
 	var s SubUsage
 	s.Merge(IterationUsage{Type: "advisor_message", Model: "opus", InputTokens: 100})
 
+	// Mutating the returned map must not reach back into the source: the
+	// self-assignment this replaced was a no-op, and the `ok` it checked was
+	// the literal true, so the delete below was the only real assertion.
 	snap := s.Snapshot()
-	snap["opus"] = snap["opus"] // touch
-	// Mutate the snapshot map.
 	delete(snap, "opus")
-	if _, ok := s.Snapshot()["opus"].InputTokens, true; !ok || s.Snapshot()["opus"].InputTokens != 100 {
-		t.Fatal("Snapshot should return an independent copy")
+	if got := s.Snapshot()["opus"].InputTokens; got != 100 {
+		t.Fatalf("Snapshot should return an independent copy; source InputTokens = %d, want 100", got)
 	}
 }
 

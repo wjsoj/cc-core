@@ -152,15 +152,15 @@ func TestBootstrapFiresAllStepsWithCorrectUA(t *testing.T) {
 		"/api/eval/sdk-zAZezfDKGoZuXXKe": {"Bun/", "oauth-2025-04-20"},
 		// account/settings + grove use claude-cli (NOT claude-code) — verified in
 		// both the 2.1.191 and 2.1.214 live captures (crack/cc2214/SPEC.md §2).
-		"/api/oauth/account/settings":    {"claude-cli/", "oauth-2025-04-20"},
-		"/api/claude_code_grove":         {"claude-cli/", "oauth-2025-04-20"},
-		"/api/claude_cli/bootstrap":      {"claude-code/", "oauth-2025-04-20"},
-		"/api/claude_code_penguin_mode":  {"axios/", "oauth-2025-04-20"},
-		"/v1/messages":                   {"claude-cli/", quotaProbeBeta},
+		"/api/oauth/account/settings":   {"claude-cli/", "oauth-2025-04-20"},
+		"/api/claude_code_grove":        {"claude-cli/", "oauth-2025-04-20"},
+		"/api/claude_cli/bootstrap":     {"claude-code/", "oauth-2025-04-20"},
+		"/api/claude_code_penguin_mode": {"axios/", "oauth-2025-04-20"},
+		"/v1/messages":                  {"claude-cli/", quotaProbeBeta},
 		// mcp-registry uses claude-cli (NOT axios) — 2.1.191 + cc2214, 8 samples.
-		"/mcp-registry/v0/servers":       {"claude-cli/", ""},
-		"/v1/mcp_servers":                {"axios/", "mcp-servers-2025-12-04"},
-		"/v1/code/triggers":              {"claude-cli/", "ccr-triggers-2026-01-30"},
+		"/mcp-registry/v0/servers": {"claude-cli/", ""},
+		"/v1/mcp_servers":          {"axios/", "mcp-servers-2025-12-04"},
+		"/v1/code/triggers":        {"claude-cli/", "ccr-triggers-2026-01-30"},
 		// /claude-code-releases/latest is on a different host (downloads.claude.ai)
 		// — won't hit our test server, so it's not in this list.
 	}

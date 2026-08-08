@@ -1,0 +1,48 @@
+# cc-core keeps golangci-lint's default linter set (errcheck, govet,
+# ineffassign, staticcheck, unused) plus gofmt/goimports.
+#
+# It deliberately does NOT mirror hypitoken's stricter set (gosec, revive,
+# gocritic, prealloc, …). Those fire ~60 times across this module, and almost
+# all of it is false positives that would need a wall of exclusions to silence:
+# gosec reads OAuth endpoint constants as hardcoded credentials (G101), flags
+# the `refresh_token` / `client_token` struct fields that exist precisely to be
+# serialized into the credential file and the request log (G117), and treats
+# the credential-directory walk as path traversal (G703). Adopting that set is
+# a deliberate cleanup with its own justified exclusions, not a side effect of
+# adding a lint gate.
+version: "2"
+linters:
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Unchecked errors on deferred Close / Flush — standard Go idiom.
+      - linters: [errcheck]
+        source: 'defer '
+      # The Datadog heartbeat sidecar (consts + runDatadogHeartbeat +
+      # isHeartbeatIdle + heartbeatActiveWindow) is a fully-built but
+      # deliberately-not-wired traffic-emulation feature, retained for future
+      # re-enable — see the sidecar design notes in CLAUDE.md. Keep it out of
+      # the unused report without disabling `unused` for the rest of the file.
+      - linters: [unused]
+        path: sidecar/sidecar.go
+        text: '[Dd]atadog|[Hh]eartbeat'
+    paths:
+      - vendor
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

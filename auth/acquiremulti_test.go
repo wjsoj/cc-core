@@ -54,13 +54,13 @@ func TestAcquireMultiEmptyGroupsTreatedAsPublic(t *testing.T) {
 func mustOAuth(t *testing.T, id, provider, group string, maxConc int) *Auth {
 	t.Helper()
 	a := &Auth{
-		ID:             id,
-		Provider:       provider,
-		Group:          group,
-		Kind:           KindOAuth,
-		AccessToken:    "fake-token",
-		ExpiresAt:      time.Now().Add(time.Hour),
-		MaxConcurrent:  maxConc,
+		ID:            id,
+		Provider:      provider,
+		Group:         group,
+		Kind:          KindOAuth,
+		AccessToken:   "fake-token",
+		ExpiresAt:     time.Now().Add(time.Hour),
+		MaxConcurrent: maxConc,
 	}
 	return a
 }

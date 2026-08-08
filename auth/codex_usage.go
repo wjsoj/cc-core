@@ -59,7 +59,7 @@ type CodexUsageInfo struct {
 	// RateLimitResetCredits reports how many one-off limit-reset credits remain.
 	RateLimitResetCredits *CodexUsageResetCredits `json:"rate_limit_reset_credits,omitempty"`
 	// Promo / ReferralBeacon are surfaced-as-is (usually null).
-	Promo         json.RawMessage `json:"promo,omitempty"`
+	Promo          json.RawMessage `json:"promo,omitempty"`
 	ReferralBeacon json.RawMessage `json:"referral_beacon,omitempty"`
 
 	// Updated is when we last successfully fetched this view.
@@ -94,12 +94,12 @@ type CodexUsageRateWindow struct {
 }
 
 type CodexUsageCredits struct {
-	HasCredits           bool     `json:"has_credits"`
-	Unlimited            bool     `json:"unlimited"`
-	OverageLimitReached  bool     `json:"overage_limit_reached"`
-	Balance              string   `json:"balance"`
-	ApproxLocalMessages  []int    `json:"approx_local_messages"`
-	ApproxCloudMessages  []int    `json:"approx_cloud_messages"`
+	HasCredits          bool   `json:"has_credits"`
+	Unlimited           bool   `json:"unlimited"`
+	OverageLimitReached bool   `json:"overage_limit_reached"`
+	Balance             string `json:"balance"`
+	ApproxLocalMessages []int  `json:"approx_local_messages"`
+	ApproxCloudMessages []int  `json:"approx_cloud_messages"`
 }
 
 type CodexUsageSpendControl struct {

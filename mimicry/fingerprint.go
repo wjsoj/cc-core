@@ -64,8 +64,8 @@ const (
 	// per-account synthetic host in auth.HostProfile and the platform fields
 	// the sidecar telemetry sends. A "MacOS" header over Linux host telemetry
 	// is a louder tell than either alone. Do not "fix" this to match crack/.
-	ClaudeStainlessOS   = "Linux"
-	ClaudeStainlessArch = "x64"
+	ClaudeStainlessOS       = "Linux"
+	ClaudeStainlessArch     = "x64"
 	ClaudeStainlessTimeout  = "600"
 	ClaudeStainlessRetryCnt = "0"
 	ClaudeAnthropicVersion  = "2023-06-01"

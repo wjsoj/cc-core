@@ -40,8 +40,8 @@ import (
 // prose never matches. The hyphen form also matches the already-canonical
 // sentence; the replacer makes that a no-op so canonical text is never touched.
 var (
-	datelineHyphenRe = regexp.MustCompile("Today['’ʼʹ]s date is ([0-9]{4})-([0-9]{2})-([0-9]{2})\\.")
-	datelineSlashRe  = regexp.MustCompile("Today['’ʼʹ]s date is ([0-9]{4})/([0-9]{2})/([0-9]{2})\\.")
+	datelineHyphenRe = regexp.MustCompile(`Today['’ʼʹ]s date is ([0-9]{4})-([0-9]{2})-([0-9]{2})\.`)
+	datelineSlashRe  = regexp.MustCompile(`Today['’ʼʹ]s date is ([0-9]{4})/([0-9]{2})/([0-9]{2})\.`)
 )
 
 // NormalizeDateline scans an Anthropic /v1/messages request body and rewrites

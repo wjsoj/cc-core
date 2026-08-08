@@ -32,22 +32,6 @@ const (
 	anthropicOAuthUA = "axios/1.15.2"
 )
 
-// fileFormat is the JSON layout written by `claude setup-token` / our own
-// login flow. We accept extra keys and preserve them on save.
-type fileFormat struct {
-	Type          string         `json:"type"`
-	AccessToken   string         `json:"access_token"`
-	RefreshToken  string         `json:"refresh_token"`
-	Email         string         `json:"email,omitempty"`
-	Expire        string         `json:"expired,omitempty"` // RFC3339 string
-	ExpiresAt     int64          `json:"expires_at,omitempty"`
-	ProxyURL      string         `json:"proxy_url,omitempty"`
-	MaxConcurrent int            `json:"max_concurrent,omitempty"`
-	Disabled      bool           `json:"disabled,omitempty"`
-	Label         string         `json:"label,omitempty"`
-	Extra         map[string]any `json:"-"`
-}
-
 // DefaultClaudeOAuthModelMap folds every retired Claude Opus and Sonnet
 // generation onto the current one. It is injected into a Claude (Anthropic)
 // OAuth credential's ModelMap when the credential file has no `model_map` key
