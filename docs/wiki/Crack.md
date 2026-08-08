@@ -44,8 +44,8 @@
 | `crack/cc2220/rows/` | 第一次抓包（macOS x64，Sonnet 5，2026-07-30），29 文件 | 启动 quota 探针 + 完整 10 轮连续对话的 main/title/prompt_suggestion + telemetry + auxiliary |
 | `crack/cc2220/rows-2026-07-31/` | 第二次抓包（Arch Linux，opus-4-8 + opus-5 1M，2026-07-31），16 文件 | **完整全新 OAuth 登录** + 启动 bootstrap + 非 1M/1M 两种上下文模式 + `count_tokens` |
 | `crack/cc2214/` | `claude-cli/2.1.214`（2026-07-18），`SPEC.md` + 19 行 rows | 已被 cc2220 取代，但**保留为登录流程基线**：唯一带 `oauth_hello` / `api_hello` / `oauth_account_settings` 探针行的 in-tree capture |
-| `crack/codex/` | `codex-tui/0.135.0`（2026-05-30，ChatGPT **Pro**），5 行 rows | Codex 侧：WS 握手头、`wham/usage` 响应形状、analytics-events、`wham/apps`、`ps/plugins/installed`；身份已滚到 `0.144.4` |
-| `crack/codex/SPEC.md` | 含 3 段增量记录（0.135.0→0.144.1→0.144.4）、gpt-5.6 分层定价、Responses-Lite 两条硬约束 | 无新 capture 的"纯身份 bump"也写在这里 |
+| `crack/codex/` | `codex-tui/0.135.0`（2026-05-30，ChatGPT **Pro**），5 行 rows | Codex 侧：WS 握手头、`wham/usage` 响应形状、analytics-events、`wham/apps`、`ps/plugins/installed`；身份已滚到 `0.147.0` |
+| `crack/codex/SPEC.md` | 含 4 段增量记录（0.135.0→0.144.1→0.144.4→0.147.0）、gpt-5.6 分层定价、Responses-Lite 两条硬约束 | 无新 capture 的"纯身份 bump"也写在这里；0.147.0 一节以 codex-rs 源码为依据 |
 | `crack/oauth/` | `rows/` 33 + `docs/` 32，2.1.126 时代的良性 OAuth 会话 | beta 列表 / body 形状的**历史 provenance** |
 | `crack/apikey/` | `rows/` 27 + `docs/` 26，经三方网关的 `x-api-key` 路径 | `ClaudeAnthropicBetaApikey` 的出处（严格网关会拒绝未知 beta） |
 | `crack/login/` | `README.md`（中文 PKCE 流程总览）+ `rows/` 13 + `docs/` 12，2.1.158 时代 | 登录路径指纹；登录 sidecar 的 UA 是 **axios** |

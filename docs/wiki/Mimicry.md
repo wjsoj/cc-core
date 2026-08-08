@@ -2,7 +2,7 @@
 
 > [← Wiki 首页](Home) · [架构总览](Architecture)
 
-> 本页所有行号对应 `cc-core` 仓库 `main` 分支当前源码（Claude 目标 `2.1.224`，Codex 目标 `0.144.4`）。
+> 本页所有行号对应 `cc-core` 仓库 `main` 分支当前源码（Claude 目标 `2.1.224`，Codex 目标 `0.147.0`）。
 
 ## 概览
 
@@ -70,10 +70,11 @@
 
 | 常量 | 值 | 出处 capture | 行号 |
 |---|---|---|---|
-| `CodexCLIVersion` | `0.144.4` | `crack/codex/SPEC.md`「2026-07-14」节：0.135.0 实抓 + 版本号提升（0.144.2/.3/.4 无 wire 变化） | `codex.go:35` |
-| `CodexCLIUserAgent` | `codex-tui/0.144.4 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.144.4)` | 模板取自 0.135.0 实抓；OS/终端段是我们自己的合成身份 | `codex.go:36` |
+| `CodexCLIVersion` | `0.147.0` | `crack/codex/SPEC.md`「2026-08-08」节：0.135.0 实抓模板 + 对 codex-rs 0.147.0 源码核对 | `codex.go:45` |
+| `CodexCLIUserAgent` | `codex-tui/0.147.0 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.147.0)` | 模板取自 0.135.0 实抓，并与 0.147.0 的 `get_codex_user_agent()` 逐段核对；OS/终端段是我们自己的合成身份 | `codex.go:46` |
 | `CodexOriginator` | `codex-tui` | `crack/codex/rows/01`（WS 握手头） | `codex.go:37` |
-| `CodexOpenAIBeta` | `responses=experimental` | HTTP POST 路径；真实 TUI 的 WS 握手用 `responses_websockets=2026-02-06` | `codex.go:41` |
+| `CodexRoutingHintHeader` | `x-codex-routing-hint` | 真实 Codex 对 ChatGPT-OAuth 请求（HTTP 与 WS both）必发，值为 `model=<上游模型>[;tier=priority\|flex]`；缺失会导致部分模型解析失败（openai/codex#31967） | `codex.go:58` |
+| ~~`CodexOpenAIBeta`~~ | **已删除** | 0.147.0 源码中 `responses=experimental` 不存在；HTTP 路径不发 `OpenAI-Beta`，只有 WS 握手发 `responses_websockets=2026-02-06` | — |
 | `CodexUsageUserAgent` | `= CodexCLIUserAgent` | `crack/codex/SPEC.md`「GET /backend-api/wham/usage」：CLI 用自己的 UA，不是浏览器 UA | `codex.go:82` |
 
 ---
@@ -407,11 +408,12 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 | `Authorization` | `Bearer <accessToken>` | 强制 | `:59` |
 | `Content-Type` | `application/json` | | `:60` |
 | `Accept` | `application/json`（compact）/ `text/event-stream` | | `:61-65` |
-| `OpenAI-Beta` | `responses=experimental` | HTTP POST 路径；WS 用 `responses_websockets=2026-02-06` | `:66` |
+| `OpenAI-Beta` | **不发送** | HTTP 路径不设；客户端自带的值原样保留。WS 用 `responses_websockets=2026-02-06` | — |
+| `x-codex-routing-hint` | `model=<模型>[;tier=…]` | 仅在有模型名时设置，设置前先 `Del` 以免重试残留上一次的模型 | `:145` |
 | `Accept-Encoding` | `identity` | **传输必要性，非 capture 指纹** —— 保证 SSE 与 4xx 错误体端到端可读 | `:67` |
 | `Connection` | `Keep-Alive` | | `:68` |
 | `Session_id` | 每请求新 UUID | | `:69` |
-| `Version` | `0.144.4` | | `:70` |
+| `Version` | `0.147.0` | | `:152` |
 | `Originator` | `codex-tui` | | `:71` |
 | `User-Agent` | `CodexCLIUserAgent` | **强制覆盖**——转发 `curl/8.x` 会被 Cloudflare 边缘 403 | `:72` |
 | `Chatgpt-Account-Id` | `accountID`（非空时） | | `:73-75` |
@@ -472,7 +474,7 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 | `crack/apikey/rows/*-POST-…v1_messages` | `ClaudeAnthropicBetaApikey` |
 | `crack/COMPARE.md` §3.2–3.5 | OAuth vs apikey 的 beta 三项差集（`oauth-2025-04-20` / `advanced-tool-use-2025-11-20` / `cache-diagnosis-2026-04-07`）、system 块数差异（4 vs 3）、cache_control 分层差异 —— 解释了 `headers.go:63-68` 为什么必须分 kind 选表 |
 | `crack/codex/SPEC.md`「Original 0.135.0 capture」 | `CodexOriginator`、UA/Version 头格式、`CodexUsageUserAgent` |
-| `crack/codex/SPEC.md` 2026-07-10 / 2026-07-14 两节 | `CodexCLIVersion`/`CodexCLIUserAgent` 提升到 `0.144.4`（无新 capture，wire 中立） |
+| `crack/codex/SPEC.md` 2026-08-08 节 | `CodexCLIVersion`/`CodexCLIUserAgent` 提升到 `0.147.0`，删除 HTTP 的 `OpenAI-Beta`，新增 `x-codex-routing-hint`（依据 codex-rs 0.147.0 源码） |
 | `crack/codex/SPEC.md` §5 | `parallel_tool_calls` 透传、`/compact` 白名单 4→8 字段、`codexResponsesLiteModel` 跳过 `image_generation` |
 | （无 capture，来自 2.1.197 bundle 反编译） | `dateline.go` 的 `rdp`/`odp`/`qla` 三函数语义与四种撇号码点 |
 

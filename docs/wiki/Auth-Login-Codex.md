@@ -423,7 +423,7 @@ reset-credit 说"手上还有几张立即重置配额的卡"。
 | 用途 | 滚动窗口配额、余额、spend control、plan | 计费视图：term 起止、续订、折扣、拖欠 | 一次性配额重置卡余量 / 兑换 |
 | 端点 | `GET https://chatgpt.com/backend-api/wham/usage` | `GET .../backend-api/subscriptions?account_id=<id>`<br>`GET .../backend-api/accounts/check/v4-2023-04-27` | `GET .../backend-api/wham/rate-limit-reset-credits`<br>`POST .../consume` |
 | 冒充的客户端 | **codex-tui CLI**（CLI 自己会调它）| **浏览器 XHR**（只有网页门户会调）| **Codex Desktop**（真正兑换重置卡的客户端）|
-| User-Agent | `mimicry.CodexUsageUserAgent`（== `CodexCLIUserAgent`，`codex-tui/0.144.4 …`）| `browserUA`（Chrome 131 on Linux）| `browserUA` |
+| User-Agent | `mimicry.CodexUsageUserAgent`（== `CodexCLIUserAgent`，`codex-tui/0.147.0 …`）| `browserUA`（Chrome 131 on Linux）| `browserUA` |
 | 头集构造 | 内联于 `FetchCodexUsage`（`auth/codex_usage.go:170-183`）| `codexBillingGET`（`auth/codex_subscription.go:387`）| `applyCodexWhamHeaders`（`auth/codex_reset.go:197`）|
 | 失败语义 | 返回 error，**不动健康**；`limit_reached` 时 `MarkUsageLimitReached` | 返回 error，**不动健康**；两个端点**都**失败才算失败 | 返回 error，**不动健康** |
 | 建议轮询频率 | 高（配额随时变）| 低（计费一月一变；文档建议手动按钮 + 每日一次）| 按需 |
@@ -436,7 +436,7 @@ reset-credit 说"手上还有几张立即重置配额的卡"。
 | `Accept` | `*/*` | `application/json` | `application/json` |
 | `Accept-Encoding` | `identity` | `identity` | `identity` |
 | `Accept-Language` | — | `en-US,en;q=0.9`（`browserAcceptLanguage`）| — |
-| `User-Agent` | `codex-tui/0.144.4 …` | `browserUA` | `browserUA` |
+| `User-Agent` | `codex-tui/0.147.0 …` | `browserUA` | `browserUA` |
 | `Chatgpt-Account-Id` | 有 id 时设 | 有 id 时设 | 有 id 时设 |
 | `Sec-Ch-Ua` / `-Mobile` / `-Platform` | — | `browserSecChUA` / `?0` / `"Linux"` | — |
 | `Sec-Fetch-Site` | — | `same-origin` | `none` |
