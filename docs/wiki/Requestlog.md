@@ -432,9 +432,15 @@ func cubeEligible(f Filter) bool {
 
 两者都存，是为了避免在 SQL 里做时区数学——Go 的时区规则（以及 DST）在那里拿不到（`store.go:310-313`）。
 
-**改时区 = drop & rebuild。** `bucketLoc` 由 `SetBucketLocation(*time.Location)`（`query.go:26-30`）设置，**必须在启动时设置一次，之后不再改动——它没有对并发变更做保护**（`query.go:21`）。`OpenStore` 里的 `reconcileBucketLocation()`（`store.go:519-534`）把 `bucketLoc.String()` 与 `meta` 表的 `bucket_loc` 比对，不一致就 `rebuildAll(want)`（`store.go:536-552`）：在一个事务里 `DELETE FROM req` / `DELETE FROM agg_cube` / `DELETE FROM ingest`，并更新 `meta`。JSONL 没有被动，所以**重建就是全部的修复**。日志里会看到 `display zone changed X -> Y; rebuilding index`。
+**改时区 = 原地重标，不是删库重扫。** `bucketLoc` 由 `SetBucketLocation(*time.Location)`（`query.go:26-30`）设置，**必须在启动时设置一次，之后不再改动——它没有对并发变更做保护**（`query.go:21`）。`OpenStore` 里的 `reconcileBucketLocation()` 把 `bucketLoc.String()` 与 `meta` 表的 `bucket_loc` 比对，不一致就调 `relabelBuckets(loc, name)`：逐个源文件日（走 `idx_req_day`）读出 `(id, ts, bday)`，只对标签真的移动了的行按目标标签分组批量 `UPDATE req SET bday = ?`，随后 `rebuildCube(day)` 从重标后的行重算聚合；`meta` 最后写，所以中途崩溃下次开库会重做整趟而不是停在半标状态。日志是 `display zone changed X -> Y; relabelling index`。
 
-回归测试：`TestStoreBucketLocationChange`（`store_test.go:520`）、`TestBucketLocationDayBoundary`（`requestlog_test.go:221`）。
+三点是刻意的：
+
+- **`day` 不动。** 它是源文件的 UTC 日，与展示时区无关；只有 `bday` 是时区相关的。
+- **`ingest` 不清。** 那些文件已经正确折叠进 `req` 了，清掉只会让扫描器把整个归档重读一遍。
+- **一行都不删。** 旧实现是 `rebuildAll`：一个事务里 `DELETE FROM req` / `agg_cube` / `ingest`，靠文件扫描器从 JSONL 重建。那只在归档存在时才成立——在 [`JSONLArchive: false`](#无归档模式jsonlarchive-false) 下没有文件可重读，**改一行配置就会静默抹掉整个保留窗口的请求历史**，而当天的备份会忠实地把这个空结果传上去。
+
+回归测试：`TestZoneChangeRelabelsWithoutArchive` / `TestZoneChangeKeepsIngestLedger` / `TestSameZoneIsNoOp`（`store_relabel_test.go`）、`TestStoreBucketLocationChange`（`store_test.go:520`）、`TestBucketLocationDayBoundary`（`requestlog_test.go:221`）。
 
 > 注意：`scanRecord` 把 `r.TS` 渲染成展示时区（`store_query.go:346-349`），瞬间相同，但与扫描路径返回的时区标注不同。
 
@@ -634,7 +640,7 @@ func (r Record) BilledOrCost() float64
 |---|---|---|
 | `requestlog/requestlog.go` | 562 | 包文档、`Record` / `ClaudeAudit` / `Options`、`Writer` 全生命周期、retention GC、`RewriteClientMask` 的 JSONL 侧 |
 | `requestlog/query.go` | 480 | `bucketLoc` 与 `SetBucketLocation`、`Aggregate` / `Filter` / `Result` / `HourBucket`、三个公开查询入口的 **JSONL 扫描实现**、`matches()`、`entryHeap` |
-| `requestlog/store.go` | 552 | `Store` 类型、按目录注册与查找（`lookupStore` / `indexFor`）、`OpenStore` / `Close` / `loop` / `maybeCatchUp`、**全部 schema 迁移**、`reconcileBucketLocation` / `rebuildAll` |
+| `requestlog/store.go` | ~670 | `Store` 类型、按目录注册与查找（`lookupStore` / `indexFor`）、`OpenStore` / `Close` / `loop` / `maybeCatchUp`、**全部 schema 迁移**、`reconcileBucketLocation` / `relabelBuckets` / `relabelDay` |
 | `requestlog/store_ingest.go` | 441 | 增量 ingest 与三种自愈、`ingestFile` / `insertRecord`、`aggSelect` / `aggCols` / `cubeDims`、`rebuildCube` / `ensureCube` |
 | `requestlog/store_query.go` | 420 | 三个入口的 **SQL 实现**、`cubeEligible`、`aggregatesFromCube` / `aggregatesFromReq`、`filterWhere` / `cubeWhere` / `timeWhere`、`scanRecord` |
 | `requestlog/store_write.go` | 319 | `pendingRow` / `appendRows` / `markDirty`、`pruneBefore`、索引侧 `rewriteClientMask` / `reconcileIngestStats`、`OpenStoreForRead`、`Export` / `exportRange` |

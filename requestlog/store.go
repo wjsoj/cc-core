@@ -512,10 +512,9 @@ func (s *Store) migrate() error {
 	return nil
 }
 
-// reconcileBucketLocation drops every derived row when the display time zone
-// changed since the last run. req.bday and the 'day' rollups are labelled in
-// that zone, so a change silently invalidates them; the JSONL is untouched,
-// so a rebuild is the whole fix.
+// reconcileBucketLocation re-labels every derived row when the display time
+// zone changed since the last run. req.bday and the cube's day rollups are
+// labelled in that zone, so a change silently invalidates them.
 func (s *Store) reconcileBucketLocation() error {
 	want := bucketLoc.String()
 	var got string
@@ -529,24 +528,142 @@ func (s *Store) reconcileBucketLocation() error {
 	case got == want:
 		return nil
 	}
-	log.Infof("requestlog: display zone changed %s -> %s; rebuilding index", got, want)
-	return s.rebuildAll(want)
+	log.Infof("requestlog: display zone changed %s -> %s; relabelling index", got, want)
+	return s.relabelBuckets(bucketLoc, want)
 }
 
-func (s *Store) rebuildAll(loc string) error {
+// relabelBuckets recomputes every row's display-zone day label in place and
+// rebuilds the cube from the result.
+//
+// This replaces a DELETE of req/agg_cube/ingest that left the file scanner to
+// re-read the whole archive. That was survivable only while an archive existed:
+// under Options{JSONLArchive: false} there are no files to re-read, so a
+// display-zone change — one line in a config — would have silently destroyed
+// the entire retention window of request history, with the daily backup
+// faithfully replicating the empty result.
+//
+// Nothing about a zone change actually invalidates a row. ts is absolute, and
+// `day` is the SOURCE FILE's UTC day, which is why it is deliberately left
+// alone here; only `bday` is zone-dependent. Relabelling it is therefore both
+// sufficient and non-destructive, and it beats re-parsing ~1M JSONL lines even
+// when the archive is present.
+//
+// meta is written last: a crash partway leaves the old zone recorded, so the
+// next open redoes the whole pass rather than resuming into a half-labelled
+// index.
+func (s *Store) relabelBuckets(loc *time.Location, name string) error {
+	days, err := s.distinctDays()
+	if err != nil {
+		return err
+	}
+	for _, d := range days {
+		if err := s.relabelDay(d, loc); err != nil {
+			return fmt.Errorf("relabel %s: %w", d, err)
+		}
+		// The cube is keyed on bday among other dimensions, so it has to be
+		// recomputed from the rows we just relabelled, not merely re-summed.
+		if err := s.rebuildCube(d); err != nil {
+			return fmt.Errorf("rebuild cube %s: %w", d, err)
+		}
+	}
+	_, err = s.db.Exec(`INSERT INTO meta (key, value) VALUES ('bucket_loc', ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, name)
+	return err
+}
+
+func (s *Store) distinctDays() ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT day FROM req ORDER BY day`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var days []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		days = append(days, d)
+	}
+	return days, rows.Err()
+}
+
+// relabelDay rewrites bday for one source day's rows. It reads through
+// idx_req_day, and touches only the rows whose label actually moved — a zone
+// change of a few hours leaves most of a day where it was.
+//
+// Grouped by target label rather than updated row by row: a UTC day spans at
+// most a couple of local days, so this is a handful of statements per day
+// instead of tens of thousands.
+func (s *Store) relabelDay(day string, loc *time.Location) error {
+	rows, err := s.db.Query(`SELECT id, ts, bday FROM req WHERE day = ?`, day)
+	if err != nil {
+		return err
+	}
+	byLabel := map[string][]int64{}
+	for rows.Next() {
+		var id, ts int64
+		var cur string
+		if err := rows.Scan(&id, &ts, &cur); err != nil {
+			rows.Close()
+			return err
+		}
+		if want := time.Unix(0, ts).In(loc).Format("2006-01-02"); want != cur {
+			byLabel[want] = append(byLabel[want], id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(byLabel) == 0 {
+		return nil
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, q := range []string{`DELETE FROM req`, `DELETE FROM agg_cube`, `DELETE FROM ingest`} {
-		if _, err := tx.Exec(q); err != nil {
-			return err
+	for label, ids := range byLabel {
+		for chunk := range chunkIDs(ids, 500) {
+			q := `UPDATE req SET bday = ? WHERE id IN (` + placeholders(len(chunk)) + `)`
+			args := make([]any, 0, len(chunk)+1)
+			args = append(args, label)
+			for _, id := range chunk {
+				args = append(args, id)
+			}
+			if _, err := tx.Exec(q, args...); err != nil {
+				return err
+			}
 		}
 	}
-	if _, err := tx.Exec(`INSERT INTO meta (key, value) VALUES ('bucket_loc', ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, loc); err != nil {
-		return err
-	}
 	return tx.Commit()
+}
+
+// chunkIDs yields ids in batches of at most n, keeping each UPDATE's variable
+// count well inside SQLITE_MAX_VARIABLE_NUMBER.
+func chunkIDs(ids []int64, n int) func(func([]int64) bool) {
+	return func(yield func([]int64) bool) {
+		for start := 0; start < len(ids); start += n {
+			end := min(start+n, len(ids))
+			if !yield(ids[start:end]) {
+				return
+			}
+		}
+	}
+}
+
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	b := make([]byte, 0, 2*n-1)
+	for i := range n {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = append(b, '?')
+	}
+	return string(b)
 }

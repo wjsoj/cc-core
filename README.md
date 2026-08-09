@@ -51,7 +51,7 @@ One-JSON-line-per-terminal-request log with daily file rotation (`requests-YYYY-
 - `requestlog.Query(Filter)` — paged + aggregated query, served from the index or, as a fallback, the rotated files (`Filter.PageOnly` skips the aggregate).
 - `requestlog.AggregateHourly(dir, hours)` / `AggregateByAuth(dir, from, to)` — dashboards; answered from the pre-summed `agg_cube` when the filter carries no time bound.
 - `requestlog.Writer.RewriteClientMask(old, new)` — historical telemetry migration for token rotation.
-- `requestlog.Store.Export(fromDay, toDay, w)` — write indexed rows back out as JSONL. `SetBucketLocation(loc)` picks the display time zone (changing it drops and rebuilds the cube).
+- `requestlog.Store.Export(fromDay, toDay, w)` — write indexed rows back out as JSONL. `SetBucketLocation(loc)` picks the display time zone (changing it relabels `bday` in place and rebuilds the cube — no rows are dropped, so it is safe with no JSONL archive).
 
 See the [Requestlog wiki page](https://github.com/wjsoj/cc-core/wiki/Requestlog) for the schema, the self-healing ingest, and the three traps (`day` vs `bday`, invisible `attempt_only` rows, partial indexes that must cover `ORDER BY`).
 
