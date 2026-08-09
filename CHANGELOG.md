@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.8.77 — requestlog: answer whole-day windows from the cube
+
+The admin panel's date pickers produce whole-day windows, but a window is
+only cube-answerable if the caller says it in days: `cubeEligible` rejected
+any timestamp bound, because a pair of instants cannot be shown to be
+day-aligned without assuming a bucketing zone. So the panel's default 7-day
+view — and every filter applied inside it — took the row-by-row path over
+`req`. On the production archive (1M rows, 151k in the window) that was
+**1.8s per query, against 48ms from the cube**.
+
+- **`Filter.FromDay` / `Filter.ToDay`** state the window as inclusive
+  `YYYY-MM-DD` labels in the bucketing zone — the same labels `ByDay` is
+  keyed on and `agg_cube.bday` stores. `resolveDays` expands them into the
+  exact `From`/`To` instants every other path already compares against, so
+  the scanning path, the entries page and the cube all see one window.
+
+  Alignment is declared, never inferred. Whether an instant is a day
+  boundary depends on the display zone, so inferring it would silently
+  change which grain answers a query the day an operator changes the zone.
+
+  Supplying labels *and* timestamps is a contradiction rather than a
+  refinement: the timestamps win and the labels are dropped, so the cube can
+  never answer a window `req` would not.
+
 ## v0.8.75 — relay: carry the downstream caller across one trusted hop
 
 When one of our proxies forwards to another using a single API key, the

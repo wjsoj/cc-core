@@ -107,6 +107,7 @@ func (s *Store) storeAggregateHourly(hours int) ([]HourBucket, error) {
 // storeQuery serves Query.
 func (s *Store) storeQuery(f Filter) (*Result, error) {
 	s.maybeCatchUp()
+	f = f.resolveDays()
 
 	res := &Result{
 		ByClient: make(map[string]Aggregate),
@@ -160,12 +161,20 @@ func (s *Store) storeQuery(f Filter) (*Result, error) {
 // cubeEligible reports whether the cube can answer this filter exactly.
 //
 // Every dimension the panel filters on is a cube column, so the only thing
-// that disqualifies a query is a time bound: Filter compares exact timestamps
-// while the cube's finest time grain is a day. Rather than try to detect the
-// cases where a bound happens to land on a day boundary — which depends on the
-// caller's zone and would be wrong the moment that assumption breaks — any
-// bound at all sends the query to req, where the day column prunes it anyway.
+// that can disqualify a query is a time bound: Filter compares exact
+// timestamps while the cube's finest grain is a day. An unbounded query is
+// therefore eligible, and so is one whose bounds are whole days — but only
+// when the caller said so in days (FromDay/ToDay, which set dayBounds).
+//
+// We do not try to *infer* day alignment from a timestamp pair. Whether
+// 2026-08-02T00:00:00+08:00 is a day boundary depends on the bucketing zone,
+// so the inference would silently start answering from the wrong grain the
+// day an operator changes it. Making the caller state the grain costs one
+// field and cannot drift.
 func cubeEligible(f Filter) bool {
+	if f.dayBounds {
+		return true
+	}
 	return f.From.IsZero() && f.To.IsZero()
 }
 
@@ -245,6 +254,17 @@ func cubeWhere(f Filter) (string, []any) {
 	if f.AuthID != "" {
 		sb.WriteString(` AND auth_id = ?`)
 		args = append(args, f.AuthID)
+	}
+	// bday carries the same display-zone day label the caller named, so these
+	// are an exact translation of the window rather than an approximation.
+	// cubeEligible guarantees any window present here arrived as day labels.
+	if f.FromDay != "" {
+		sb.WriteString(` AND bday >= ?`)
+		args = append(args, f.FromDay)
+	}
+	if f.ToDay != "" {
+		sb.WriteString(` AND bday <= ?`)
+		args = append(args, f.ToDay)
 	}
 	return sb.String(), args
 }
