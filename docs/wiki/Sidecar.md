@@ -36,7 +36,7 @@ if m == nil || !m.enabled || a == nil || a.Kind != auth.KindOAuth {
 }
 ```
 
-- **去重键是 `a.AccountKey()`——只按 OAuth 账号，不含 clientToken**（`sidecar/sidecar.go:270`）。多个下游 `client_token` 走同一个 OAuth 账号时共用一个虚拟会话：上游只看到"一台机器、一次 bootstrap、一条心跳流"。注意这与包内注释开头"first touch of an `(account, clientToken)` pair"的旧描述不一致，**以代码为准：键只有 accountKey**（`TestBootstrapDeduplicatesAcrossClientTokens` `sidecar/sidecar_test.go:279-307` 正是锁死这一点）。
+- **去重键是 `a.AccountKey()`——只按 OAuth 账号，不含 clientToken**（`sidecar/sidecar.go:270`）。多个下游 `client_token` 走同一个 OAuth 账号时共用一个虚拟会话：上游只看到"一台机器、一次 bootstrap、一条心跳流"。包内曾有一处注释写作 `(account, clientToken)` pair，已更正；`clientToken` 只用于日志脱敏，不进任何 key（`TestBootstrapDeduplicatesAcrossClientTokens` `sidecar/sidecar_test.go:279-307` 正是锁死这一点）。
 - 返回值是 `sess.bootstrapReady` channel：在 `quota_probe` 步骤派发后（或 bootstrap 提前中止 / 被冷却抑制时）关闭。已关闭的 channel 让后续 `Notify` 的等待变成 no-op。
 
 时间闸门：

@@ -1,0 +1,20 @@
+[
+  {
+    "idx": 1,
+    "class": "v1_messages",
+    "file": "01-v1_messages.json",
+    "url": "https://api.minimaxi.com/anthropic/v1/messages?beta=true",
+    "status": 200,
+    "reqSize": 145853,
+    "note": "main conversation, 10 messages, 65 tools, adaptive thinking"
+  },
+  {
+    "idx": 2,
+    "class": "v1_messages",
+    "file": "02-v1_messages_title.json",
+    "url": "https://api.minimaxi.com/anthropic/v1/messages?beta=true",
+    "status": 200,
+    "reqSize": 2151,
+    "note": "session-title request: structured-outputs beta + output_config.format, no cache_control"
+  }
+]

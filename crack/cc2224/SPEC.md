@@ -20,7 +20,8 @@ Every structural fingerprint cc-core reproduces is **byte-identical to 2.1.220**
 | 4-block `system` layout | billing → CC prompt → 2 cached blocks | identical | none |
 | `cache_control` | `{ephemeral, ttl:1h, scope:global}` + `{ephemeral, ttl:1h}` | identical | none |
 | billing block format | `cc_version=X.Y.Z.{3-hex}; cc_entrypoint=cli; cch={5-hex}; cc_prev_req=req_…` | identical | none |
-| sidecar 9-step burst (URLs, order, per-step UA + beta) | — | identical | none |
+| sidecar 10-step burst (URLs, order, per-step UA + beta) | — | identical | none |
+| `quotaProbeBeta` (6 items) / `quotaProbeModel` | cited a pruned 2.1.170 file | **captured verbatim**, `rows/19-quota_probe.json` | none (now anchored at the current target) |
 
 ## Client environment
 
@@ -127,21 +128,31 @@ Observed order and per-step identity, which `sidecar/sidecar.go` reproduces exac
 | growthbook_eval | `POST /api/eval/sdk-…` | `Bun/1.4.0` | `oauth-2025-04-20` |
 | oauth_account_settings | `GET /api/oauth/account/settings` | `claude-cli/2.1.224` | `oauth-2025-04-20` |
 | claude_code_grove | `GET /api/claude_code_grove` | `claude-cli/2.1.224` | `oauth-2025-04-20` |
-| quota_probe | `POST /v1/messages` | `claude-cli/2.1.224` | 6-item short list |
-| claude_cli_bootstrap | `GET /api/claude_cli/bootstrap?entrypoint=cli&model=…` | `claude-code/2.1.224` | `oauth-2025-04-20` |
+| quota_probe | `POST /v1/messages` | `claude-cli/2.1.224` | `oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05` (`rows/19`) |
+| claude_cli_bootstrap | `GET /api/claude_cli/bootstrap?entrypoint=cli&model=claude-opus-5` | `claude-code/2.1.224` | `oauth-2025-04-20` |
 | claude_code_penguin_mode | `GET /api/claude_code_penguin_mode` | `axios/1.15.2` | `oauth-2025-04-20` |
 | mcp_registry | `GET /mcp-registry/v0/servers?…` | `claude-cli/2.1.224` | — |
 | v1_mcp_servers | `GET /v1/mcp_servers?limit=1000` | `axios/1.15.2` | `mcp-servers-2025-12-04` |
 | code_triggers | `GET /v1/code/triggers` | `claude-cli/2.1.224` | `ccr-triggers-2026-01-30` |
 | claude_code_releases | `GET downloads.claude.ai/claude-code-releases/latest` | `axios/1.15.2` | — |
 
-The three-way UA split (`claude-cli` / `claude-code` / `axios`, plus `Bun` for GrowthBook) is unchanged. No sidecar edit was needed for this bump.
+The three-way UA split (`claude-cli` / `claude-code` / `axios`, plus `Bun` for GrowthBook) is unchanged.
+
+Two sidecar edits **were** needed and were missed when this file was first written:
+
+- The bootstrap `model=` parameter tracks the model the client is starting with —
+  `claude-opus-5` here, matching the telemetry model in §3. `sidecar.go` had it
+  hardcoded to the 2.1.220-era `claude-opus-4-8`, so a single simulated process
+  announced `opus-4-8` at bootstrap and `opus-5` in its telemetry.
+- `quotaProbeBeta` / `quotaProbeModel` are now captured verbatim
+  (`rows/19-quota_probe.json`) instead of citing a pruned 2.1.170 file.
 
 ## Unresolved
 
 - **Non-1M main request beta.** The session ran entirely in 1M mode, so `ClaudeAnthropicBetaFull` (the 13-item non-1M list) was **not observed at 2.1.224**. It carries forward from 2.1.220 unverified. Nothing here contradicts it, but a non-1M capture is the way to settle it.
 - **`count_tokens`.** No `POST /v1/messages/count_tokens` was fired, so `ClaudeAnthropicBetaCountTokens` (5 items) and the "no `X-Stainless-Timeout`" rule are likewise carried forward unverified at 2.1.224.
 - **`cch` signer.** Still unresolved, as at 2.1.220 — the values are captured (`2.1.224.779` / `cch=1dc46`) but the signer is not reproduced.
+- **No custom-base-url counterpart in this session.** Captured separately on 2026-08-09 at 2.1.226 — see `../thirdparty/SPEC.md`, which is the inbound shape both forks receive and repair.
 - **Forward signals seen but not acted on.** The bootstrap response carries `client_data.cedar_lagoon = {"claude-fable": true, "claude-mythos": true}` and `cedar_basin: "2026-08-31"`, and `additional_model_options` lists `claude-fable-5[1m]`. `claude-mythos` is an unreleased label; no cc-core constant depends on it yet.
 
 ## Redaction

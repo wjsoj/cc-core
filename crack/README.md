@@ -13,11 +13,12 @@ carry a `crack/`.
 | `cc2220/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.220`, 2026-07-30 + 2026-07-31 | **current Claude target — read `cc2220/SPEC.md` first.** Two independent captures: `rows/` (macOS, Sonnet 5) and `rows-2026-07-31/` (Linux, opus-4-8 + opus-5 1M, plus a full fresh OAuth login). The second one established that the request beta list is context-mode dependent (13 non-1M / 15 with 1M), that `count_tokens` is its own request class, and corrected the login `profile` probe headers and two MCP-probe details (§1a/§1b/§2/§3). Startup plus 10 independent first turns and one continuous 10-turn conversation, consolidated to 28 representative/data rows while retaining all 10 multi-turn main requests. `chain-redacted.json` preserves all 37 billing requests and hashed `cc_prev_req` → upstream response `request-id` linkage (main 9/9, prompt suggestion 6/6). Version/build_time bumped; UTF-16 billing suffix semantics fixed. `context-1m` is intentionally excluded from the version diff. |
 | `cc2214/` | Anthropic / Claude Code CLI (OAuth) | `claude-cli/2.1.214`, 2026-07-18 | Superseded by cc2220 but **kept as the login-flow baseline**: it is the only in-tree capture with the `oauth_hello`, `api_hello` and `oauth_account_settings` probe rows, which cc2220 does not have. Full re-login + bootstrap + chat (18 rows). Wire vs 2.1.211: pure version + `build_time` bump; also fixed 3 bootstrap-sidecar UAs (account/settings, grove, mcp-registry). Older per-version dirs (cc2167/cc2170/cc2183, then cc2191/cc2197/cc2198/cc2201/cc2206/cc2211) were pruned — see git history. |
 | `codex/` | OpenAI ChatGPT backend / Codex CLI | `codex-tui/0.135.0`, 2026-05-30 | **current Codex target** — identity bumped to `0.144.4`; 5h quota window retired 2026-07 (weekly-only). See `codex/SPEC.md`. |
+| `thirdparty/` | Anthropic / Claude Code CLI pointed at a **custom base URL** | `claude-cli/2.1.226`, 2026-08-09 | **the inbound shape both forks actually receive** — read `thirdparty/SPEC.md` alongside the current Claude target. Every other dir records what we must *produce*; this one records what we must *repair*. Establishes the OAuth-only beta delta (5 items), the empty `account_uuid`, the bare-`ephemeral` cache breakpoints, the absent `x-client-request-id`, and that a real client on a custom base URL emits **no** sidecar traffic at all. |
 | `oauth/` | Anthropic / Claude Code 2.1.126-era benign OAuth session | historical | beta-list / body-shape provenance |
 | `apikey/` | Anthropic via x-api-key (3rd-party gateway path) | historical | provenance for the **apikey beta list** (strict gateways reject unknown betas) |
 | `login/` | Anthropic OAuth login flow (hello → token → profile → roles → bootstrap) | 2.1.158-era | login-path fingerprint; UA on login sidecars = axios |
 | `scripts/` | tooling | — | `extract_live.py` (structural redactor; pass `cc<ver>/rows` as outdir), `sanitize.py`/`gen.py` (older pipeline) |
-| `COMPARE.md` | — | — | oauth-vs-apikey path diff notes |
+| `COMPARE.md` | — | — | oauth-vs-apikey path diff notes, **2.1.126-era and never re-verified since**. For the oauth-vs-custom-base-url diff at the current target use `thirdparty/SPEC.md` instead. |
 
 ## Redaction policy
 
@@ -41,5 +42,12 @@ secrets, local-only) is gitignored.
 4. Update the constants in `mimicry/` + `sidecar/` (and `auth/codex_*`
    for the Codex path), run `go test ./...`, tag a release.
 5. Bump the `cc-core` dependency in hypitoken and CPA-Claude.
+6. **Re-capture the custom-base-url side too** and refresh `thirdparty/SPEC.md`.
+   The inbound shape is half of every transform `mimicry` performs, and it moves
+   on its own schedule: a Claude Code release can add a beta to the custom-base-url
+   vector without touching the OAuth one, which silently widens the OAuth-only
+   delta in `thirdparty/SPEC.md §1a`. Point a client at any Anthropic-compatible
+   gateway with `ANTHROPIC_BASE_URL` and run
+   `extract_live.py <dump.json> crack/thirdparty/rows`.
 
 See `cc2220/SPEC.md` for the worked 2.1.214 → 2.1.220 example.

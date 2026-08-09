@@ -395,10 +395,25 @@ func TestGenuineRewriteRetainsRequestSpecificBetaVector(t *testing.T) {
 		beta string
 		want string
 	}{
+		// A vector that already carries the oauth marker is first-party and
+		// authoritative: passed through byte-for-byte, whatever its class.
 		{"main-ordinary-13", standardGenuinePolicyBody(), main13, main13},
 		{"main-context-1m-14", standardGenuinePolicyBody(), ClaudeAnthropicBetaFull, ClaudeAnthropicBetaFull},
 		{"title-9", titleBody, title9, title9},
-		{"missing-oauth-marker", standardGenuinePolicyBody(), "claude-code-20250219,interleaved-thinking-2025-05-14", "claude-code-20250219,interleaved-thinking-2025-05-14,oauth-2025-04-20"},
+		// Without the marker the request came in over a custom base URL, so the
+		// OAuth-only betas are inserted at their canonical positions. The
+		// declared items all survive, in order.
+		{
+			"custom-base-url-vector-repaired",
+			standardGenuinePolicyBody(),
+			"claude-code-20250219,interleaved-thinking-2025-05-14",
+			"claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14," +
+				"advisor-tool-2026-03-01,advanced-tool-use-2025-11-20," +
+				"extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07",
+		},
+		// The real captured inbound main vector repairs to exactly the captured
+		// OAuth main vector — the whole point of the transform.
+		{"captured-thirdparty-main", standardGenuinePolicyBody(), capturedThirdPartyMainBeta, ClaudeAnthropicBetaFull},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

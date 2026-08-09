@@ -97,7 +97,7 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 | `Authorization` / `x-api-key` | `Bearer <token>` 或裸 token（互斥，另一个 `Del`） | **强制覆盖** | `headers.go:40-46` |
 | `Content-Type` | `application/json` | **强制** | `headers.go:47` |
 | `Anthropic-Version` | `ClaudeAnthropicVersion` | ensure | `headers.go:56` |
-| `Anthropic-Beta` | 见下表 | 客户端已有则保留（OAuth 下若缺 `oauth` 则追加 `,oauth-2025-04-20`） | `headers.go:57-75` |
+| `Anthropic-Beta` | 见下表 | 客户端已有则保留；OAuth + first-party 时做**加法修补**（见下） | `headers.go:57-84` |
 | `Anthropic-Dangerous-Direct-Browser-Access` | `true` | ensure，**仅 `isAnthropicBase`** | `headers.go:76-78` |
 | `X-App` | `cli` | ensure | `headers.go:81` |
 | `X-Stainless-Retry-Count` | `0` | ensure | `headers.go:82` |
@@ -115,16 +115,57 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 | `Accept-Encoding` | `gzip, br` | **强制**（有意偏离；需配 `cc-core/stream.Decompress`） | `headers.go:109` |
 | `Accept` | `text/event-stream`（stream）/ `application/json` | stream 强制；非 stream ensure | `headers.go:110-114` |
 
-`Anthropic-Beta` 的四路分支（`headers.go:57-75`）：
+`Anthropic-Beta` 的分支（`headers.go:57-84`）：
 
 | 条件 | 使用的列表 |
 |---|---|
-| 客户端自带 beta | 保留客户端的；OAuth 且不含 `oauth` 时追加 `,oauth-2025-04-20` |
+| 客户端自带 beta + OAuth + `isAnthropicBase` | `UpgradeClaudeBetaVectorForOAuth(客户端向量)` —— 加法修补，见下节 |
+| 客户端自带 beta + OAuth + 非 first-party | 保留客户端的；不含 `oauth` 时追加 `,oauth-2025-04-20` |
 | `kind == KindAPIKey` | `ClaudeAnthropicBetaApikey` |
-| 路径以 `/v1/messages/count_tokens` 结尾（`headers.go:52-53`） | `ClaudeAnthropicBetaCountTokens` |
+| 路径以 `/v1/messages/count_tokens` 结尾（`headers.go:49`） | `ClaudeAnthropicBetaCountTokens` |
 | 其余（OAuth 主请求） | `ClaudeAnthropicBetaFull` |
 
-> `count_tokens` 是独立请求类：短 beta 列表 **且** 无 `X-Stainless-Timeout`，两个差异必须同时复现（cc2220 SPEC §1b 称之为"最容易搞错的一处"）。apikey 路径不受此影响（没有 apikey 的 `count_tokens` capture）。
+> `count_tokens` 是独立请求类：短 beta 列表 **且** 无 `X-Stainless-Timeout`，两个差异必须同时复现（cc2220 SPEC §1b 称之为"最容易搞错的一处"）。判定统一走 `isCountTokensRequest`（`headers.go:22-26`），`forcePinnedClaudeCodeProfile` 也用它——否则 pin 阶段会把刚刚故意省略的 timeout 又加回来。apikey 路径不受此影响（没有 apikey 的 `count_tokens` capture）。
+
+### beta 向量的加法修补（`mimicry/beta.go`）
+
+反代收到的是**自定义 base URL 形态**的请求（`crack/thirdparty/SPEC.md`），它的 beta 向量结构性地少了 5 项——客户端没有 Anthropic 账号，声明不了：
+
+```
+oauth-2025-04-20 · advisor-tool-2026-03-01 · advanced-tool-use-2025-11-20
+extended-cache-ttl-2025-04-11 · cache-diagnosis-2026-04-07
+```
+
+抓包实测：第三方 8 项 = `ClaudeAnthropicBetaFull` 13 项**精确减去**这 5 项，存活项顺序不变。所以修补是确定性插入，不是猜测。
+
+`UpgradeClaudeBetaVectorForOAuth`（`beta.go:87`）的契约：
+
+- **只加不减。** 客户端声明过的一律保留，包括 cc-core 没有常量的新 beta（放在末尾，保持调用方相对顺序）——丢掉一个 beta 是功能回归（结构化输出解析失败、1M 静默缩水），比它想补的指纹缺口更严重。
+- **已含 `oauth-2025-04-20` 的向量原样返回。** 那要么是 first-party 客户端（它自己的列表才权威），要么已经修补过——两种情况下再动都是错的。这也让整个变换幂等。
+- **按 canonical 顺序输出**，取自 `ClaudeAnthropicBeta1M`（最宽的观测向量，其余捕获列表都是它的子序列）。
+- **不注入 `context-1m` / `fallback-credit`。** 这两个是上下文模式配对项而非凭据门控，第三方那次抓包不在 1M 模式，无法区分二者。声明一个无法验证的 1M 窗口比不声明更糟。反之，客户端若自己声明了 `context-1m`，则补上它的配对项（两次抓包中二者从未单独出现）。
+
+不变量由 `TestOAuthOnlyBetasMatchCapturedDelta`（`beta_test.go:22`）从两个常量重新推导——改了任一个而不改另一个会 fail build。
+
+### cache_control 修补（`mimicry/cachecontrol.go`）
+
+同一个原因：`ttl` 和 `scope` 各需要一个客户端声明不了的 beta，所以自定义 base URL 只能发裸 `{"type":"ephemeral"}`。
+
+| capture | blocks | 断点形态 |
+|---|---|---|
+| OAuth 主请求（`cc2224/rows/13`） | 4 | `[-, -, ephemeral+1h+global, ephemeral+1h]` |
+| 第三方主请求（`thirdparty/rows/01`） | 3 | `[-, ephemeral, ephemeral]` |
+| 第三方标题请求（`thirdparty/rows/02`） | 3 | 全无断点 |
+
+两侧**断点位置规则相同**（最后两块），块数差异来自内容（OAuth 那次多一段追加的 system），不是模式差异。所以修补规则是：
+
+- 只升级**已经带 `cache_control` 的**块，且只看最后两块；
+- 只升级形态恰为 `{"type":"ephemeral"}` 的（`isBareEphemeral`，`cachecontrol.go:52`）——客户端显式写了 `ttl:5m` 是它的选择，覆盖它是功能变更伪装成指纹修复；
+- **绝不新增、绝不删除**断点。标题请求两侧都没有断点，凭空造一个是新的偏差。
+
+必须与 beta 修补一起上线（`extended-cache-ttl` 得先回到 header 里）。除指纹外还是钱的问题：不修则每条转发请求写的是 5 分钟缓存而非 1 小时 global。
+
+> **key 顺序也是形状。** 抓包是 `{"type","ttl","scope"}`，而 map 往返会按字母序重排成 `{"scope","ttl","type"}`。所以块编辑走 `setJSONObjectMember` / `deleteJSONObjectMember`（`cachecontrol.go`）做原地字节手术，保留客户端自己的 key 顺序并把 `cache_control` 追加在末尾——与 capture 一致。`RewriteModelFieldPreservingBytes`（`mimicry/model.go`）出于同样理由存在。
 
 ### `forcePinnedClaudeCodeProfile`
 
@@ -294,7 +335,7 @@ sequenceDiagram
 | Generic + Legacy | `ApplyClaudeCodeBodyMimicry`，`accountIdentityApplied=false` | `request_policy.go:232-233` |
 | Generic + Synthesize | 重建 system（外部计费块 + CC 引导语 + 原 blocks）、强制写 `metadata.user_id`、cache 断点、双重校验 | `request_policy.go:277-347` |
 | Genuine + Preserve | **返回原始字节**，只读出 source session | `request_policy.go:236-238` |
-| Genuine + Rewrite | 字节手术：只替换 `metadata.user_id` 与 `system[0].text` 两段 span | `request_policy.go:249-275`、`519-589` |
+| Genuine + Rewrite | 字节手术：替换 `metadata.user_id`、`system[0].text`，以及最后两块裸 `cache_control` 的值 | `request_policy.go:249-275`、`519-600` |
 
 **Generic Synthesize 的计费块**（`buildExternalBillingBlock`，`request_policy.go:352-357`）刻意是 custom-base-url 形态：`cc_version=…; cc_entrypoint=cli;` —— **没有 `cch`，没有 `cc_prev_req`**，因为中继无法重新生成或重新绑定这两个一方字段。
 
@@ -381,9 +422,11 @@ sequenceDiagram
 | policy | 头处理 | 行号 |
 |---|---|---|
 | Generic + Legacy | `ApplyClaudeCodeHeaders`（客户端值优先） | `:417` |
-| Generic + Synthesize | `ApplyClaudeCodeHeaders` → `forcePinnedClaudeCodeProfile` → 强制 `Anthropic-Beta=Full`、`Accept: application/json`、`X-Claude-Code-Session-Id=result.sessionID`、（first-party 时）新 `x-client-request-id` | `:418-429` |
-| Genuine + Preserve | **保留客户端自己的版本/profile 头**；只 `applyCredentialHeader`、补 `Content-Type`、以 body 的 session 覆盖 `X-Claude-Code-Session-Id` | `:431-441` |
-| Genuine + Rewrite | `ApplyClaudeCodeHeaders` → `forcePinnedClaudeCodeProfile` → `Accept: application/json`、`X-Claude-Code-Session-Id=result.sessionID`（**`Anthropic-Beta` 不动，保留下游向量**） | `:445-448` |
+| Generic + Synthesize | `ApplyClaudeCodeHeaders` → `forcePinnedClaudeCodeProfile` → 强制 `Anthropic-Beta`（`count_tokens` 用 `…BetaCountTokens`，否则 `…BetaFull`）、`Accept: application/json`、`X-Claude-Code-Session-Id=result.sessionID`、（first-party 时）新 `x-client-request-id` | `:418-436` |
+| Genuine + Preserve | **保留客户端自己的版本/profile 头**；只 `applyCredentialHeader`、补 `Content-Type`、以 body 的 session 覆盖 `X-Claude-Code-Session-Id` | `:438-448` |
+| Genuine + Rewrite | `ApplyClaudeCodeHeaders`（其中已完成 beta 加法修补）→ `forcePinnedClaudeCodeProfile` → `Accept: application/json`、`X-Claude-Code-Session-Id=result.sessionID` | `:452-459` |
+
+> Generic 侧是**整体替换**（generic 入站不构成任何可信的特征向量，直接选该请求类的 capture 列表）；Genuine 侧是**加法修补**（下游向量携带请求类信息，必须保留）。`forcePinnedClaudeCodeProfile` 两侧都不碰 `Anthropic-Beta`。
 
 body 装载走 `installPreparedBody`（`:457-464`）：`bytes.Clone` 后同时设置 `req.Body`、`req.ContentLength` 与 `req.GetBody`（重试/重定向必需）。
 
@@ -499,6 +542,7 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 5. **改 body/header 形状**（如 capture 显示布局变了）：`body.go:272` 的 system 断点分层、`body.go:485` 的 message 断点位置、`headers.go` 的请求类分支。
 6. **同步 sidecar**：`sidecar/sidecar.go` 的 `ccBuildTime`（capture 的 `build_time`）、各 endpoint 的 UA 族（`claude-cli/` vs `claude-code/` vs `axios/`）、bootstrap 步骤与鉴权标志。
 7. **补测试**：beta 列表逐字断言进 `mimicry/headers_test.go`；指纹算法变化补 `body_test.go` 的 UTF-16 向量。
+7b. **同时重抓自定义 base URL 侧**并刷新 `crack/thirdparty/SPEC.md`。入站形态是每个变换的另一半，且按自己的节奏移动：一个 CC 版本可以只给 custom-base-url 向量加 beta 而不动 OAuth 向量，那会悄悄扩大 §1a 的 OAuth-only 差集。
 8. `go build ./... && go test ./... && go vet ./...`（`sidecar` 套件约 23s 真实计时）。
 9. **打 tag**：`git tag v0.8.NN && git push origin main v0.8.NN`（tag 号被占就用下一个空号；打 tag 前 `git status` 确认只提交自己的文件）。
 10. **两个 fork 各自** `go get github.com/wjsoj/cc-core@v0.8.NN && go mod tidy`，重新构建部署。
@@ -556,6 +600,20 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 | `TestPreparedRequestRejectsCredentialBindingMismatchWithoutMutation` | 凭据绑定不符不改 req | `request_policy_test.go:531` |
 | `TestPreparedRequestInitializesHeadersAndOwnsBodyCopy` | header 初始化 + body 副本所有权 | `request_policy_test.go:555` |
 | `TestPrepareRejectsMissingCredentialBinding` | 缺凭据绑定即拒 | `request_policy_test.go:572` |
+| `TestOAuthOnlyBetasMatchCapturedDelta` | OAuth-only 集合 = Full 减去抓包向量，且入站是纯子集 | `beta_test.go:22` |
+| `TestOAuthOnlyBetasExcludeContextModePair` | 1M 配对项不得混进 OAuth-only 集合 | `beta_test.go:57` |
+| `TestUpgradeClaudeBetaVectorForOAuth` | 抓包入站 → 抓包出站；标题类保留 `structured-outputs` | `beta_test.go:74` |
+| `TestUpgradeClaudeBetaVectorIsIdempotent` / `…NeverDrops` | 幂等；绝不丢弃已声明 beta | `beta_test.go:130,145` |
+| `TestGenuineRewriteRestoresCacheBreakpoints` | 裸 ephemeral → `1h+global` / `1h`，字段顺序对齐 capture | `cachecontrol_test.go:66` |
+| `TestGenuineRewriteLeavesNonBareCacheControlAlone` | 客户端显式 ttl 不被覆盖 | `cachecontrol_test.go:84` |
+| `TestGenuineRewriteDoesNotAddCacheBreakpoints` | 无断点则不凭空新增 | `cachecontrol_test.go:99` |
+| `TestSetJSONObjectMemberPreservesOrder` / `TestDeleteJSONObjectMember` | 保序字节编辑的首/中/末/空/空白各位置 | `cachecontrol_test.go:110,140` |
+| `TestClaudeVersionConsistency` | UA 版本号 == `CLICurrentVersion` == 计费块 `cc_version` | `fingerprint_test.go:15` |
+| `TestStainlessOSStaysLinux` | 挡住把 `ClaudeStainlessOS` "修"成 capture 的 macOS | `fingerprint_test.go:44` |
+| `TestClientRequestIDGeneratedOnlyForAnthropicBase` | first-party 才发、每请求新值 | `fingerprint_test.go:73` |
+| `TestForcePinnedProfileRespectsCountTokens` | pin 阶段不给 count_tokens 加回 timeout | `fingerprint_test.go:110` |
+| `TestAddMessageCacheBreakpoints` | message 断点位置/尊重客户端 ttl/畸形输入原样返回 | `fingerprint_test.go:143` |
+| `TestRewriteModelFieldPreservingBytes*` | model 改写不重排 key、拒绝缺失/重复/非字符串 | `model_test.go:9,23,49` |
 | `TestNormalizeDateline_AllBeaconVariants` | 四种撇号 × 两种分隔符 | `dateline_test.go:5` |
 | `TestNormalizeDateline_NoOpAndBytePreserving` | 规范形态返回原 slice | `dateline_test.go:36` |
 | `TestNormalizeDateline_MixedSeparatorNotMatched` | 混合分隔符不误伤用户文本 | `dateline_test.go:54` |
@@ -571,7 +629,10 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 | 文件 | 行数 | 职责 |
 |---|---|---|
 | `mimicry/fingerprint.go` | 184 | 全部 Claude 版本/UA/beta/cache 常量、`NewRequestUUID`、`UUIDFromBytes`、`ensureHeader` |
-| `mimicry/headers.go` | 115 | `ApplyClaudeCodeHeaders`、`KindOAuth`/`KindAPIKey`、`count_tokens` 请求类分支 |
+| `mimicry/headers.go` | 128 | `ApplyClaudeCodeHeaders`、`KindOAuth`/`KindAPIKey`、`isCountTokensRequest` 请求类分支 |
+| `mimicry/beta.go` | 122 | `UpgradeClaudeBetaVectorForOAuth` —— 自定义 base URL 向量的加法修补、canonical 顺序 |
+| `mimicry/cachecontrol.go` | 213 | 裸 `ephemeral` 断点的 ttl/scope 修补；`setJSONObjectMember`/`deleteJSONObjectMember` 保序字节编辑 |
+| `mimicry/model.go` | 49 | `RewriteModelFieldPreservingBytes` —— 不重排顶层 key 的 model 改写 |
 | `mimicry/body.go` | 616 | `ApplyClaudeCodeBodyMimicry` 与全部 body 变换、`computeClaudeCodeFingerprint`、`signBillingHeaderCCH`、`BuildJSONUserID` |
 | `mimicry/identity.go` | 76 | `SimIdentity`、`DeviceIDFor`、`SessionIDFor`、`SessionIDForSource` |
 | `mimicry/request_policy.go` | 943 | prepared-request 全管线：分类、策略、准备、应用、JSON span 字节手术、billing 解析与校验 |

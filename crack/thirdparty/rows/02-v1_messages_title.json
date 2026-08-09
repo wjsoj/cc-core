@@ -1,0 +1,119 @@
+{
+  "class": "v1_messages",
+  "url": "https://api.minimaxi.com/anthropic/v1/messages?beta=true",
+  "method": "POST",
+  "status": 200,
+  "reqSize": 2151,
+  "resSize": 425,
+  "reqHeaders": {
+    "accept": "application/json",
+    "authorization": "<masked>",
+    "content-type": "application/json",
+    "user-agent": "claude-cli/2.1.226 (external, cli)",
+    "x-claude-code-session-id": "<masked>",
+    "x-stainless-arch": "x64",
+    "x-stainless-lang": "js",
+    "x-stainless-os": "Linux",
+    "x-stainless-package-version": "0.94.0",
+    "x-stainless-retry-count": "0",
+    "x-stainless-runtime": "node",
+    "x-stainless-runtime-version": "v26.3.0",
+    "x-stainless-timeout": "3000",
+    "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,structured-outputs-2025-12-15",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "anthropic-version": "2023-06-01",
+    "x-app": "cli",
+    "connection": "keep-alive",
+    "host": "api.minimaxi.com",
+    "accept-encoding": "gzip, br",
+    "content-length": "2151"
+  },
+  "resHeaders": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "vary": "Accept-Encoding",
+    "trace-id": "<masked>",
+    "x-session-id": "<masked>",
+    "x-mm-request-id": "<masked>",
+    "minimax-request-id": "<masked>",
+    "alb_receive_time": "<masked>",
+    "alb_request_id": "<masked>",
+    "content-encoding": "br",
+    "server": "TencentEdgeOne",
+    "cache-control": "no-cache",
+    "transfer-encoding": "chunked",
+    "connection": "keep-alive",
+    "date": "Sun, 09 Aug 2026 17:07:41 GMT",
+    "x-from": "tx",
+    "eo-log-uuid": "<masked>",
+    "eo-cache-status": "MISS"
+  },
+  "reqBody": {
+    "body": {
+      "model": "MiniMax-M3",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<text:125 chars>"
+            }
+          ]
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "x-anthropic-billing-header: cc_version=2.1.226.fb5; cc_entrypoint=cli;"
+        },
+        {
+          "type": "text",
+          "text": "You are Claude Code, Anthropic's official CLI for Claude."
+        },
+        {
+          "type": "text",
+          "text": "<text:1190 chars>"
+        }
+      ],
+      "tools": [],
+      "metadata": {
+        "user_id": "<masked:user_id>"
+      },
+      "max_tokens": 32000,
+      "output_config": {
+        "effort": "high",
+        "format": {
+          "type": "json_schema",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "stream": true
+    },
+    "_notes": {
+      "message_count": 1,
+      "roles": {
+        "user": 1
+      },
+      "system_cache_pattern": [
+        null,
+        null,
+        null
+      ],
+      "tool_names": []
+    }
+  },
+  "resBody": {
+    "_raw": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"i"
+  }
+}

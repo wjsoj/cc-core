@@ -26,7 +26,12 @@ MASK_HEADERS = {"authorization", "x-api-key", "cookie", "set-cookie",
                 "x-claude-code-session-id", "x-client-request-id", "request-id",
                 "x-organization-uuid", "anthropic-organization-id",
                 "anthropic-organization-uuid", "anthropic-workspace-id",
-                "cf-ray"}
+                "cf-ray",
+                # Third-party gateway request/session correlators — the
+                # custom-base-url captures' equivalent of request-id / cf-ray.
+                "trace-id", "x-session-id", "x-mm-request-id",
+                "minimax-request-id", "alb_request_id", "alb_receive_time",
+                "eo-log-uuid"}
 # Secret / identity values carried in OAuth login bodies. Masked by value (not
 # structure) so the request-param NAMES, response KEYS, and non-secret
 # fingerprint values (scope, token_type, expires_in, has_claude_max,
@@ -80,7 +85,13 @@ def scrub_identity(o):
     return o
 KEEP_TEXT_PREFIXES = ("x-anthropic-billing-header:",
                       "You are Claude Code, Anthropic's official CLI for Claude.")
+# Fixed client-side constants that happen to live under a prose key. The quota
+# probe's single message is literally "quota" — a fingerprint value the sidecar
+# reproduces, not user content.
+KEEP_TEXT_EXACT = {"quota"}
 TEXT_LIMIT = 80
+# Keys whose values are always prose, never structure.
+PROSE_KEYS = {"text", "content", "description", "prompt"}
 
 
 def decompress(raw, enc):
@@ -116,8 +127,16 @@ def redact(o, key=None):
                                          or "email" in key
                                          or key == "organization_name")):
             return f"<masked:{key}>"
-        if any(o.startswith(p) for p in KEEP_TEXT_PREFIXES):
+        if o in KEEP_TEXT_EXACT or any(o.startswith(p) for p in KEEP_TEXT_PREFIXES):
             return o  # fingerprint-bearing — keep verbatim
+        if key in PROSE_KEYS:
+            # A "text"/"content" value is prose by construction: the only
+            # fingerprint-bearing ones are the KEEP_TEXT_PREFIXES handled
+            # above. Redact regardless of length — TEXT_LIMIT would otherwise
+            # wave through any prompt under 80 chars, which is most one-line
+            # questions. (Caught by review of the 2026-08-09 thirdparty
+            # extraction, which kept a short user message verbatim.)
+            return f"<text:{len(o)} chars>"
         if len(o) > TEXT_LIMIT:
             return f"<text:{len(o)} chars>"
         return o

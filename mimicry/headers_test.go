@@ -128,9 +128,11 @@ func TestMainMessagesKeepsTimeoutAndFullBetas(t *testing.T) {
 	}
 }
 
-// A client that declares its own betas keeps them verbatim (we only ensure the
-// oauth marker) — this is how a downstream client opts into 1M, exactly as the
-// real CLI does. count_tokens detection must not override that.
+// A client that declares its own betas keeps every one of them — this is how a
+// downstream client opts into 1M, exactly as the real CLI does — and the
+// count_tokens branch must not substitute its own list over the top. On the
+// first-party OAuth path the declared vector is additively repaired with the
+// betas a custom-base-url client cannot declare (crack/thirdparty/SPEC.md §1a).
 func TestClientSuppliedBetasWinOnCountTokens(t *testing.T) {
 	id := SimIdentity{AccountKey: "acct", AccountUUID: "uuid", ClientToken: "tok"}
 
@@ -139,11 +141,30 @@ func TestClientSuppliedBetasWinOnCountTokens(t *testing.T) {
 	ApplyClaudeCodeHeaders(req, "sk-test", KindOAuth, false, true, id, nil)
 
 	got := req.Header.Get("Anthropic-Beta")
-	if !strings.HasPrefix(got, "context-1m-2025-08-07") {
-		t.Errorf("client beta list was clobbered: %q", got)
+	if got == ClaudeAnthropicBetaCountTokens {
+		t.Fatalf("count_tokens list clobbered a client-declared vector: %q", got)
 	}
-	if !strings.Contains(got, "oauth-2025-04-20") {
-		t.Errorf("oauth marker not appended to client list: %q", got)
+	// context-1m survives, and drags its captured partner in with it.
+	want := "oauth-2025-04-20,context-1m-2025-08-07,advisor-tool-2026-03-01," +
+		"advanced-tool-use-2025-11-20,fallback-credit-2026-06-01," +
+		"extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	if got != want {
+		t.Errorf("beta vector = %q, want %q", got, want)
+	}
+}
+
+// The repair only ever runs toward api.anthropic.com. A strict third-party
+// gateway rejects beta tokens it does not know, which is the same reason
+// ClaudeAnthropicBetaApikey is a shorter list than the OAuth one.
+func TestBetaRepairSkippedOnNonAnthropicBase(t *testing.T) {
+	id := SimIdentity{AccountKey: "acct", AccountUUID: "uuid", ClientToken: "tok"}
+
+	req := newReq(t, "https://gateway.example.com/v1/messages")
+	req.Header.Set("Anthropic-Beta", "claude-code-20250219,effort-2025-11-24")
+	ApplyClaudeCodeHeaders(req, "sk-test", KindOAuth, false, false, id, nil)
+
+	if got := req.Header.Get("Anthropic-Beta"); got != "claude-code-20250219,effort-2025-11-24,oauth-2025-04-20" {
+		t.Errorf("non-Anthropic base got repaired vector %q", got)
 	}
 }
 

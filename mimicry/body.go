@@ -255,15 +255,7 @@ func extractSystemBlocks(raw json.RawMessage) []json.RawMessage {
 
 func stripCacheControlFromBlocks(blocks []json.RawMessage) {
 	for i, raw := range blocks {
-		var b map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &b); err != nil {
-			continue
-		}
-		if _, ok := b["cache_control"]; !ok {
-			continue
-		}
-		delete(b, "cache_control")
-		if nb, err := json.Marshal(b); err == nil {
+		if nb, err := deleteJSONObjectMember(raw, "cache_control"); err == nil {
 			blocks[i] = nb
 		}
 	}
@@ -283,34 +275,31 @@ func applySystemCacheBreakpoints(blocks []json.RawMessage) {
 	blocks[len(blocks)-1] = injectCacheControl(blocks[len(blocks)-1], false)
 }
 
+// injectCacheControl edits the block in place rather than round-tripping it
+// through a map, so the client's own key order — and any keys we don't model —
+// survive, and cache_control lands last as it does in capture.
 func injectCacheControl(raw json.RawMessage, withGlobalScope bool) json.RawMessage {
-	var b map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &b); err != nil {
+	out, err := setJSONObjectMember(raw, "cache_control", claudeSystemCacheControl(withGlobalScope))
+	if err != nil {
 		return raw
 	}
-	cc := map[string]any{"type": "ephemeral", "ttl": ClaudeDefaultCacheTTL}
-	if withGlobalScope {
-		cc["scope"] = ClaudeDefaultCacheScope
-	}
-	if mb, err := json.Marshal(cc); err == nil {
-		b["cache_control"] = mb
-	}
-	if nb, err := json.Marshal(b); err == nil {
-		return nb
-	}
-	return raw
+	return out
+}
+
+// claudeSystemBlock marshals in the captured field order, {"type","text",…}.
+type claudeSystemBlock struct {
+	Type         string              `json:"type"`
+	Text         string              `json:"text"`
+	CacheControl *claudeCacheControl `json:"cache_control,omitempty"`
 }
 
 func buildSystemTextBlock(text string, cache, withGlobalScope bool) json.RawMessage {
-	m := map[string]any{"type": "text", "text": text}
+	block := claudeSystemBlock{Type: "text", Text: text}
 	if cache {
-		cc := map[string]any{"type": "ephemeral", "ttl": ClaudeDefaultCacheTTL}
-		if withGlobalScope {
-			cc["scope"] = ClaudeDefaultCacheScope
-		}
-		m["cache_control"] = cc
+		cc := claudeSystemCacheControl(withGlobalScope)
+		block.CacheControl = &cc
 	}
-	out, _ := json.Marshal(m)
+	out, _ := json.Marshal(block)
 	return out
 }
 
@@ -519,38 +508,37 @@ func injectBreakpointOnMessage(msg map[string]json.RawMessage) map[string]json.R
 
 	var asString string
 	if err := json.Unmarshal(contentRaw, &asString); err == nil {
-		blk, _ := json.Marshal(map[string]any{
-			"type": "text",
-			"text": asString,
-			"cache_control": map[string]any{
-				"type": "ephemeral",
-				"ttl":  ClaudeDefaultCacheTTL,
-			},
-		})
-		arr, _ := json.Marshal([]json.RawMessage{blk})
+		arr, _ := json.Marshal([]json.RawMessage{buildSystemTextBlock(asString, true, false)})
 		msg["content"] = arr
 		return msg
 	}
 
-	var blocks []map[string]any
-	if err := json.Unmarshal(contentRaw, &blocks); err != nil {
-		return msg
-	}
-	if len(blocks) == 0 {
+	// Edit the last block as raw bytes so the client's own key order and any
+	// keys we don't model survive, and cache_control lands last — the same
+	// reason injectCacheControl does it this way.
+	var blocks []json.RawMessage
+	if err := json.Unmarshal(contentRaw, &blocks); err != nil || len(blocks) == 0 {
 		return msg
 	}
 	last := blocks[len(blocks)-1]
-	if cc, ok := last["cache_control"].(map[string]any); ok {
-		if ttl, _ := cc["ttl"].(string); ttl != "" {
-			return msg // client already set a breakpoint here — respect it
+	if existing, ok := findJSONObjectMemberSpan(last, "cache_control"); ok {
+		var cc claudeCacheControl
+		if err := json.Unmarshal(last[existing.start:existing.end], &cc); err != nil || cc.TTL != "" {
+			// Unreadable, or the client already set a breakpoint here — respect it.
+			return msg
 		}
-		cc["ttl"] = ClaudeDefaultCacheTTL
-		last["cache_control"] = cc
+		cc.TTL = ClaudeDefaultCacheTTL
+		updated, err := setJSONObjectMember(last, "cache_control", cc)
+		if err != nil {
+			return msg
+		}
+		last = updated
 	} else {
-		last["cache_control"] = map[string]any{
-			"type": "ephemeral",
-			"ttl":  ClaudeDefaultCacheTTL,
+		updated, err := setJSONObjectMember(last, "cache_control", claudeSystemCacheControl(false))
+		if err != nil {
+			return msg
 		}
+		last = updated
 	}
 	blocks[len(blocks)-1] = last
 	if nb, err := json.Marshal(blocks); err == nil {

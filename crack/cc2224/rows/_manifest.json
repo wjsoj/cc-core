@@ -142,5 +142,14 @@
     "url": "https://api.anthropic.com/v1/code/triggers",
     "status": 200,
     "reqSize": 0
+  },
+  {
+    "idx": 19,
+    "class": "quota_probe",
+    "file": "19-quota_probe.json",
+    "url": "https://api.anthropic.com/v1/messages?beta=true",
+    "status": 200,
+    "reqSize": 323,
+    "note": "sidecar Haiku quota probe: 6-item beta list, max_tokens=1, no system"
   }
 ]

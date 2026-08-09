@@ -13,6 +13,16 @@ const (
 	KindAPIKey = "apikey"
 )
 
+// isCountTokensRequest reports whether req targets POST
+// /v1/messages/count_tokens, which real CC treats as a request class of its own:
+// its own (much shorter) beta list and no X-Stainless-Timeout at all
+// (crack/cc2220/SPEC.md §1b). Both the plain header layer and the prepared
+// pipeline have to agree on this, so it lives in one place.
+func isCountTokensRequest(req *http.Request) bool {
+	return req != nil && req.URL != nil &&
+		strings.HasSuffix(strings.TrimSuffix(req.URL.Path, "/"), "/v1/messages/count_tokens")
+}
+
 // ApplyClaudeCodeHeaders rewrites req to look like a real Claude Code CLI
 // client. Two layers of fingerprint matter to Anthropic's edge:
 //
@@ -46,18 +56,23 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// POST /v1/messages/count_tokens is a distinct request class in real CC:
-	// its own (shorter) beta list and no X-Stainless-Timeout.
-	// (crack/cc2220/SPEC.md §1b.)
-	countTokens := req.URL != nil &&
-		strings.HasSuffix(strings.TrimSuffix(req.URL.Path, "/"), "/v1/messages/count_tokens")
+	countTokens := isCountTokensRequest(req)
 
 	// Anthropic protocol headers.
 	ensureHeader(req.Header, "Anthropic-Version", ClaudeAnthropicVersion)
 	if existing := strings.TrimSpace(req.Header.Get("Anthropic-Beta")); existing != "" {
-		// Client supplied its own beta list; make sure oauth marker is in it
-		// when we're using OAuth (mirrors upstream behavior).
-		if kind == KindOAuth && !strings.Contains(existing, "oauth") {
+		// Client supplied its own beta list. Keep it — it carries the request
+		// class (main / title / count_tokens) that no single constant can — but
+		// on the first-party OAuth path add back the betas a client on a custom
+		// base URL structurally cannot declare. See beta.go and
+		// crack/thirdparty/SPEC.md §1a; the transform is additive and idempotent.
+		switch {
+		case kind == KindOAuth && isAnthropicBase:
+			req.Header.Set("Anthropic-Beta", UpgradeClaudeBetaVectorForOAuth(existing))
+		case kind == KindOAuth && !strings.Contains(existing, "oauth"):
+			// Non-Anthropic upstream: only the oauth marker, as before. Strict
+			// gateways reject beta tokens they don't know, which is the same
+			// reason ClaudeAnthropicBetaApikey is a shorter list.
 			req.Header.Set("Anthropic-Beta", existing+",oauth-2025-04-20")
 		}
 	} else if kind == KindAPIKey {

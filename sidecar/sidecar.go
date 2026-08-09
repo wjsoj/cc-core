@@ -77,8 +77,8 @@ const (
 	// dispatcher goroutine) and never blocks the user request.
 	sidecarRequestTimeout = 30 * time.Second
 
-	// BootstrapWaitCap caps how long the first business /v1/messages from
-	// a fresh (account, clientToken) pair should wait for sidecar bootstrap
+	// BootstrapWaitCap caps how long the first business /v1/messages for a
+	// fresh account should wait for sidecar bootstrap
 	// to reach the quota_probe step (real CC's last pre-business call,
 	// captured at T+1.27s). 5s comfortably accommodates slow proxy lanes
 	// while ensuring a wedged upstream can't hang user traffic. Exported
@@ -120,7 +120,7 @@ const (
 	bootstrapCooldown = 12 * time.Hour
 
 	// bootstrapJitterFrac perturbs each step's relative offset by ±this
-	// fraction. The captured 9-step ladder (T+0/T+0.16/T+1.25/...) is
+	// fraction. The captured 10-step ladder (T+0/T+0.16/T+1.25/...) is
 	// itself a fingerprint when replayed bit-exact every session.
 	bootstrapJitterFrac = 0.15
 
@@ -139,9 +139,11 @@ const (
 	datadogJitter       = 0.4
 )
 
-// quotaProbeBeta and quotaProbeModel come from the live CC 2.1.170 quota
-// probe (crack/claude SPEC.md §8). 2.1.158→2.1.170 inserted
-// thinking-token-count-2026-05-13 after redact-thinking (5→6 items).
+// quotaProbeBeta and quotaProbeModel are the beta list and model real CC sends
+// on its startup quota probe — a 6-item list, shorter than any main-request
+// vector. Originally taken from a 2.1.170 capture whose archive dir has since
+// been pruned; re-captured verbatim at the current target and now anchored
+// there (crack/cc2224/rows/19-quota_probe.json).
 const (
 	quotaProbeBeta  = "oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05"
 	quotaProbeModel = "claude-haiku-4-5-20251001"
@@ -318,7 +320,7 @@ func (m *Manager) Notify(a *auth.Auth, clientToken string) <-chan struct{} {
 	sess.cancel = cancel
 
 	// Bootstrap cooldown: within bootstrapCooldown of the previous bootstrap
-	// for this account, suppress the 9-step burst entirely. Heartbeat still
+	// for this account, suppress the 10-step burst entirely. Heartbeat still
 	// starts so the long-running "process" continues to look alive.
 	lastBoot := anchor.lastBootstrap.Load()
 	withinCooldown := lastBoot > 0 && time.Duration(now-lastBoot) < bootstrapCooldown
@@ -395,7 +397,7 @@ type bootstrapStep struct {
 	responseHandler func(a *auth.Auth, body []byte)
 }
 
-// realBootstrapSteps returns the 9-step sequence fired at session start.
+// realBootstrapSteps returns the 10-step sequence fired at session start.
 // Step 6 is the quota probe. Steps' delays are the relative timestamps
 // captured in crack/oauth/rows/01..10 (rounded to ms). They are NOT
 // jittered — real CC fires them deterministically because each step
@@ -434,9 +436,15 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 		{
 			// CC 2.1.141: bootstrap URL now carries query params advertising
 			// the entrypoint and the model the user is launching with.
+			// The model= parameter is the model the client is launching with,
+			// so it has to agree with the model the same simulated process
+			// reports in its telemetry — see ccDatadogModel. Announcing
+			// opus-4-8 at bootstrap and opus-5 in event_logging is a
+			// self-contradiction no real client produces. Re-captured at
+			// 2.1.224 (crack/cc2224/SPEC.md §5).
 			name:            "claude_cli_bootstrap",
 			method:          "GET",
-			url:             baseURL + "/api/claude_cli/bootstrap?entrypoint=cli&model=claude-opus-4-8",
+			url:             baseURL + "/api/claude_cli/bootstrap?entrypoint=cli&model=" + ccDatadogModel,
 			delayFromStart:  1250 * time.Millisecond,
 			userAgent:       uaClaudeCode,
 			beta:            "oauth-2025-04-20",
@@ -543,7 +551,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 	}
 }
 
-// runBootstrap dispatches the 9-step burst with the exact relative timing
+// runBootstrap dispatches the 10-step burst with the exact relative timing
 // real CC produces. Each step is best-effort; failures are logged at
 // debug level and never propagate. Cancellation: if ctx is cancelled mid-
 // burst (session evicted), abort.

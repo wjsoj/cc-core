@@ -34,9 +34,11 @@
 | 路径 | 内容 | 覆盖场景 / 状态 |
 |---|---|---|
 | `crack/README.md` | 档案总览、layout 表、脱敏政策、版本升级 5 步 | 入口文件 |
-| `crack/COMPARE.md` | 中文长文：同机、同 `claude-cli/2.1.126`、同 `device_id` 下 OAuth（32 请求）vs 三方 API Key（26 请求）的**逐条出口流量对比** | 解释两条路径的差异来源（OAuth 独有 `eval/sdk`、`oauth/account/settings`、`claude_code_grove`、quota 探测；apikey 独有 `/v1/models`），以及为什么 apikey 路径没有 `cch` |
+| `crack/COMPARE.md` | 中文长文：同机、同 `claude-cli/2.1.126`、同 `device_id` 下 OAuth（32 请求）vs 三方 API Key（26 请求）的**逐条出口流量对比**。**停留在 2.1.126，此后从未复核** —— 当前目标下的 OAuth vs 自定义 base URL 差异改看 `thirdparty/SPEC.md` | 解释两条路径的差异来源（OAuth 独有 `eval/sdk`、`oauth/account/settings`、`claude_code_grove`、quota 探测；apikey 独有 `/v1/models`），以及为什么 apikey 路径没有 `cch` |
 | `crack/cc2224/` | **当前 Claude 目标 `claude-cli/2.1.224`**（2026-08-07，Arch Linux），首个覆盖完整 login→对话链路的抓包 | 先读 `SPEC.md` |
 | `crack/cc2224/SPEC.md` | 权威 diff：2.1.220→224 为纯版本串 bump（版本、`ccBuildTime`、遥测上报模型），其余逐项未变 | 含「Unresolved」：非 1M 主请求与 `count_tokens` 本次未捕获 |
+| `crack/thirdparty/` | **入站形态基线**：`claude-cli/2.1.226` 经 `ANTHROPIC_BASE_URL` 指向第三方网关（2026-08-09），2 行 rows（主对话 + 标题） | 其余目录记录我们要**产出**什么，这个记录我们要**修复**什么 —— 两个 fork 收到的正是这种请求。先读 `SPEC.md` |
+| `crack/thirdparty/SPEC.md` | 逐类 beta 向量、header/body/响应头差异表；确立 5 项 OAuth-only 差集、空 `account_uuid`、裸 `ephemeral` 断点、缺失的 `x-client-request-id`，以及**真实客户端在自定义 base URL 下完全不发 sidecar 流量** | `mimicry/beta.go` 与 `mimicry/cachecontrol.go` 的直接依据 |
 | `crack/cc2220/` | 前一个 Claude 目标 `claude-cli/2.1.220`，两次独立抓包 | 仍是 beta 向量与多轮链路的主要证据来源 |
 | `crack/cc2220/SPEC.md` | 权威 diff + cc-core 编辑清单（335 行） | 见下文"模板说明" |
 | `crack/cc2220/ANALYSIS.md` | 验证方法学与计数：完备性边界、导出核对、请求分类规则、cch 验证步骤 | 支撑 SPEC 的证据链，不重复结论 |

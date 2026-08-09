@@ -1,0 +1,386 @@
+{
+  "class": "v1_messages",
+  "url": "https://api.minimaxi.com/anthropic/v1/messages?beta=true",
+  "method": "POST",
+  "status": 200,
+  "reqSize": 145853,
+  "resSize": 1364,
+  "reqHeaders": {
+    "accept": "application/json",
+    "authorization": "<masked>",
+    "content-type": "application/json",
+    "user-agent": "claude-cli/2.1.226 (external, cli)",
+    "x-claude-code-session-id": "<masked>",
+    "x-stainless-arch": "x64",
+    "x-stainless-lang": "js",
+    "x-stainless-os": "Linux",
+    "x-stainless-package-version": "0.94.0",
+    "x-stainless-retry-count": "0",
+    "x-stainless-runtime": "node",
+    "x-stainless-runtime-version": "v26.3.0",
+    "x-stainless-timeout": "3000",
+    "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "anthropic-version": "2023-06-01",
+    "x-app": "cli",
+    "connection": "keep-alive",
+    "host": "api.minimaxi.com",
+    "accept-encoding": "gzip, br",
+    "content-length": "145853"
+  },
+  "resHeaders": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "vary": "Accept-Encoding",
+    "trace-id": "<masked>",
+    "x-session-id": "<masked>",
+    "x-mm-request-id": "<masked>",
+    "minimax-request-id": "<masked>",
+    "alb_receive_time": "<masked>",
+    "alb_request_id": "<masked>",
+    "content-encoding": "br",
+    "server": "TencentEdgeOne",
+    "cache-control": "no-cache",
+    "transfer-encoding": "chunked",
+    "connection": "keep-alive",
+    "date": "Sun, 09 Aug 2026 17:11:18 GMT",
+    "x-from": "tx",
+    "eo-log-uuid": "<masked>",
+    "eo-cache-status": "MISS"
+  },
+  "reqBody": {
+    "body": {
+      "model": "MiniMax-M2.7",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<text:757 chars>"
+            },
+            {
+              "type": "text",
+              "text": "<text:12 chars>"
+            }
+          ]
+        },
+        {
+          "role": "system",
+          "content": "<text:9255 chars>"
+        },
+        "<… 7 more items redacted …>",
+        {
+          "role": "user",
+          "content": "<text:253 chars>"
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "x-anthropic-billing-header: cc_version=2.1.226.ab9; cc_entrypoint=cli;"
+        },
+        {
+          "type": "text",
+          "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        },
+        {
+          "type": "text",
+          "text": "<text:6718 chars>",
+          "cache_control": {
+            "type": "ephemeral"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "Agent",
+          "description": "<text:1574 chars>",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "description": {
+                "description": "<text:42 chars>",
+                "type": "string"
+              },
+              "prompt": {
+                "description": "<text:33 chars>",
+                "type": "string"
+              },
+              "subagent_type": {
+                "description": "<text:50 chars>",
+                "type": "string"
+              },
+              "model": {
+                "description": "<text:254 chars>",
+                "type": "string",
+                "enum": [
+                  "sonnet",
+                  "opus",
+                  "haiku",
+                  "fable"
+                ]
+              },
+              "run_in_background": {
+                "description": "<text:170 chars>",
+                "type": "boolean"
+              },
+              "isolation": {
+                "description": "<text:221 chars>",
+                "type": "string",
+                "enum": [
+                  "worktree",
+                  "remote"
+                ]
+              }
+            },
+            "required": [
+              "description",
+              "prompt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "AskUserQuestion",
+          "description": "<text:1786 chars>",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "questions": {
+                "description": "<text:41 chars>",
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "question": {
+                      "description": "<text:247 chars>",
+                      "type": "string"
+                    },
+                    "header": {
+                      "description": "<text:104 chars>",
+                      "type": "string"
+                    },
+                    "options": {
+                      "description": "<text:228 chars>",
+                      "minItems": 2,
+                      "maxItems": 4,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "description": "<text:130 chars>",
+                            "type": "string"
+                          },
+                          "description": {
+                            "description": "<text:131 chars>",
+                            "type": "string"
+                          },
+                          "preview": {
+                            "description": "<text:207 chars>",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "label",
+                          "description"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "multiSelect": {
+                      "description": "<text:122 chars>",
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "question",
+                    "header",
+                    "options",
+                    "multiSelect"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "answers": {
+                "description": "<text:50 chars>",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "annotations": {
+                "description": "<text:108 chars>",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "preview": {
+                      "description": "<text:74 chars>",
+                      "type": "string"
+                    },
+                    "notes": {
+                      "description": "<text:50 chars>",
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "metadata": {
+                "description": "<text:77 chars>",
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "description": "<text:122 chars>",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "questions"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "<… 62 more items redacted …>",
+        {
+          "name": "mcp__plugin_stripe_stripe__complete_authentication",
+          "description": "<text:479 chars>",
+          "input_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "callback_url": {
+                "description": "<text:126 chars>",
+                "type": "string"
+              }
+            },
+            "required": [
+              "callback_url"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "metadata": {
+        "user_id": "<masked:user_id>"
+      },
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "adaptive"
+      },
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      },
+      "output_config": {
+        "effort": "medium"
+      },
+      "stream": true
+    },
+    "_notes": {
+      "message_count": 10,
+      "roles": {
+        "user": 5,
+        "system": 1,
+        "assistant": 4
+      },
+      "system_cache_pattern": [
+        null,
+        false,
+        false
+      ],
+      "tool_names": [
+        "Agent",
+        "AskUserQuestion",
+        "Bash",
+        "CronCreate",
+        "CronDelete",
+        "CronList",
+        "Edit",
+        "EnterPlanMode",
+        "EnterWorktree",
+        "ExitPlanMode",
+        "ExitWorktree",
+        "LSP",
+        "NotebookEdit",
+        "Read",
+        "ReportFindings",
+        "ScheduleWakeup",
+        "SendMessage",
+        "Skill",
+        "TaskCreate",
+        "TaskGet",
+        "TaskList",
+        "TaskOutput",
+        "TaskStop",
+        "TaskUpdate",
+        "WebFetch",
+        "WebSearch",
+        "Workflow",
+        "Write",
+        "mcp__chrome-devtools__click",
+        "mcp__chrome-devtools__close_page",
+        "mcp__chrome-devtools__drag",
+        "mcp__chrome-devtools__emulate",
+        "mcp__chrome-devtools__evaluate_script",
+        "mcp__chrome-devtools__fill",
+        "mcp__chrome-devtools__fill_form",
+        "mcp__chrome-devtools__get_console_message",
+        "mcp__chrome-devtools__get_network_request",
+        "mcp__chrome-devtools__handle_dialog",
+        "mcp__chrome-devtools__hover",
+        "mcp__chrome-devtools__lighthouse_audit",
+        "mcp__chrome-devtools__list_console_messages",
+        "mcp__chrome-devtools__list_network_requests",
+        "mcp__chrome-devtools__list_pages",
+        "mcp__chrome-devtools__navigate_page",
+        "mcp__chrome-devtools__new_page",
+        "mcp__chrome-devtools__performance_analyze_insight",
+        "mcp__chrome-devtools__performance_start_trace",
+        "mcp__chrome-devtools__performance_stop_trace",
+        "mcp__chrome-devtools__press_key",
+        "mcp__chrome-devtools__resize_page",
+        "mcp__chrome-devtools__select_page",
+        "mcp__chrome-devtools__take_heapsnapshot",
+        "mcp__chrome-devtools__take_screenshot",
+        "mcp__chrome-devtools__take_snapshot",
+        "mcp__chrome-devtools__type_text",
+        "mcp__chrome-devtools__upload_file",
+        "mcp__chrome-devtools__wait_for",
+        "mcp__context7__get-library-docs",
+        "mcp__context7__resolve-library-id",
+        "mcp__figma__authenticate",
+        "mcp__figma__complete_authentication",
+        "mcp__plugin_context7_context7__get-library-docs",
+        "mcp__plugin_context7_context7__resolve-library-id",
+        "mcp__plugin_stripe_stripe__authenticate",
+        "mcp__plugin_stripe_stripe__complete_authentication"
+      ]
+    }
+  },
+  "resBody": {
+    "_raw": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"i"
+  }
+}
