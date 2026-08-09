@@ -279,6 +279,7 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 	if v, ok := raw["price_multiplier"].(float64); ok && v > 0 {
 		priceMultiplier = v
 	}
+	relayPeer, _ := raw["relay_peer"].(bool)
 	return &Auth{
 		ID:              filepath.Base(path),
 		Kind:            KindAPIKey,
@@ -294,6 +295,7 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 		StripThinking:   stripThinking,
 		Order:           order,
 		PriceMultiplier: priceMultiplier,
+		RelayPeer:       relayPeer,
 	}, nil
 }
 
@@ -474,6 +476,11 @@ func saveAuth(a *Auth) error {
 			raw["type"] = "apikey"
 		}
 		raw["api_key"] = a.AccessToken
+		if a.RelayPeer {
+			raw["relay_peer"] = true
+		} else {
+			delete(raw, "relay_peer")
+		}
 		if a.BaseURL != "" {
 			raw["base_url"] = a.BaseURL
 		} else {

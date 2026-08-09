@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.8.75 — relay: carry the downstream caller across one trusted hop
+
+When one of our proxies forwards to another using a single API key, the
+receiver sees one client. Its scheduler keys sticky assignments on
+(provider, client token, session), so every user behind the relay collapses
+onto one upstream credential no matter how many are free — the relay's users
+get the throughput of one account while the receiver's pool sits idle.
+
+- **New package `relay`** — three headers (`X-Relay-Client-Peer`,
+  `X-Relay-Client-Id`, `X-Relay-Client-Session`) plus `Apply` / `Read` /
+  `Strip` / `Identity.SlotID`. The client id is a salted hash of the
+  downstream token, so the receiver can tell users apart without learning the
+  sender's credentials.
+
+  Recovered values are used for **routing only**. Limits, quotas and billing
+  stay keyed on the relay's own token: the relay is one customer however many
+  users sit behind it, and a limit keyed on a header is a limit anyone can
+  evade by inventing a new value.
+
+  `Apply` clears the headers before stamping (an inbound value must never
+  survive a hop) and refuses to stamp a blank identity for an unidentified
+  caller — one shared blank id would re-create the very pinning this fixes.
+  Values are restricted to bounded printable ASCII because they become map
+  keys in the receiver's scheduler.
+
+- **`auth.Auth.RelayPeer`** (`relay_peer` in an API-key credential file) — the
+  sender's opt-in. Only a credential known to point at a cooperating peer is
+  handed our users' identity; to anyone else the headers are noise that leaks
+  topology. Append-only, and the round trip is tested: never dropped by a
+  rewrite, never invented in a file that lacked it.
+
+- **`clienttoken.Token.TrustedRelay`** (`trusted_relay`) — the receiver's
+  opt-in, and the trust boundary. Honour the headers only from a caller
+  authenticated as a trusted relay; `Strip` them from everything else.
+
 ## v0.8.74 — one place to decide what a shed frame looks like to the client
 
 `DemoteCapacityCode` gave callers the rewrite but left them to assemble the

@@ -142,6 +142,14 @@ type Auth struct {
 	// pricing-group multiplier (legacy behaviour). Ignored for OAuth. Append-
 	// only field — old credential files without it default to 0.
 	PriceMultiplier float64
+	// RelayPeer marks an API-key credential as pointing at a cooperating proxy
+	// we also run, rather than at a vendor or a third-party relay. Requests
+	// forwarded on it carry cc-core/relay headers naming the DOWNSTREAM caller,
+	// so the peer can spread them across its own credentials instead of pinning
+	// every user behind this proxy onto one. Off by default and meaningless for
+	// OAuth: to any other upstream the headers are noise that leaks topology.
+	// Append-only field — old credential files default to false.
+	RelayPeer bool
 
 	// Source file for OAuth and file-backed APIKey credentials.
 	FilePath string
@@ -363,6 +371,7 @@ func (a *Auth) Snapshot() AuthInfo {
 		Group:               a.Group,
 		Order:               a.Order,
 		PriceMultiplier:     a.PriceMultiplier,
+		RelayPeer:           a.RelayPeer,
 		QuarantineUntil:     a.QuarantineUntil,
 		QuarantineStrikes:   a.QuarantineStrikes,
 		ModelMap:            mm,
@@ -392,6 +401,7 @@ type AuthInfo struct {
 	Group           string
 	Order           int
 	PriceMultiplier float64
+	RelayPeer       bool
 	// QuarantineUntil / QuarantineStrikes expose the API-key circuit breaker
 	// so the admin panel can show a paused channel instead of leaving it
 	// looking healthy while it silently serves no traffic. Zero deadline =

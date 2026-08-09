@@ -59,8 +59,17 @@ type Token struct {
 	// the self-run OAuth pool is exhausted. Tri-state pointer: nil = unset =
 	// DEFAULT ON (enabled); &true = explicitly on; &false = user opted out.
 	// Read via UpstreamFallbackEnabled(). SaaS-gated (non-SaaS always falls back).
-	UpstreamFallback *bool     `json:"upstream_fallback,omitempty"`
-	CreatedAt        time.Time `json:"created_at,omitempty"`
+	UpstreamFallback *bool `json:"upstream_fallback,omitempty"`
+	// TrustedRelay marks this token as belonging to a proxy we also run, whose
+	// cc-core/relay headers may be believed. It affects ROUTING ONLY — the
+	// declared downstream caller becomes the scheduler slot, so users behind the
+	// relay spread across credentials instead of sharing one. Limits, quotas and
+	// billing stay keyed on this token: the relay is one customer however many
+	// users sit behind it, and a limit keyed on a header is a limit anyone can
+	// evade by inventing a new value. Off by default; never set it on a token
+	// handed to someone else.
+	TrustedRelay bool      `json:"trusted_relay,omitempty"`
+	CreatedAt    time.Time `json:"created_at,omitempty"`
 }
 
 // UpstreamFallbackEnabled returns the effective opt-in: requests may fall back
