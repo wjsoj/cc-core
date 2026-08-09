@@ -80,6 +80,38 @@ func TestResolveTargetSemantics(t *testing.T) {
 	}
 }
 
+// The transition case, and the one that bit during verification: a day that
+// has BOTH a legacy date-only object and newer timestamped runs.
+//
+// A legacy key's own stem is a bare date, so resolving exact stems before
+// dates hands back the legacy object — the older copy, and on the day of the
+// incident the damaged one. The date form has to win.
+func TestBareDatePrefersNewestRunOverLegacyKeyOfSameDay(t *testing.T) {
+	prefix := "app/"
+	objs := mkObjs(t, prefix, "2026-08-09", "2026-08-09T133818Z", "2026-08-09T133957Z")
+	sortObjs(objs)
+
+	got, err := pickKey(objs, prefix, "2026-08-09")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := prefix + "2026-08-09T133957Z" + objectSuffix; got != want {
+		t.Errorf("bare date resolved to %q, want the newest run %q", got, want)
+	}
+	// The legacy object must still be reachable when asked for by name.
+	if got, err := pickKey(objs, prefix, "2026-08-09.tar.gz.enc"); err == nil {
+		t.Errorf("a full filename should not resolve, got %q", got)
+	}
+	// And a specific timestamped run must still be pinnable.
+	got, err = pickKey(objs, prefix, "2026-08-09T133818Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := prefix + "2026-08-09T133818Z" + objectSuffix; got != want {
+		t.Errorf("pinned run resolved to %q, want %q", got, want)
+	}
+}
+
 // Retention counts calendar days, so every run of a day expires together and
 // the result does not depend on the clock time a run fired at.
 func TestPruneCutoffIsWholeDays(t *testing.T) {

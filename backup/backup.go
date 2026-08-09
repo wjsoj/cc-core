@@ -257,13 +257,13 @@ func pickKey(objs []BackupObject, prefix, want string) (string, error) {
 	if want == "" || strings.EqualFold(want, "latest") {
 		return objs[0].Key, nil // newest first
 	}
-	// Exact stem wins, so a specific run can always be pinned.
-	exact := prefix + want + objectSuffix
-	for _, o := range objs {
-		if o.Key == exact {
-			return o.Key, nil
-		}
-	}
+	// A bare date means "that day", and is checked FIRST — deliberately.
+	//
+	// A legacy object's own key is a bare date, so matching exact stems first
+	// would make "2026-08-09" resolve to the legacy object even when newer
+	// timestamped runs of that day exist. During the transition every such day
+	// has both, and the legacy one is the older copy: the exact case the new
+	// scheme exists to stop an operator from being handed.
 	if _, err := time.Parse(dateLayout, want); err == nil {
 		for _, o := range objs { // newest first
 			if o.Day() == want {
@@ -271,6 +271,13 @@ func pickKey(objs []BackupObject, prefix, want string) (string, error) {
 			}
 		}
 		return "", fmt.Errorf("restore: no backup for %s under prefix %q", want, prefix)
+	}
+	// Otherwise it is a full stem, pinning one specific run.
+	exact := prefix + want + objectSuffix
+	for _, o := range objs {
+		if o.Key == exact {
+			return o.Key, nil
+		}
 	}
 	return "", fmt.Errorf("restore: %q is neither a date (YYYY-MM-DD) nor a known backup stem", want)
 }
