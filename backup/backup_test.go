@@ -87,12 +87,27 @@ func TestSafeJoinRejectsTraversal(t *testing.T) {
 }
 
 func TestParseKeyDateAndPrefix(t *testing.T) {
-	d, ok := parseKeyDate("hypitoken/2026-06-20.tar.gz.enc")
-	if !ok || d.Format(dateLayout) != "2026-06-20" {
-		t.Fatalf("parseKeyDate: got %v %v", d, ok)
+	// Legacy one-per-day keys must keep parsing, or old objects fall out of
+	// listings and stop being prunable or restorable.
+	d, legacy, ok := parseKeyDate("hypitoken/2026-06-20.tar.gz.enc")
+	if !ok || !legacy || d.Format(dateLayout) != "2026-06-20" {
+		t.Fatalf("legacy parseKeyDate: got %v legacy=%v ok=%v", d, legacy, ok)
 	}
-	if _, ok := parseKeyDate("hypitoken/notadate.tar.gz.enc"); ok {
-		t.Fatal("parseKeyDate accepted bad stamp")
+	if !d.Equal(d.Truncate(24 * time.Hour)) {
+		t.Errorf("legacy key should resolve to midnight UTC, got %v", d)
+	}
+	d, legacy, ok = parseKeyDate("hypitoken/2026-06-20T034512Z.tar.gz.enc")
+	if !ok || legacy || d.Format(stampLayout) != "2026-06-20T034512Z" {
+		t.Fatalf("timestamped parseKeyDate: got %v legacy=%v ok=%v", d, legacy, ok)
+	}
+	for _, bad := range []string{
+		"hypitoken/notadate.tar.gz.enc",
+		"hypitoken/2026-06-20T0345Z.tar.gz.enc",
+		"hypitoken/2026-06-20.tar.gz",
+	} {
+		if _, _, ok := parseKeyDate(bad); ok {
+			t.Errorf("parseKeyDate accepted %q", bad)
+		}
 	}
 	for in, want := range map[string]string{"": "", "x": "x/", "/x/": "x/", "a/b": "a/b/"} {
 		if got := (S3Config{Prefix: in}).normPrefix(); got != want {
