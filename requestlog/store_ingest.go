@@ -107,15 +107,30 @@ func (s *Store) catchUp(initial bool) error {
 		}
 	}
 
-	// Files the retention GC deleted: drop their rows so lifetime totals
-	// track what the operator can actually still inspect.
-	for name, rec := range state {
-		if _, ok := live[name]; ok {
-			continue
+	// Files the retention GC deleted: drop their rows so lifetime totals track
+	// what the operator can actually still inspect.
+	//
+	// Gated on the archive actually being authoritative. With Options{
+	// JSONLArchive: false} the ledger still names every file the writer wrote
+	// before the switch, and those rows now live ONLY in this database —
+	// deleting the stale files is housekeeping, not a retention event, but
+	// this loop read it as one and took 999k rows of production history with
+	// it (2026-08-09). dropDay is `DELETE FROM req WHERE day = ?`, so it does
+	// not even spare the rows the writer inserted directly.
+	if s.archiveAuthoritative() {
+		for name, rec := range state {
+			if _, ok := live[name]; ok {
+				continue
+			}
+			if err := s.dropDay(rec.day, name); err != nil {
+				return err
+			}
 		}
-		if err := s.dropDay(rec.day, name); err != nil {
-			return err
-		}
+	} else if len(state) > len(live) {
+		// Say so once per pass rather than silently diverging: the ledger is
+		// describing files that no longer drive anything.
+		log.Debugf("requestlog: %d stale ingest entrie(s) with no file; archive is not authoritative, keeping their rows",
+			len(state)-len(live))
 	}
 
 	// Days the writer inserted into directly since the last pass. With the

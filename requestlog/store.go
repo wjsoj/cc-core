@@ -93,6 +93,14 @@ type Store struct {
 	// consulted by the throttle in maybeCatchUp.
 	lastCatchUp atomic.Int64
 
+	// archiveMode records whether a JSONL archive is authoritative for this
+	// directory: archiveUnknown until a Writer opens and declares it.
+	//
+	// It gates exactly one thing — the missing-file purge in catchUp — and it
+	// defaults to "unknown" because that purge is destructive and must require
+	// positive evidence. See archiveAuthoritative.
+	archiveMode atomic.Int32
+
 	// dirtyDays are days the writer inserted into directly, awaiting a cube
 	// rebuild. Separate from ingestMu because it is touched on the write path.
 	dirtyMu   sync.Mutex
@@ -231,6 +239,39 @@ func (s *Store) Close() {
 // Ready reports whether the index has completed its first full pass and is
 // therefore serving queries.
 func (s *Store) Ready() bool { return s != nil && s.ready.Load() }
+
+// Archive modes for Store.archiveMode.
+const (
+	archiveUnknown int32 = iota
+	archiveOn
+	archiveOff
+)
+
+// setArchiveMode is called by a Writer as it opens, to tell the index whether
+// requests-*.jsonl files are the authoritative record for this directory.
+func (s *Store) setArchiveMode(on bool) {
+	if s == nil {
+		return
+	}
+	if on {
+		s.archiveMode.Store(archiveOn)
+		return
+	}
+	s.archiveMode.Store(archiveOff)
+}
+
+// archiveAuthoritative reports whether a file's disappearance may be taken as
+// an instruction to delete the rows it contributed.
+//
+// Only archiveOn qualifies. Under archiveOff the ledger still names files the
+// writer has stopped maintaining — deleting them is housekeeping, not a
+// retention event, and treating it as one wipes history that exists nowhere
+// else. Under archiveUnknown (no writer has opened yet) we simply do not know,
+// and the safe reading of "do not know" is to keep the rows: a skipped purge
+// is corrected on the next pass, a wrongful one is not correctable at all.
+func (s *Store) archiveAuthoritative() bool {
+	return s != nil && s.archiveMode.Load() == archiveOn
+}
 
 func (s *Store) loop() {
 	defer close(s.doneCh)

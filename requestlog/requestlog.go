@@ -188,9 +188,14 @@ func OpenWithOptions(dir string, opt Options) (*Writer, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	if !opt.JSONLArchive && lookupStore(dir) == nil {
+	st := lookupStore(dir)
+	if !opt.JSONLArchive && st == nil {
 		return nil, fmt.Errorf("requestlog: jsonl archive disabled but no index open for %s", dir)
 	}
+	// Tell the index whether the files are authoritative BEFORE the writer
+	// starts, so no catch-up can read a stale ledger entry as a retention
+	// delete and drop the rows behind it.
+	st.setArchiveMode(opt.JSONLArchive)
 	w := &Writer{
 		dir:           dir,
 		retentionDays: opt.RetentionDays,

@@ -369,6 +369,17 @@ func TestStoreSelfHeal(t *testing.T) {
 
 	st := openReadyStore(t, dir)
 
+	// A Writer declaring the archive on is what licenses step 4 below: the
+	// index only treats a vanished file as a retention delete when something
+	// has told it the files are authoritative. Production always has one; a
+	// Store on its own genuinely does not know, and must not guess in the
+	// destructive direction. See store_stale_ledger_test.go.
+	w, err := OpenWithOptions(dir, Options{JSONLArchive: true})
+	if err != nil {
+		t.Fatalf("OpenWithOptions: %v", err)
+	}
+	defer w.Close()
+
 	check := func(what string) {
 		t.Helper()
 		// Compare against the scanning path by asking the store directly,
