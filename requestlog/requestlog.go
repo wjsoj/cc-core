@@ -261,6 +261,27 @@ func (w *Writer) Close() {
 	<-w.doneCh
 }
 
+// Shutdown closes a writer and its index in the only order that cannot lose
+// records.
+//
+// The writer must go first. Its Close blocks until the drain goroutine has
+// flushed what is still buffered, and that flush resolves its destination by
+// looking the store up by directory — so a store closed first has already
+// deregistered itself, and under Options{JSONLArchive: false} the batch has
+// nowhere left to go and is counted as dropped. There is no file to recover it
+// from; that is the whole trade of index-only mode.
+//
+// Closing the writer first is equally safe with the archive on. The concern that
+// motivated the opposite order — the index's file tailing racing the final
+// flush — is already handled by the unique (src_file, src_off) key: whichever
+// producer offers a line second is a no-op.
+//
+// Both arguments may be nil.
+func Shutdown(w *Writer, st *Store) {
+	w.Close()
+	st.Close()
+}
+
 // dbBatch is how many records accumulate before being inserted into the index
 // in one transaction. The flush ticker bounds the latency for a quiet stream,
 // so this only has to be large enough that a busy one is not paying per-record
