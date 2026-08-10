@@ -32,32 +32,54 @@ const (
 	anthropicOAuthUA = "axios/1.15.2"
 )
 
-// fileFormat is the JSON layout written by `claude setup-token` / our own
-// login flow. We accept extra keys and preserve them on save.
-type fileFormat struct {
-	Type          string         `json:"type"`
-	AccessToken   string         `json:"access_token"`
-	RefreshToken  string         `json:"refresh_token"`
-	Email         string         `json:"email,omitempty"`
-	Expire        string         `json:"expired,omitempty"` // RFC3339 string
-	ExpiresAt     int64          `json:"expires_at,omitempty"`
-	ProxyURL      string         `json:"proxy_url,omitempty"`
-	MaxConcurrent int            `json:"max_concurrent,omitempty"`
-	Disabled      bool           `json:"disabled,omitempty"`
-	Label         string         `json:"label,omitempty"`
-	Extra         map[string]any `json:"-"`
-}
-
-// DefaultClaudeOAuthModelMap upgrades retired Claude Opus model names to the
-// current one. It is injected into a Claude (Anthropic) OAuth credential's
-// ModelMap when the credential file has no `model_map` key at all — OAuth hits
-// api.anthropic.com directly, where opus-4-6 / opus-4-7 are retired, so they're
-// transparently served by opus-4-8. Operators override it via the admin
-// model-map editor; saving any map (even empty) suppresses re-injection, so an
-// empty map cleanly disables the defaults. API-key credentials get no defaults.
+// DefaultClaudeOAuthModelMap folds every retired Claude Opus and Sonnet
+// generation onto the current one. It is injected into a Claude (Anthropic)
+// OAuth credential's ModelMap when the credential file has no `model_map` key
+// at all — OAuth hits api.anthropic.com directly, where the older generations
+// are retired, so a request naming one either fails or is silently served by
+// something else. Mapping them explicitly makes the substitution ours and
+// observable. Operators override it via the admin model-map editor; saving any
+// map (even empty) suppresses re-injection, so an empty map cleanly disables
+// the defaults. API-key credentials get no defaults.
+//
+// Only Opus and Sonnet are folded, and only within their own family:
+//
+//   - Opus 4.6/4.7/4.8 and older → claude-opus-5. Safe for billing on either
+//     accounting basis: opus-4-6/4-7/4-8/5 all carry the identical price card
+//     (pricing/pricing.go — 5.00/25.00/0.50/6.25).
+//   - Sonnet 4.6 and older → claude-sonnet-5. NOTE these are NOT the same
+//     price: sonnet-4-6 is 3.00/15.00 while sonnet-5 runs an introductory
+//     2.00/10.00 until 2026-08-31. Consumers bill on the resolved UPSTREAM
+//     name, so the cheaper card applies; the client-facing name is what gets
+//     displayed. The two converge when the promo lapses.
+//   - claude-fable-5 is deliberately absent — it is the premium tier at 2×
+//     Opus and is API-key-only (AnthropicModelRequiresAPIKey). Folding
+//     anything into or out of it would misroute and misbill.
+//   - Haiku is deliberately absent — a different price tier, and mimicry
+//     skips body mimicry for Haiku, so silently re-pointing it changes more
+//     than the model name.
+//
+// Dated variants (claude-opus-4-8-20260315) need no entries: ResolveUpstreamModel
+// falls back to progressively shorter prefixes, exactly as pricing.Lookup does.
 var DefaultClaudeOAuthModelMap = map[string]string{
-	"claude-opus-4-6": "claude-opus-4-8",
-	"claude-opus-4-7": "claude-opus-4-8",
+	// Opus — current naming.
+	"claude-opus-4-8": "claude-opus-5",
+	"claude-opus-4-7": "claude-opus-5",
+	"claude-opus-4-6": "claude-opus-5",
+	"claude-opus-4-5": "claude-opus-5",
+	"claude-opus-4-1": "claude-opus-5",
+	"claude-opus-4":   "claude-opus-5",
+	// Opus — legacy "claude-<gen>-opus" naming.
+	"claude-3-opus": "claude-opus-5",
+
+	// Sonnet — current naming.
+	"claude-sonnet-4-6": "claude-sonnet-5",
+	"claude-sonnet-4-5": "claude-sonnet-5",
+	"claude-sonnet-4":   "claude-sonnet-5",
+	// Sonnet — legacy "claude-<gen>-sonnet" naming.
+	"claude-3-7-sonnet": "claude-sonnet-5",
+	"claude-3-5-sonnet": "claude-sonnet-5",
+	"claude-3-sonnet":   "claude-sonnet-5",
 }
 
 func defaultModelMapClone() map[string]string {
@@ -257,6 +279,7 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 	if v, ok := raw["price_multiplier"].(float64); ok && v > 0 {
 		priceMultiplier = v
 	}
+	relayPeer, _ := raw["relay_peer"].(bool)
 	return &Auth{
 		ID:              filepath.Base(path),
 		Kind:            KindAPIKey,
@@ -272,6 +295,7 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 		StripThinking:   stripThinking,
 		Order:           order,
 		PriceMultiplier: priceMultiplier,
+		RelayPeer:       relayPeer,
 	}, nil
 }
 
@@ -452,6 +476,11 @@ func saveAuth(a *Auth) error {
 			raw["type"] = "apikey"
 		}
 		raw["api_key"] = a.AccessToken
+		if a.RelayPeer {
+			raw["relay_peer"] = true
+		} else {
+			delete(raw, "relay_peer")
+		}
 		if a.BaseURL != "" {
 			raw["base_url"] = a.BaseURL
 		} else {

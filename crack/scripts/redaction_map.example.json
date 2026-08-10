@@ -5,7 +5,7 @@
     "Values are the placeholder strings that will appear in the published rows/docs.",
     "",
     "WORKFLOW:",
-    "  1. Capture a fresh kiro / anthropic session into crack/.../raw/*.json.",
+    "  1. Capture a fresh anthropic / codex session into crack/.../raw/*.json.",
     "  2. cp crack/scripts/redaction_map.example.json crack/scripts/redaction_map.json",
     "  3. Open the raw dump, identify tokens/UUIDs/secrets, add them as key→placeholder.",
     "  4. python3 crack/scripts/sanitize.py  (idempotent; refuses to run without map).",

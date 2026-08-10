@@ -420,8 +420,15 @@ func ApplyClaudeCodePreparedRequest(req *http.Request, credentialToken, credenti
 			// Generic ingress headers are not evidence of a real Claude Code
 			// feature/profile vector. Replace every identity-bearing value with the
 			// same pinned profile and account-bound session used by the body.
-			forcePinnedClaudeCodeProfile(req.Header)
-			req.Header.Set("Anthropic-Beta", result.anthropicBeta)
+			forcePinnedClaudeCodeProfile(req)
+			// count_tokens is a distinct captured request class. For all other
+			// Generic requests the normalizer has already derived the exact
+			// capability vector from the body (for example structured outputs).
+			if isCountTokensRequest(req) {
+				req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaCountTokens)
+			} else {
+				req.Header.Set("Anthropic-Beta", result.anthropicBeta)
+			}
 			req.Header.Set("Accept", "application/json")
 			req.Header.Set("X-Claude-Code-Session-Id", result.sessionID)
 			if isAnthropicBase {
@@ -443,8 +450,12 @@ func ApplyClaudeCodePreparedRequest(req *http.Request, credentialToken, credenti
 		} else if result.policy.genuineMode != GenuineRequestRewrite || !result.accountIdentityApplied {
 			return errors.New("invalid prepared genuine rewrite")
 		} else {
+			// ApplyClaudeCodeHeaders has already repaired the downstream beta
+			// vector additively (headers.go → UpgradeClaudeBetaVectorForOAuth);
+			// forcePinned deliberately leaves Anthropic-Beta alone so the
+			// request class the client declared survives.
 			ApplyClaudeCodeHeaders(req, credentialToken, credentialKind, stream, isAnthropicBase, result.identity, result.body)
-			forcePinnedClaudeCodeProfile(req.Header)
+			forcePinnedClaudeCodeProfile(req)
 			req.Header.Set("Accept", "application/json")
 			req.Header.Set("X-Claude-Code-Session-Id", result.sessionID)
 		}
@@ -580,10 +591,20 @@ func rewriteGenuineIdentity(body []byte, id SimIdentity, sessionID string) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("marshal metadata.user_id: %w", err)
 	}
-	out, err := applyByteReplacements(body, []byteReplacement{
+	replacements := []byteReplacement{
 		{start: userIDSpan.start, end: userIDSpan.end, value: encodedUserID},
 		{start: textSpan.start, end: textSpan.end, value: encodedBilling},
-	})
+	}
+	// Restore ttl/scope on breakpoints the custom-base-url client had to emit
+	// bare. Disjoint from the two spans above (system[0] carries no
+	// cache_control), and a no-op for a first-party body — see cachecontrol.go.
+	cacheEdits, err := systemCacheControlReplacements(body, systemSpan)
+	if err != nil {
+		return nil, fmt.Errorf("inspect system cache breakpoints: %w", err)
+	}
+	replacements = append(replacements, cacheEdits...)
+
+	out, err := applyByteReplacements(body, replacements)
 	if err != nil {
 		return nil, fmt.Errorf("rewrite genuine body: %w", err)
 	}
@@ -936,7 +957,13 @@ func metadataMatchesIdentity(body []byte, id SimIdentity, sessionID string) bool
 		identity.SessionID == sessionID
 }
 
-func forcePinnedClaudeCodeProfile(h http.Header) {
+// forcePinnedClaudeCodeProfile overwrites every version/profile header with our
+// pinned identity, whatever the downstream client claimed. It takes the request
+// rather than the header map because X-Stainless-Timeout is request-class
+// dependent: real CC omits it entirely on count_tokens, so pinning it there
+// would re-introduce the very tell ApplyClaudeCodeHeaders just avoided.
+func forcePinnedClaudeCodeProfile(req *http.Request) {
+	h := req.Header
 	h.Set("User-Agent", ClaudeCLIUserAgent)
 	h.Set("Anthropic-Version", ClaudeAnthropicVersion)
 	h.Set("X-App", "cli")
@@ -947,5 +974,9 @@ func forcePinnedClaudeCodeProfile(h http.Header) {
 	h.Set("X-Stainless-Package-Version", ClaudeStainlessPackageV)
 	h.Set("X-Stainless-Os", ClaudeStainlessOS)
 	h.Set("X-Stainless-Arch", ClaudeStainlessArch)
+	if isCountTokensRequest(req) {
+		h.Del("X-Stainless-Timeout")
+		return
+	}
 	h.Set("X-Stainless-Timeout", ClaudeStainlessTimeout)
 }

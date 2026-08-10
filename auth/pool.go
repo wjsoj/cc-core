@@ -371,8 +371,10 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 // request — important for billing (discount lookup) and for the fork's
 // dispatch logic (which upstream to forward to).
 //
-// excludeIDs propagates across all attempts so a credential failing in one
-// group isn't tried again in another (rare, but possible when groups overlap).
+// excludeIDs propagates unchanged to every attempt, so a credential the caller
+// already failed on isn't tried again in another group (rare, but possible when
+// groups overlap). It cannot grow as we go: Acquire returning nil says nothing
+// about which credentials it considered.
 //
 // Behavior is identical to Acquire when clientGroups has exactly one entry.
 // An empty / nil clientGroups is treated as a single empty-string group
@@ -381,23 +383,11 @@ func (p *Pool) AcquireMulti(ctx context.Context, provider, clientToken string, c
 	if len(clientGroups) == 0 {
 		clientGroups = []string{""}
 	}
-	tried := make(map[string]bool, len(excludeIDs))
-	for _, id := range excludeIDs {
-		tried[id] = true
-	}
 	for _, g := range clientGroups {
-		// Collect tried IDs as we go so a failing credential isn't retried
-		// across groups in the same fallthrough chain.
-		ex := make([]string, 0, len(tried))
-		for id := range tried {
-			ex = append(ex, id)
-		}
-		a := p.Acquire(ctx, provider, clientToken, g, clientModel, sessionID, ex...)
+		a := p.Acquire(ctx, provider, clientToken, g, clientModel, sessionID, excludeIDs...)
 		if a != nil {
 			return NormalizeGroup(g), a
 		}
-		// Acquire failed for this group; mark anything it sticky-rejected as
-		// tried so we don't loop. (No-op when Acquire returns nil cleanly.)
 	}
 	return "", nil
 }
@@ -409,18 +399,15 @@ func (p *Pool) AcquireMultiWithOptions(ctx context.Context, provider, clientToke
 	if len(clientGroups) == 0 {
 		clientGroups = []string{""}
 	}
-	tried := make(map[string]bool, len(opts.ExcludeIDs))
-	for _, id := range opts.ExcludeIDs {
-		tried[id] = true
-	}
 	for _, g := range clientGroups {
-		ex := make([]string, 0, len(tried))
-		for id := range tried {
-			ex = append(ex, id)
-		}
 		a := p.AcquireWithOptions(ctx, provider, clientToken, g, clientModel, sessionID, AcquireOptions{
 			AllowAPIKeyFallback: opts.AllowAPIKeyFallback,
-			ExcludeIDs:          ex,
+			// APIKeyOnly must survive the fan-out. Dropping it here handed an
+			// OAuth credential back to a caller replaying a request whose
+			// identity rewrite had already failed — exactly the case the flag
+			// exists to prevent.
+			APIKeyOnly: opts.APIKeyOnly,
+			ExcludeIDs: opts.ExcludeIDs,
 		})
 		if a != nil {
 			return NormalizeGroup(g), a
@@ -501,6 +488,24 @@ func (p *Pool) findOAuthLocked(id string) *Auth {
 	return nil
 }
 
+// oauthUsableLocked is the routing-side gate, and it is deliberately NOT
+// IsHealthy(). It excludes only the states that make a request certain to fail
+// or forbidden to send — disabled, hard-failed, in cooldown, rate-limited for
+// this model family, group asleep — and lets a merely *degraded* credential
+// (ConsecutiveFailures >= 2, short of the hard-fail threshold) keep taking
+// traffic.
+//
+// That asymmetry is the point. IsHealthy's degraded window is an admin-panel
+// and reporting judgement; making it a routing filter is what caused the
+// 2026-07-14 outage, where one upstream flap degraded every credential in a
+// pool at the same instant and Acquire had nobody left to return. Skipping a
+// degraded credential is only safe if some other credential is available, and
+// the scheduler cannot know that here. Failing a request on a degraded
+// credential costs one retry; returning nil costs the client a 503.
+//
+// The degraded state still does its job: it feeds HealthSnapshot, and repeated
+// failures walk ConsecutiveFailures up to hardFailureThreshold, which this
+// function does honour.
 func (p *Pool) oauthUsableLocked(a *Auth, now time.Time, clientModel string) bool {
 	// Fable 5 requires separately purchased usage credits. Anthropic
 	// subscription OAuth accounts return credits_required even when their

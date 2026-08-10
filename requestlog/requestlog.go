@@ -45,13 +45,21 @@ type Record struct {
 	Output      int64     `json:"output_tokens"`
 	CacheRead   int64     `json:"cache_read_tokens"`
 	CacheCreate int64     `json:"cache_create_tokens"`
-	CostUSD     float64   `json:"cost_usd"`
-	Status      int       `json:"status"`
-	DurationMs  int64     `json:"duration_ms"`
-	Stream      bool      `json:"stream"`
-	Path        string    `json:"path,omitempty"`
-	Attempts    int       `json:"attempts,omitempty"` // credential attempts before terminal
-	Error       string    `json:"error,omitempty"`
+	// CacheCreate1h is the 1-hour-TTL SUBSET of CacheCreate (Anthropic's
+	// `usage.cache_creation.ephemeral_1h_input_tokens`). Omitted when the
+	// upstream reports no breakdown, so older rows and non-Anthropic providers
+	// are unaffected. Recorded ahead of any pricing decision: a 1h write costs
+	// 2× input against a 5m write's 1.25×, and mimicry sets ttl:"1h" on every
+	// breakpoint, so this column is what makes the two separable in an audit.
+	// Never subtract it from CacheCreate — CacheCreate stays the full total.
+	CacheCreate1h int64   `json:"cache_create_1h_tokens,omitempty"`
+	CostUSD       float64 `json:"cost_usd"`
+	Status        int     `json:"status"`
+	DurationMs    int64   `json:"duration_ms"`
+	Stream        bool    `json:"stream"`
+	Path          string  `json:"path,omitempty"`
+	Attempts      int     `json:"attempts,omitempty"` // credential attempts before terminal
+	Error         string  `json:"error,omitempty"`
 	// AttemptOnly marks a credential-attempt audit row that was withheld from
 	// the client and followed by failover. Dashboard/query aggregates ignore
 	// these rows so retry telemetry does not inflate user-visible counts.
@@ -103,9 +111,31 @@ type ClaudeAudit struct {
 	ExtraHeaderNames      []string `json:"extra_header_names,omitempty"`
 }
 
+// BilledOrCost returns what the customer actually paid, tolerating both log
+// generations in one directory.
+//
+// Until v0.8.61 one fork wrote the billed amount into CostUSD and left
+// BilledUSD unset, while the other wrote the official price into CostUSD and
+// the debit into BilledUSD — the same column meaning opposite things depending
+// on which binary produced the row. Both now use the second convention, but a
+// 90-day retention window means mixed files for a quarter.
+//
+// Reading BilledUSD when non-zero and CostUSD otherwise resolves to the charged
+// amount under either convention, which is what every spend/reconciliation view
+// wants. Writers set both fields together, so a zero BilledUSD on a new row
+// means the request was not billed at all — and CostUSD is zero there too, so
+// the fallback returns 0 rather than inventing a charge.
+func (r Record) BilledOrCost() float64 {
+	if r.BilledUSD != 0 {
+		return r.BilledUSD
+	}
+	return r.CostUSD
+}
+
 type Writer struct {
 	dir           string
 	retentionDays int
+	jsonl         bool
 	ch            chan Record
 	stopCh        chan struct{}
 	doneCh        chan struct{}
@@ -118,20 +148,60 @@ type Writer struct {
 	mu      sync.Mutex
 	curFile *os.File
 	curDay  string
+	// curOff is the byte offset the next record will be written at. O_APPEND
+	// hides the position from us, so it is tracked here — it is what pairs a
+	// record with the JSONL line it became, and thus what lets the index
+	// deduplicate against its own later re-read of that line.
+	curOff int64
+
+	// noStoreWarned keeps the "archive off but no index" complaint to once
+	// per writer rather than once per batch.
+	noStoreWarned atomic.Bool
 }
 
-// Open creates the writer, starts a background goroutine that drains the
-// channel. dir will be created if missing. retentionDays <= 0 disables GC.
+// Options configures a Writer. The zero value is not useful; use Open for the
+// historical defaults.
+type Options struct {
+	// RetentionDays <= 0 disables retention entirely.
+	RetentionDays int
+	// JSONLArchive keeps the daily-rotated .jsonl files. With an index open,
+	// turning this off makes SQLite the only copy: nothing rebuilds it, and a
+	// failed insert is a lost record. It exists so an operator who trusts the
+	// index can stop paying for two copies — not as a default.
+	JSONLArchive bool
+}
+
+// Open creates the writer with the historical behaviour (JSONL archive on)
+// and starts a background goroutine that drains the channel. dir will be
+// created if missing. retentionDays <= 0 disables GC.
 func Open(dir string, retentionDays int) (*Writer, error) {
+	return OpenWithOptions(dir, Options{RetentionDays: retentionDays, JSONLArchive: true})
+}
+
+// OpenWithOptions is Open with the archive switch exposed.
+//
+// When JSONLArchive is false the caller must have opened the index for this
+// directory first: the writer has nowhere else to put a record, and OpenStore
+// is what makes that destination exist.
+func OpenWithOptions(dir string, opt Options) (*Writer, error) {
 	if strings.TrimSpace(dir) == "" {
 		return nil, fmt.Errorf("requestlog: empty dir")
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
+	st := lookupStore(dir)
+	if !opt.JSONLArchive && st == nil {
+		return nil, fmt.Errorf("requestlog: jsonl archive disabled but no index open for %s", dir)
+	}
+	// Tell the index whether the files are authoritative BEFORE the writer
+	// starts, so no catch-up can read a stale ledger entry as a retention
+	// delete and drop the rows behind it.
+	st.setArchiveMode(opt.JSONLArchive)
 	w := &Writer{
 		dir:           dir,
-		retentionDays: retentionDays,
+		retentionDays: opt.RetentionDays,
+		jsonl:         opt.JSONLArchive,
 		ch:            make(chan Record, 4096),
 		stopCh:        make(chan struct{}),
 		doneCh:        make(chan struct{}),
@@ -193,10 +263,70 @@ func (w *Writer) Close() {
 	<-w.doneCh
 }
 
+// Shutdown closes a writer and its index in the only order that cannot lose
+// records.
+//
+// The writer must go first. Its Close blocks until the drain goroutine has
+// flushed what is still buffered, and that flush resolves its destination by
+// looking the store up by directory — so a store closed first has already
+// deregistered itself, and under Options{JSONLArchive: false} the batch has
+// nowhere left to go and is counted as dropped. There is no file to recover it
+// from; that is the whole trade of index-only mode.
+//
+// Closing the writer first is equally safe with the archive on. The concern that
+// motivated the opposite order — the index's file tailing racing the final
+// flush — is already handled by the unique (src_file, src_off) key: whichever
+// producer offers a line second is a no-op.
+//
+// Both arguments may be nil.
+func Shutdown(w *Writer, st *Store) {
+	w.Close()
+	st.Close()
+}
+
+// dbBatch is how many records accumulate before being inserted into the index
+// in one transaction. The flush ticker bounds the latency for a quiet stream,
+// so this only has to be large enough that a busy one is not paying per-record
+// transaction overhead.
+const dbBatch = 500
+
 func (w *Writer) loop() {
 	defer close(w.doneCh)
 	flushTicker := time.NewTicker(5 * time.Second)
 	defer flushTicker.Stop()
+
+	// Records written but not yet folded into the index. Held here rather
+	// than inserted per record so the index sees one transaction per batch.
+	pending := make([]pendingRow, 0, dbBatch)
+
+	flushDB := func() {
+		if len(pending) == 0 {
+			return
+		}
+		batch := pending
+		pending = make([]pendingRow, 0, dbBatch)
+		st := lookupStore(w.dir)
+		if st == nil {
+			// With the archive on this is normal and harmless: the index is
+			// not open yet (or is disabled), and the scanner will pick these
+			// lines up from the file. With it off, the records are gone.
+			if !w.jsonl {
+				w.dropped.Add(int64(len(batch)))
+				if !w.noStoreWarned.Swap(true) {
+					log.Errorf("requestlog: no index open for %s and jsonl archive is off; records are being dropped", w.dir)
+				}
+			}
+			return
+		}
+		if err := st.appendRows(batch); err != nil {
+			log.Errorf("requestlog: index append (%d records): %v", len(batch), err)
+			if !w.jsonl {
+				w.dropped.Add(int64(len(batch)))
+			}
+			// With the archive on, the scanner re-reads these lines from the
+			// file, so the loss is temporary and self-repairing.
+		}
+	}
 
 	flush := func() {
 		w.mu.Lock()
@@ -204,6 +334,7 @@ func (w *Writer) loop() {
 			_ = w.curFile.Sync()
 		}
 		w.mu.Unlock()
+		flushDB()
 	}
 
 	for {
@@ -212,7 +343,9 @@ func (w *Writer) loop() {
 			for {
 				select {
 				case r := <-w.ch:
-					w.writeRecord(r)
+					if p, ok := w.writeRecord(r); ok {
+						pending = append(pending, p)
+					}
 				default:
 					flush()
 					w.closeFile()
@@ -220,15 +353,31 @@ func (w *Writer) loop() {
 				}
 			}
 		case r := <-w.ch:
-			w.writeRecord(r)
+			if p, ok := w.writeRecord(r); ok {
+				pending = append(pending, p)
+				if len(pending) >= dbBatch {
+					flushDB()
+				}
+			}
 		case <-flushTicker.C:
 			flush()
 		}
 	}
 }
 
-func (w *Writer) writeRecord(r Record) {
+// writeRecord appends one record to the archive and reports where it landed,
+// so the caller can hand the index the same (file, offset) the scanner would
+// later derive. ok is false only when the record could not be recorded at all.
+func (w *Writer) writeRecord(r Record) (pendingRow, bool) {
 	day := r.TS.UTC().Format("2006-01-02")
+	if !w.jsonl {
+		// No file, so no offset to deduplicate against. src_off = -1 keeps the
+		// row out of the unique index, which is correct: nothing will ever
+		// re-read this record from anywhere.
+		w.maybeGC(day)
+		return pendingRow{rec: r, off: -1}, true
+	}
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.curFile == nil || w.curDay != day {
@@ -237,19 +386,46 @@ func (w *Writer) writeRecord(r Record) {
 		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 		if err != nil {
 			log.Errorf("requestlog: open %s: %v", path, err)
-			return
+			return pendingRow{}, false
+		}
+		// Resume the offset from the file's current length: a restart appends
+		// to yesterday's or today's existing file, and an offset restarting at
+		// zero would collide with rows the previous run already indexed.
+		off := int64(0)
+		if fi, err := f.Stat(); err == nil {
+			off = fi.Size()
 		}
 		w.curFile = f
 		w.curDay = day
+		w.curOff = off
 		go w.gc()
 	}
 	data, err := json.Marshal(r)
 	if err != nil {
-		return
+		return pendingRow{}, false
 	}
 	data = append(data, '\n')
-	if _, err := w.curFile.Write(data); err != nil {
+	at := w.curOff
+	n, err := w.curFile.Write(data)
+	w.curOff += int64(n)
+	if err != nil {
 		log.Errorf("requestlog: write: %v", err)
+		// A short write leaves a torn line the scanner will skip; do not hand
+		// the index a row claiming to live at an offset that holds garbage.
+		return pendingRow{}, false
+	}
+	return pendingRow{rec: r, file: "requests-" + day + ".jsonl", off: at}, true
+}
+
+// maybeGC triggers retention on day change when there is no file rotation to
+// hang it off.
+func (w *Writer) maybeGC(day string) {
+	w.mu.Lock()
+	changed := w.curDay != day
+	w.curDay = day
+	w.mu.Unlock()
+	if changed {
+		go w.gc()
 	}
 }
 
@@ -268,12 +444,25 @@ func (w *Writer) closeFile() {
 	w.mu.Unlock()
 }
 
-// gc deletes log files older than retentionDays. Runs on rotation (cheap).
+// gc deletes log files older than retentionDays, and prunes the index to the
+// same cutoff. Runs on rotation (cheap).
+//
+// The index prune is not merely an optimisation of the scanner's own
+// missing-file handling: with the archive off there is no file whose absence
+// could signal expiry, so this is what enforces retention at all.
 func (w *Writer) gc() {
 	if w.retentionDays <= 0 {
 		return
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -w.retentionDays).Format("2006-01-02")
+	if st := lookupStore(w.dir); st != nil {
+		if err := st.pruneBefore(cutoff); err != nil {
+			log.Warnf("requestlog: index prune before %s: %v", cutoff, err)
+		}
+	}
+	if !w.jsonl {
+		return
+	}
 	entries, err := os.ReadDir(w.dir)
 	if err != nil {
 		return
@@ -302,6 +491,11 @@ func (w *Writer) gc() {
 // recreated on the next Log() call. Each file is rewritten via a temp
 // file + atomic rename so a crash mid-rewrite never produces a half-
 // rewritten log. Returns the number of rewritten records.
+//
+// The index is updated with a single UPDATE rather than by re-reading the
+// rewritten files. Without that, changing one field would cost a re-parse of
+// the entire archive: the scanner treats any change to a rotated file as
+// tampering, and every file it just rewrote qualifies.
 func (w *Writer) RewriteClientMask(oldMask, newMask string) (int, error) {
 	if oldMask == "" || newMask == "" || oldMask == newMask {
 		return 0, fmt.Errorf("oldMask and newMask must differ and be non-empty")
@@ -310,21 +504,35 @@ func (w *Writer) RewriteClientMask(oldMask, newMask string) (int, error) {
 	w.closeFileLocked()
 	w.mu.Unlock()
 
-	entries, err := os.ReadDir(w.dir)
-	if err != nil {
-		return 0, err
-	}
 	total := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
-			continue
-		}
-		path := filepath.Join(w.dir, e.Name())
-		n, err := rewriteMaskFile(path, oldMask, newMask)
+	if w.jsonl {
+		entries, err := os.ReadDir(w.dir)
 		if err != nil {
-			return total, fmt.Errorf("rewrite %s: %w", e.Name(), err)
+			return 0, err
 		}
-		total += n
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+				continue
+			}
+			path := filepath.Join(w.dir, e.Name())
+			n, err := rewriteMaskFile(path, oldMask, newMask)
+			if err != nil {
+				return total, fmt.Errorf("rewrite %s: %w", e.Name(), err)
+			}
+			total += n
+		}
+	}
+
+	st := lookupStore(w.dir)
+	if st == nil {
+		return total, nil
+	}
+	// Count from the index when there were no files to count from.
+	if !w.jsonl {
+		_ = st.db.QueryRow(`SELECT COUNT(*) FROM req WHERE client_token = ?`, oldMask).Scan(&total)
+	}
+	if err := st.rewriteClientMask(oldMask, newMask); err != nil {
+		return total, fmt.Errorf("index rewrite: %w", err)
 	}
 	return total, nil
 }

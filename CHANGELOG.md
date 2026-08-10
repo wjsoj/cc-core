@@ -1,5 +1,297 @@
 # Changelog
 
+## v0.8.77 — requestlog: answer whole-day windows from the cube
+
+The admin panel's date pickers produce whole-day windows, but a window is
+only cube-answerable if the caller says it in days: `cubeEligible` rejected
+any timestamp bound, because a pair of instants cannot be shown to be
+day-aligned without assuming a bucketing zone. So the panel's default 7-day
+view — and every filter applied inside it — took the row-by-row path over
+`req`. On the production archive (1M rows, 151k in the window) that was
+**1.8s per query, against 48ms from the cube**.
+
+- **`Filter.FromDay` / `Filter.ToDay`** state the window as inclusive
+  `YYYY-MM-DD` labels in the bucketing zone — the same labels `ByDay` is
+  keyed on and `agg_cube.bday` stores. `resolveDays` expands them into the
+  exact `From`/`To` instants every other path already compares against, so
+  the scanning path, the entries page and the cube all see one window.
+
+  Alignment is declared, never inferred. Whether an instant is a day
+  boundary depends on the display zone, so inferring it would silently
+  change which grain answers a query the day an operator changes the zone.
+
+  Supplying labels *and* timestamps is a contradiction rather than a
+  refinement: the timestamps win and the labels are dropped, so the cube can
+  never answer a window `req` would not.
+
+## v0.8.75 — relay: carry the downstream caller across one trusted hop
+
+When one of our proxies forwards to another using a single API key, the
+receiver sees one client. Its scheduler keys sticky assignments on
+(provider, client token, session), so every user behind the relay collapses
+onto one upstream credential no matter how many are free — the relay's users
+get the throughput of one account while the receiver's pool sits idle.
+
+- **New package `relay`** — three headers (`X-Relay-Client-Peer`,
+  `X-Relay-Client-Id`, `X-Relay-Client-Session`) plus `Apply` / `Read` /
+  `Strip` / `Identity.SlotID`. The client id is a salted hash of the
+  downstream token, so the receiver can tell users apart without learning the
+  sender's credentials.
+
+  Recovered values are used for **routing only**. Limits, quotas and billing
+  stay keyed on the relay's own token: the relay is one customer however many
+  users sit behind it, and a limit keyed on a header is a limit anyone can
+  evade by inventing a new value.
+
+  `Apply` clears the headers before stamping (an inbound value must never
+  survive a hop) and refuses to stamp a blank identity for an unidentified
+  caller — one shared blank id would re-create the very pinning this fixes.
+  Values are restricted to bounded printable ASCII because they become map
+  keys in the receiver's scheduler.
+
+- **`auth.Auth.RelayPeer`** (`relay_peer` in an API-key credential file) — the
+  sender's opt-in. Only a credential known to point at a cooperating peer is
+  handed our users' identity; to anyone else the headers are noise that leaks
+  topology. Append-only, and the round trip is tested: never dropped by a
+  rewrite, never invented in a file that lacked it.
+
+- **`clienttoken.Token.TrustedRelay`** (`trusted_relay`) — the receiver's
+  opt-in, and the trust boundary. Honour the headers only from a caller
+  authenticated as a trusted relay; `Strip` them from everything else.
+
+## v0.8.74 — one place to decide what a shed frame looks like to the client
+
+`DemoteCapacityCode` gave callers the rewrite but left them to assemble the
+policy around it, and both consumers assembled the same one independently: a
+WS relay cannot fail over, so it must forward the frame with only the two
+session-ending capacity codes demoted. That policy is now `codexerr.ClientFrame`.
+
+- **`ClientFrame(payload) (out, shed, capacity)`** — for a relay with no
+  failover left (a WebSocket session, or an HTTP stream that already committed
+  output). Returns the frame as the client should see it, whether upstream shed
+  the turn, and whether the shed was capacity.
+
+  `capacity` splits `ClassRetryable` in half and the split decides who is to
+  blame: `server_is_overloaded` / `slow_down` belong to the model and the
+  moment — the same request would shed on any account, so nothing about the
+  credential should change — while quota and rate codes are account-scoped and
+  are the only half worth moving a session off its credential for. Those are
+  never demoted; the CLI handles them non-terminally and parses its retry delay
+  off the original code.
+
+  Withholding the frame is still strictly better when the caller *can* fail
+  over; use `Classify` directly there.
+
+The frame this exists for was captured in production once CPA-Claude's WS relay
+finally logged it — inside an otherwise-healthy 200 socket:
+
+```
+{"type":"error","error":{"type":"service_unavailable_error",
+ "code":"server_is_overloaded","message":"Our servers are currently
+ overloaded. Please try again later."}}
+```
+
+followed by `response.failed`. Relayed verbatim it reaches codex-rs as
+`ApiError::ServerOverloaded`, which is terminal — the session dies with
+"Selected model is at capacity. Please try a different model."
+
+## v0.8.73 — apicompat differentially verified against sub2api
+
+`apicompat` was written from the two APIs' semantics, so the mapping was only
+as good as the unit tests around it. This release checks it the honest way:
+the same corpus is pushed through sub2api's production converter and through
+ours, and the outputs are compared field by field. (sub2api runs this exact
+bridge for ChatGPT OAuth accounts, where the internal API only speaks
+Responses — so it is a real oracle, not a second opinion.)
+
+Request direction, 18 cases: 15 semantically identical, and the corpus found
+one real divergence, now fixed.
+
+- **System messages are no longer folded into `instructions`.** They stay as
+  input items, in order, exactly where the proven implementation puts them.
+  `instructions` is now passed through only when the client sent it. On the
+  Codex backend that field always carries the CLI's own system prompt, so
+  overwriting it with an arbitrary client prompt was both a fingerprint
+  deviation and a departure from the shape that is known to work.
+- `tools[].strict` defaults to `false` when the client omitted it, rather than
+  being left to the backend.
+
+Three differences are deliberate and kept, in both cases because the reference
+looks under-specified rather than intentional:
+
+- `tool_choice` for a forced function is flattened to the documented Responses
+  shape `{"type":"function","name":…}`; sub2api passes Chat's nested
+  `{"type":"function","function":{"name":…}}` straight through.
+- A tool whose `parameters` are absent gets `{"type":"object","properties":{}}`;
+  Responses requires `properties` on object schemas, and sub2api applies that
+  normalization on its Anthropic path but not this one.
+
+Response direction, 7 streaming cases: identical on every field a client
+consumes — text, reasoning, `finish_reason` (including length / content_filter
+/ failed), usage, and parallel tool calls' ids, names, assembled arguments and
+indexes. The only difference is that this package emits the `[DONE]` sentinel
+from the converter while sub2api writes it in its transport layer.
+
+Cosmetic, verified equivalent: this package emits `"type":"message"` on input
+items and the `[{"type":"input_text",…}]` content form, where sub2api omits the
+type and uses the bare-string form. Both are accepted; the array form is what
+real codex-tui sends and what `mimicry.SanitizeCodexRequestBody` already
+promotes bare strings into.
+
+## v0.8.72 — chat/completions ⇄ Responses bridge + a lint gate
+
+### New — `apicompat/`
+
+The ChatGPT Codex backend hosts only `/codex/responses`. Every
+OpenAI-compatible client that speaks `/v1/chat/completions` (Cherry Studio,
+OpenWebUI, LangChain, a bare `openai` SDK) was therefore *structurally*
+unroutable to a subscription OAuth credential and could only be served by a paid
+relay API key — no matter how idle the subscription accounts were. That is a
+protocol gap, not a scheduling one, so no amount of pool tuning could fix it.
+
+`apicompat` is pure data translation in both directions: no HTTP, no gin, no
+credential awareness. Callers own transport, keepalive and billing.
+
+- `ChatCompletionsToResponses(body)` — request direction. Handles system/
+  developer messages folding into out-of-band `instructions`, tool round-trips
+  (`tool_calls` → `function_call`, `role:"tool"` → `function_call_output`),
+  legacy `functions[]` / `function_call`, tool-schema normalization (Responses
+  requires `properties` on object schemas), multimodal input with empty base64
+  data URIs dropped, prior assistant reasoning preserved across turns,
+  `reasoning_effort` → `reasoning.effort`, `json_schema` `response_format` →
+  `text.format`, `max_tokens`/`max_completion_tokens` → `max_output_tokens` with
+  a 128 floor, and sampling parameters withheld from reasoning models (which
+  reject them).
+- `ResponsesToChatCompletion(response, model, created)` — non-streaming reply,
+  with reasoning surfaced as `reasoning_content` rather than folded into the
+  answer, and `incomplete_details` mapped onto `finish_reason`.
+- `NewStreamState` / `Translate` / `Finalize` / `IsDoneFrame` — the streaming
+  state machine, mapping each Responses SSE event onto zero or more
+  `chat.completion.chunk` frames. Parallel tool calls keep distinct indexes
+  (tracked by both `output_index` and `item_id`, since backends disagree about
+  which they populate), and `Finalize` closes a truncated upstream so the client
+  sees a short answer instead of a disconnect.
+
+Callers targeting the Codex backend should still run the converted body through
+`mimicry.SanitizeCodexRequestBody`, which owns that backend's narrower
+whitelist.
+
+Field mappings follow the behaviour of the LGPL project
+github.com/Wei-Shaw/sub2api, which covers the same protocol pair in production.
+The mappings are facts about the two APIs; this is an independent MIT
+implementation of them, not a port of that code.
+
+### Chore — lint gate
+
+cc-core had no lint config, no CI and no Makefile. Adds `.golangci.yml` (default
+linter set + gofmt/goimports) and clears all 44 findings it reported. Notable:
+`auth.fileFormat` is deleted — dead since `parseFile` went map-based, and already
+drifted out of sync with the real on-disk shape.
+
+## v0.8.66 — ChatGPT subscription/billing probe
+
+Adds the commercial-state counterpart to the wham/usage quota probe: which plan
+a ChatGPT OAuth credential is on, when its current term was paid for, whether it
+renews, whether it is actually free, and whether it is about to lapse for
+billing reasons. Delinquency in particular is invisible to every existing
+signal — a delinquent account serves traffic normally until its grace period
+ends, then stops — so this is the only warning a fork can act on ahead of time.
+
+### New — `auth/codex_subscription.go`
+
+- `(*Auth).FetchCodexSubscription(ctx, useUTLS) (*CodexSubscriptionInfo, error)`
+  — merges two portal endpoints in one call:
+  `GET /backend-api/subscriptions?account_id=` (term start/end, billing period,
+  `will_renew`, seats, delinquency) and
+  `GET /backend-api/accounts/check/v4-2023-04-27` (discounts, trial, account
+  created_time, purchase platform). Neither is a superset of the other.
+  **Partial success is a success** — they fail independently and either alone is
+  worth rendering; the error is non-nil only when both fail.
+- Stored on the credential as `CodexSubscription` / `CodexSubscriptionAt` and
+  exposed through `Snapshot()` / `AuthInfo`, same pointer-swap discipline as
+  `CodexUsage`.
+- Derived helpers so both forks answer identically: `PurchasedAt()`,
+  `ExpiresAt()`, `Plan()`, `IsFree()`, `AtRisk()`. `IsFree` reads both the
+  gratis flag **and** a 100%-off promo — a comped-by-discount account reports
+  `is_active_subscription_gratis: false` while paying $0, so the flag alone
+  misreports it.
+- Like `FetchCodexUsage`, a probe failure **never** touches credential health
+  (no `MarkFailure`, no cooldown) and delinquency does not auto-disable.
+- Requests are presented as a browser XHR (`browserUA` + `Sec-Ch-Ua*` /
+  `Sec-Fetch-*` / `Referer`, no `Origin` — browsers omit it on a same-origin
+  GET). Leaving User-Agent unset is not neutral: Go substitutes
+  `Go-http-client/1.1`, which on an OAuth subscription account is the loudest
+  third-party-client signal there is, and combining it with browser markers is
+  more anomalous than either alone. `TestCodexBillingRequestIdentity` pins it.
+- `AtRisk()` reads `will_renew` from either reporter — requiring the portal
+  made `last_active_subscription` dead code for exactly the credentials that
+  have no account id and therefore no portal payload. A cancelled renewal is
+  reported only with a **known** term end and an entitlement that is not
+  already inactive; without that, every never-paid free account warned that it
+  was about to lapse, dated `0001-01-01`.
+
+Field shapes are pinned to live captures in `auth/codex_subscription_test.go`.
+Full documentation, traps, and the fork wiring snippet: `docs/codex-subscription.md`.
+
+Consumed by adding a `POST /auths/:id/codex-subscription` admin route in each
+fork, mirroring the existing `codex-usage` handler.
+
+## v0.8.63–v0.8.65 — request log: aggregate cube, dual write, optional JSONL
+
+Finishes what the SQLite index started. The index made *unfiltered* aggregates
+cheap; filtered ones still walked `req` row by row, so the panel's `?model=…`
+view cost ~2.9s on a 984k-record production archive. And the index was still
+strictly derived — every record reached it by being re-read from a file.
+
+### New — `agg_cube` (migration 3), replacing `agg_day`
+
+- One pre-summed table keyed by every low-cardinality dimension at once:
+  `(day, bday, model, client, client_token, provider, auth_id, status,
+  user_id)`. On production that is **10,382 rows for 984,049 records** (~199 on
+  the busiest day), so any filter built from those columns is answered by
+  grouping the cube: **1.1s → 0.01s** measured on a copy of the real database.
+- `cubeEligible` diverts a query to `req` if it carries *any* time bound — a day
+  is the cube's finest grain, and guessing which bounds happen to land on a day
+  boundary would depend on the caller's zone.
+- Verified against a copy of the production database: 44 filter shapes
+  (per-model, per-token, per-auth, per-status, per-provider, and combinations),
+  every counter and both money columns **byte-identical** to the row-level
+  aggregate.
+- `agg_day` is dropped by the migration. An index built by an older binary has
+  rows but no cube; `ensureCube` fills it from `req` at open (~7s for 90 days)
+  rather than re-parsing the archive, in the background so startup does not wait.
+
+### New — writer inserts directly (`store_write.go`)
+
+- `Writer` folds each batch into `req` as it appends it, instead of waiting for
+  the scanner. Idempotent against that scanner via a unique `(src_file,
+  src_off)` — the byte offset the line was written at — so whichever producer
+  offers a line second is a no-op.
+- `Writer.curOff` resumes from the file's existing length on open; an offset
+  restarting at zero would collide with rows a previous run already indexed.
+- While the archive is on this is only an optimisation: anything an insert loses
+  is re-read from the file on the next pass.
+
+### New — `Options{JSONLArchive: false}` and `Export`
+
+- `OpenWithOptions(dir, Options{...})`; `Open(dir, retentionDays)` unchanged and
+  still defaults the archive on. With the archive off there are no `.jsonl`
+  files, `pruneBefore` (`DELETE` + `incremental_vacuum`) enforces retention, and
+  `RewriteClientMask` becomes one `UPDATE` instead of rewriting every archived
+  file. The writer refuses to start in this mode without an open index.
+- `OpenStoreForRead(dir)` + `(*Store).Export(fromDay, toDay, w)` write the
+  stored rows back out as JSONL, so turning the archive off stays reversible.
+  The read-only open matters: an export normally runs on a box where the server
+  already has the database open, and the read-write `OpenStore` would start a
+  second ingest loop competing with it.
+
+### Changed — `store_query.go`
+
+- `aggregatesFromReq` (the path time-bounded queries still take) computes the
+  summary and all three groupings in one `MATERIALIZED` CTE instead of four
+  passes. `MATERIALIZED` is explicit: SQLite may otherwise inline a CTE used
+  more than once and silently restore the four passes.
+
 ## v0.8.21 — Codex WebSocket upstream transport (`codexws`)
 
 Adds the Codex-over-WebSocket upstream that real codex-tui 0.135.0 uses

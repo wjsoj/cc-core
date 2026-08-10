@@ -2,7 +2,7 @@
 
 Live capture of the **Codex CLI** (`codex-tui`, the Rust TUI) talking to the ChatGPT
 subscription backend. Ground truth for the OpenAI/ChatGPT OAuth fingerprint, parallel to
-`crack/cc2170/` (Anthropic) and `crack/kiro/` (Amazon Q).
+`crack/cc2220/` (Anthropic).
 
 - `SPEC.md` — authoritative constant list + the `0.125.0 → 0.135.0` diff and the
   HTTP-vs-WebSocket transport note. **Read this first.**

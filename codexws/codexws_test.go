@@ -11,7 +11,7 @@ import (
 )
 
 func TestBuildUpstreamHeaders(t *testing.T) {
-	h := BuildUpstreamHeaders("tok-abc", "acct-123", "sess-xyz", "")
+	h := BuildUpstreamHeaders("tok-abc", "acct-123", "sess-xyz", "", "gpt-5.6-sol", "priority")
 
 	if got := h.Get("Authorization"); got != "Bearer tok-abc" {
 		t.Errorf("Authorization = %q, want Bearer tok-abc", got)
@@ -45,7 +45,7 @@ func TestBuildUpstreamHeaders(t *testing.T) {
 
 func TestBuildUpstreamHeadersDefaults(t *testing.T) {
 	// Empty sessionID mints a UUID; empty accountID omits the header; explicit v1.
-	h := BuildUpstreamHeaders("tok", "", "", CodexOpenAIBetaWSV1)
+	h := BuildUpstreamHeaders("tok", "", "", CodexOpenAIBetaWSV1, "", "")
 	if h.Get("Session_id") == "" {
 		t.Error("empty sessionID should mint a fresh UUID, got empty")
 	}

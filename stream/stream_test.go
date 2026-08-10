@@ -17,8 +17,12 @@ func TestDecompressGzip(t *testing.T) {
 	want := "hello world"
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
-	gw.Write([]byte(want))
-	gw.Close()
+	if _, err := gw.Write([]byte(want)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
 
 	resp := &http.Response{
 		Header: http.Header{},
@@ -45,8 +49,12 @@ func TestDecompressBrotli(t *testing.T) {
 	want := "hello brotli world"
 	var buf bytes.Buffer
 	bw := brotli.NewWriter(&buf)
-	bw.Write([]byte(want))
-	bw.Close()
+	if _, err := bw.Write([]byte(want)); err != nil {
+		t.Fatalf("brotli write: %v", err)
+	}
+	if err := bw.Close(); err != nil {
+		t.Fatalf("brotli close: %v", err)
+	}
 
 	resp := &http.Response{
 		Header: http.Header{},

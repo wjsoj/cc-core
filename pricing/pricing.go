@@ -27,6 +27,8 @@
 package pricing
 
 import (
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/wjsoj/cc-core/usage"
@@ -50,14 +52,55 @@ type ModelPrice struct {
 	OutputPer1M      float64 `yaml:"output_per_1m" json:"output_per_1m"`
 	CacheReadPer1M   float64 `yaml:"cache_read_per_1m" json:"cache_read_per_1m"`
 	CacheCreatePer1M float64 `yaml:"cache_create_per_1m" json:"cache_create_per_1m"`
+
+	// CacheCreate1hPer1M is the rate for cache writes made with a 1-hour TTL.
+	//
+	// ZERO MEANS "DO NOT DISTINGUISH" — every 1h token then bills at
+	// CacheCreatePer1M, which is exactly the pre-existing behaviour. All
+	// built-in cards ship with it zero, so adding this field changes no
+	// invoice by itself. It is opt-in per deployment via config.yaml.
+	//
+	// Anthropic's published ladder (independently confirmed against LiteLLM's
+	// model_prices_and_context_window.json, field
+	// `cache_creation_input_token_cost_above_1hr`) is:
+	//
+	//	cache read   = 0.10 × input
+	//	5m  write    = 1.25 × input
+	//	1h  write    = 2.00 × input
+	//
+	// so the calibrated values, should an operator choose to enable the split:
+	//
+	//	haiku-4-5   2.00    sonnet-4-6  6.00    sonnet-5 (intro)  4.00
+	//	opus-*     10.00    fable-5    20.00
+	//
+	// Enabling this is a PRICE CHANGE, not a bug fix: on the current traffic
+	// mix cache writes are ~54% of the official-cost base, so switching the
+	// whole catalogue from 1.25× to 2.00× raises billed cost by roughly a
+	// third. Decide it deliberately, per provider, and announce it.
+	//
+	// Only Counts.CacheCreate1hTokens is charged at this rate; the remainder
+	// (Counts.CacheCreate5mTokens) stays on CacheCreatePer1M. An upstream that
+	// doesn't report the breakdown leaves CacheCreate1hTokens at zero, so the
+	// split silently degrades to the old single-rate behaviour rather than
+	// mispricing.
+	CacheCreate1hPer1M float64 `yaml:"cache_create_1h_per_1m,omitempty" json:"cache_create_1h_per_1m,omitempty"`
 }
 
 // Cost returns USD for the given token counts under this price card.
+//
+// Cache writes are split only when BOTH the card carries a distinct 1h rate
+// AND the upstream reported a 1h breakdown; otherwise the full cache-write
+// total bills at CacheCreatePer1M exactly as it always has.
 func (p ModelPrice) Cost(c usage.Counts) float64 {
+	cacheCreate := float64(c.CacheCreateTokens) * p.CacheCreatePer1M
+	if p.CacheCreate1hPer1M > 0 && c.CacheCreate1hTokens > 0 {
+		cacheCreate = float64(c.CacheCreate5mTokens())*p.CacheCreatePer1M +
+			float64(c.CacheCreate1hTokens)*p.CacheCreate1hPer1M
+	}
 	return (float64(c.InputTokens)*p.InputPer1M +
 		float64(c.OutputTokens)*p.OutputPer1M +
 		float64(c.CacheReadTokens)*p.CacheReadPer1M +
-		float64(c.CacheCreateTokens)*p.CacheCreatePer1M) / 1_000_000
+		cacheCreate) / 1_000_000
 }
 
 // Config is the user-supplied catalog override shape. Mirrors how
@@ -224,7 +267,8 @@ func canonicalProvider(p string) string {
 }
 
 func nonZero(p ModelPrice) bool {
-	return p.InputPer1M != 0 || p.OutputPer1M != 0 || p.CacheReadPer1M != 0 || p.CacheCreatePer1M != 0
+	return p.InputPer1M != 0 || p.OutputPer1M != 0 || p.CacheReadPer1M != 0 ||
+		p.CacheCreatePer1M != 0 || p.CacheCreate1hPer1M != 0
 }
 
 func defaultModelPrice() ModelPrice {
@@ -348,12 +392,12 @@ var builtIn = map[string]ModelPrice{
 	// OpenRouter. gpt-5.2 and gpt-5.3-codex-spark aren't on the standard API
 	// page (spark is a Pro research preview) but both bill at the gpt-5.3-codex
 	// rate per the codex credit card and per-model calculators.
-	ProviderOpenAI + "/gpt-5.2":              {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
-	ProviderOpenAI + "/gpt-5.3-codex":        {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
-	ProviderOpenAI + "/gpt-5.3-codex-spark":  {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
-	ProviderOpenAI + "/gpt-5.4":              {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25},
-	ProviderOpenAI + "/gpt-5.4-mini":         {InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075},
-	ProviderOpenAI + "/gpt-5.5":              {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
+	ProviderOpenAI + "/gpt-5.2":             {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	ProviderOpenAI + "/gpt-5.3-codex":       {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	ProviderOpenAI + "/gpt-5.3-codex-spark": {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	ProviderOpenAI + "/gpt-5.4":             {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25},
+	ProviderOpenAI + "/gpt-5.4-mini":        {InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075},
+	ProviderOpenAI + "/gpt-5.5":             {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
 	// gpt-5.6-{sol,terra,luna} (codex-tui 0.144.1 catalog). The three tiers are a
 	// price ladder, NOT one shared rate — verified 2026-07-10 against OpenRouter's
 	// live models API (openrouter.ai/api/v1/models), the official per-token
@@ -361,14 +405,61 @@ var builtIn = map[string]ModelPrice{
 	// light. cache-write is a clean 1.25× input across all three (OpenRouter
 	// publishes input_cache_write for the 5.6 line; the 5.4/5.5 cards above don't
 	// carry it). Reasoning effort is a request field, not a name suffix.
-	ProviderOpenAI + "/gpt-5.6-sol":          {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25},
-	ProviderOpenAI + "/gpt-5.6-terra":        {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25, CacheCreatePer1M: 3.125},
-	ProviderOpenAI + "/gpt-5.6-luna":         {InputPer1M: 1.00, OutputPer1M: 6.00, CacheReadPer1M: 0.10, CacheCreatePer1M: 1.25},
+	ProviderOpenAI + "/gpt-5.6-sol":   {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25},
+	ProviderOpenAI + "/gpt-5.6-terra": {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25, CacheCreatePer1M: 3.125},
+	ProviderOpenAI + "/gpt-5.6-luna":  {InputPer1M: 1.00, OutputPer1M: 6.00, CacheReadPer1M: 0.10, CacheCreatePer1M: 1.25},
 
 	// ─── OpenAI BYOK API models ────────────────────────────────────────
-	ProviderOpenAI + "/gpt-5":      {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
-	ProviderOpenAI + "/gpt-5-mini": {InputPer1M: 0.25, OutputPer1M: 2.00, CacheReadPer1M: 0.025},
-	ProviderOpenAI + "/gpt-5-nano": {InputPer1M: 0.05, OutputPer1M: 0.40, CacheReadPer1M: 0.005},
-	ProviderOpenAI + "/gpt-4o":     {InputPer1M: 2.50, OutputPer1M: 10.00, CacheReadPer1M: 1.25},
-	ProviderOpenAI + "/gpt-4o-mini":{InputPer1M: 0.15, OutputPer1M: 0.60, CacheReadPer1M: 0.075},
+	ProviderOpenAI + "/gpt-5":       {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
+	ProviderOpenAI + "/gpt-5-mini":  {InputPer1M: 0.25, OutputPer1M: 2.00, CacheReadPer1M: 0.025},
+	ProviderOpenAI + "/gpt-5-nano":  {InputPer1M: 0.05, OutputPer1M: 0.40, CacheReadPer1M: 0.005},
+	ProviderOpenAI + "/gpt-4o":      {InputPer1M: 2.50, OutputPer1M: 10.00, CacheReadPer1M: 1.25},
+	ProviderOpenAI + "/gpt-4o-mini": {InputPer1M: 0.15, OutputPer1M: 0.60, CacheReadPer1M: 0.075},
 }
+
+// QuantizeUSD rounds a dollar amount to MonetaryScale decimal places, using the
+// value's shortest decimal representation as the starting point.
+//
+// # Why this exists
+//
+// A charge is written to two places that must agree: the wallet balance
+// (`balance = balance - x`) and the ledger row (`amount_usd = -x`). With an
+// unrounded float64 the two land on different values, and the gap compounds. A
+// 2026-08 audit of a production SQLite ledger with 576,049 charge rows found
+// workspaces already out of balance against their own ledger:
+//
+//	workspace 105   balance 815.18275431   ledger 815.18275432
+//	workspace  19   balance 495.03089712   ledger 495.03089713
+//	workspace  30   balance 149.45152177   ledger 149.45152178
+//
+// Rounding every amount to a fixed scale before it reaches storage means both
+// writes carry the identical number, so the residual drift is bounded by
+// float64 summation alone rather than growing a fresh 1e-8 per request. It also
+// makes the server's figure reproducible by a client recomputing the same
+// formula, which is what lets the request-log UI compare its own arithmetic to
+// the stored total at a tight tolerance instead of a 5e-4 fudge factor.
+//
+// Implemented via strconv rather than math.Round(v*1e8)/1e8: multiplying by 1e8
+// introduces its own binary error that can push a value on a rounding boundary
+// to the wrong side. Formatting with 'f' and a fixed precision rounds the
+// decimal representation directly, which is the behaviour callers expect.
+//
+// NaN and ±Inf pass through untouched — they are bugs upstream, and silently
+// turning them into 0 would hide the bug while still corrupting a balance.
+func QuantizeUSD(v float64) float64 {
+	if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		return v
+	}
+	q, err := strconv.ParseFloat(strconv.FormatFloat(v, 'f', MonetaryScale, 64), 64)
+	if err != nil {
+		return v
+	}
+	return q
+}
+
+// MonetaryScale is the number of decimal places every billed amount is rounded
+// to before it is stored or compared. Eight places is ~1e-8 USD: far below the
+// smallest real charge (a Haiku cache-read request is ~1e-6) yet coarse enough
+// that a client recomputing the same formula in IEEE-754 lands on the same
+// value.
+const MonetaryScale = 8

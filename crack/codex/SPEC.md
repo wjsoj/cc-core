@@ -196,3 +196,92 @@ plus token counters (`input_tokens`,`cached_input_tokens`,`output_tokens`,`reaso
 
 `gpt-5.5` (default this session), `gpt-5.3-codex-spark` (metered feature `codex_bengalfox`).
 Matches cc-core `CodexModelCatalog` Pro tier. No new model names beyond the catalog.
+
+---
+
+## 2026-08-08 — identity bump to 0.147.0, verified against source rather than a capture
+
+Codex CLI `rust-v0.147.0` shipped 2026-08-07. No new whistle capture was taken. Instead the
+header contract was read directly out of the upstream Rust at that tag, which for *header
+construction* is stronger evidence than a dump — it is the code that produces the dump, and it
+shows the branches a single session never exercises.
+
+Sources: `codex-rs/core/src/client.rs`, `codex-rs/login/src/auth/default_client.rs`,
+`codex-rs/codex-api/src/sse/responses.rs`, `codex-rs/otel/src/metrics/tags.rs`.
+
+### 1. `OpenAI-Beta` is WS-only — the HTTP beta we sent was fabricated
+
+`OPENAI_BETA_HEADER` is referenced exactly **once** in `client.rs`, inside
+`build_websocket_headers`, set to `RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE`. The HTTP request
+builders (`responses` and `compact`) never set it. The string **`responses=experimental` does not
+occur anywhere in 0.147.0.**
+
+cc-core had been sending `OpenAI-Beta: responses=experimental` on every HTTP POST since the
+original 0.135.0 port. That is a value no genuine client emits — a pure third-party tell on the
+single most-inspected header of the request. **Removed.** `mimicry.CodexOpenAIBeta` is deleted;
+`codexws.CodexOpenAIBetaWS` (`responses_websockets=2026-02-06`) remains correct and is now the
+only place cc-core sets the header. A client-supplied `OpenAI-Beta` is passed through untouched.
+
+### 2. `x-codex-routing-hint` — a header we were missing entirely
+
+`client.rs` defines `X_CODEX_ROUTING_HINT_HEADER = "x-codex-routing-hint"` and
+`build_routing_hint_header`, which emits:
+
+```
+model={model}                 // no service tier resolved
+model={model};tier={tier}     // tier resolved
+```
+
+It is gated on `auth.uses_codex_backend()` plus an OpenAI provider with no API key / bearer /
+custom auth — i.e. exactly the ChatGPT-subscription traffic cc-core forwards. It is inserted on
+**both** transports (`build_websocket_headers`, and the HTTP responses/compact builders).
+
+This is not cosmetic. The backend resolves some model slugs per originator/hint; openai/codex#31967
+reports a third-party client getting `Model not found gpt-5.6-luna-free-1p-codexswic-ev3` on an
+account where the official CLI serves the same model. **Added** as `mimicry.CodexRoutingHint`,
+wired into `ApplyCodexCLIHeaders` and `codexws.BuildUpstreamHeaders`.
+
+One deliberate divergence: upstream formats whatever `service_tier` its own validated config
+resolved. Ours comes off an arbitrary client request body, so cc-core emits a tier only for
+`priority` / `flex` (the two Codex actually selects) and drops everything else to a model-only
+hint. `default` is excluded because Codex treats it as a standard-routing sentinel, not a tier to
+send. The model is also rejected outright if it is not printable ASCII, so a crafted model name
+cannot inject a header.
+
+### 3. Identity template unchanged; `codex-tui` still valid
+
+`get_codex_user_agent()` builds
+`"{originator}/{version} ({os_type} {os_version}; {arch}) {terminal_ua}{suffix}"` — byte-identical
+in shape to the 0.135.0 capture, so only the version segments move:
+
+```
+codex-tui/0.147.0 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.147.0)
+```
+
+`DEFAULT_ORIGINATOR` in the login crate is `codex_cli_rs`, but `codex-tui` is still a live member
+of the known-originator set in `otel/src/metrics/tags.rs`, and it is what our own 0.135.0 capture
+shows the TUI actually send. **Not changed** — the capture outranks the library default here.
+
+### 4. Error-frame semantics (drives `cc-core/codexerr`)
+
+`codex-api/src/sse/responses.rs` maps an SSE error event to an `ApiError`:
+
+| code | variant | client behaviour |
+|---|---|---|
+| `server_is_overloaded`, `slow_down` | `ServerOverloaded` | **terminal** — session ends, "Selected model is at capacity." |
+| `insufficient_quota` / `usage_not_included` / `cyber_policy` | own variants | surfaced |
+| `invalid_prompt` / `bio_policy` | `InvalidRequest` | surfaced |
+| *anything else* | `Retryable{message, delay}` | backs off and retries |
+
+The default arm is retryable and the terminal set is tiny and closed. So a capacity-shed frame
+forwarded verbatim kills the session, while the identical failure under nearly any other code
+would have been retried. `codexerr.DemoteCapacityCode` rewrites only those two codes to
+`server_error`, leaving the message intact, for the case where the frame must reach the client.
+
+### Unresolved
+
+- No 0.147.0 wire capture. The attestation header (`X_OAI_ATTESTATION_HEADER`), turn-state header,
+  and `x-codex-installation-id` are visible in source but remain deliberately unreplicated (same
+  rationale as the other TUI-only headers: a proxy has no genuine value to put in them).
+- Whether the backend *requires* the routing hint for any model, or merely prefers it, is not
+  established — #31967 is consistent with either.

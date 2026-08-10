@@ -142,6 +142,14 @@ type Auth struct {
 	// pricing-group multiplier (legacy behaviour). Ignored for OAuth. Append-
 	// only field — old credential files without it default to 0.
 	PriceMultiplier float64
+	// RelayPeer marks an API-key credential as pointing at a cooperating proxy
+	// we also run, rather than at a vendor or a third-party relay. Requests
+	// forwarded on it carry cc-core/relay headers naming the DOWNSTREAM caller,
+	// so the peer can spread them across its own credentials instead of pinning
+	// every user behind this proxy onto one. Off by default and meaningless for
+	// OAuth: to any other upstream the headers are noise that leaks topology.
+	// Append-only field — old credential files default to false.
+	RelayPeer bool
 
 	// Source file for OAuth and file-backed APIKey credentials.
 	FilePath string
@@ -201,6 +209,15 @@ type Auth struct {
 	// fetched. CodexUsageAt mirrors CodexUsage.Updated.
 	CodexUsage   *CodexUsageInfo
 	CodexUsageAt time.Time
+
+	// CodexSubscription is the latest billing view from the chatgpt.com
+	// portal's subscriptions + accounts/check endpoints
+	// (FetchCodexSubscription). Where CodexUsage answers "how much quota is
+	// left", this answers "what plan was bought, when the term started, and
+	// whether it renews". Nil = never fetched; CodexSubscriptionAt mirrors
+	// CodexSubscription.Updated.
+	CodexSubscription   *CodexSubscriptionInfo
+	CodexSubscriptionAt time.Time
 }
 
 // healthGrace is how long after an isolated failure we still treat the
@@ -338,29 +355,32 @@ func (a *Auth) Snapshot() AuthInfo {
 		}
 	}
 	return AuthInfo{
-		ID:                a.ID,
-		Kind:              a.Kind,
-		Provider:          a.Provider,
-		Label:             a.Label,
-		Email:             a.Email,
-		ExpiresAt:         a.ExpiresAt,
-		ProxyURL:          a.ProxyURL,
-		MaxConcurrent:     a.MaxConcurrent,
-		Disabled:          a.Disabled,
-		QuotaExceededAt:   a.QuotaExceededAt,
-		QuotaResetAt:      a.QuotaResetAt,
-		FilePath:          a.FilePath,
-		BaseURL:           a.BaseURL,
-		Group:             a.Group,
-		Order:             a.Order,
-		PriceMultiplier:   a.PriceMultiplier,
-		QuarantineUntil:   a.QuarantineUntil,
-		QuarantineStrikes: a.QuarantineStrikes,
-		ModelMap:          mm,
-		CodexRateLimits:   rl,
-		CodexRateLimitsAt: a.CodexRateLimitsAt,
-		CodexUsage:        a.CodexUsage,
-		CodexUsageAt:      a.CodexUsageAt,
+		ID:                  a.ID,
+		Kind:                a.Kind,
+		Provider:            a.Provider,
+		Label:               a.Label,
+		Email:               a.Email,
+		ExpiresAt:           a.ExpiresAt,
+		ProxyURL:            a.ProxyURL,
+		MaxConcurrent:       a.MaxConcurrent,
+		Disabled:            a.Disabled,
+		QuotaExceededAt:     a.QuotaExceededAt,
+		QuotaResetAt:        a.QuotaResetAt,
+		FilePath:            a.FilePath,
+		BaseURL:             a.BaseURL,
+		Group:               a.Group,
+		Order:               a.Order,
+		PriceMultiplier:     a.PriceMultiplier,
+		RelayPeer:           a.RelayPeer,
+		QuarantineUntil:     a.QuarantineUntil,
+		QuarantineStrikes:   a.QuarantineStrikes,
+		ModelMap:            mm,
+		CodexRateLimits:     rl,
+		CodexRateLimitsAt:   a.CodexRateLimitsAt,
+		CodexUsage:          a.CodexUsage,
+		CodexUsageAt:        a.CodexUsageAt,
+		CodexSubscription:   a.CodexSubscription,
+		CodexSubscriptionAt: a.CodexSubscriptionAt,
 	}
 }
 
@@ -381,6 +401,7 @@ type AuthInfo struct {
 	Group           string
 	Order           int
 	PriceMultiplier float64
+	RelayPeer       bool
 	// QuarantineUntil / QuarantineStrikes expose the API-key circuit breaker
 	// so the admin panel can show a paused channel instead of leaving it
 	// looking healthy while it silently serves no traffic. Zero deadline =
@@ -392,6 +413,11 @@ type AuthInfo struct {
 	CodexRateLimitsAt time.Time
 	CodexUsage        *CodexUsageInfo
 	CodexUsageAt      time.Time
+	// CodexSubscription is shared by pointer, like CodexUsage: the snapshot
+	// replaces the pointer wholesale on each fetch and never mutates the
+	// struct in place, so readers of an old snapshot keep a consistent view.
+	CodexSubscription   *CodexSubscriptionInfo
+	CodexSubscriptionAt time.Time
 }
 
 // IsQuotaExceeded reports true if Anthropic has signalled this auth is out of
@@ -1010,6 +1036,23 @@ func (a *Auth) SetModelMap(m map[string]string) {
 // client's model name unchanged".
 //
 // Wildcard credentials (nil/empty ModelMap) always return (clientModel, true).
+//
+// Lookup order, mirroring pricing.Lookup so a name that finds a price card also
+// finds its rewrite:
+//
+//  1. the client model verbatim;
+//  2. the same name with a trailing "[1m]" context-mode label removed, with the
+//     label re-attached to whatever the map returns;
+//  3. progressively shorter "-"-trimmed prefixes of that base name, so a dated
+//     variant (claude-opus-4-8-20260315) resolves through its undated entry
+//     (claude-opus-4-8) without the map having to enumerate release dates.
+//
+// Step 3 is what lets DefaultClaudeOAuthModelMap fold a whole family with one
+// entry per generation. It also fixes the long-standing relay case the ModelMap
+// doc comment describes: a vendor that registered "claude-haiku-4-5" but is sent
+// the dated "claude-haiku-4-5-20251001" now matches instead of passing through.
+// The fallback only ever runs on an exact-match MISS, so no existing exact entry
+// changes meaning.
 func (a *Auth) ResolveUpstreamModel(clientModel string) (upstream string, ok bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -1017,10 +1060,40 @@ func (a *Auth) ResolveUpstreamModel(clientModel string) (upstream string, ok boo
 	// non-empty value is rewritten; anything else (unlisted, or mapped to "")
 	// passes through unchanged. ok is always true — the second return is kept
 	// for call-site symmetry.
+	if len(a.ModelMap) == 0 {
+		return clientModel, true
+	}
 	if mapped, exists := a.ModelMap[clientModel]; exists && mapped != "" {
 		return mapped, true
 	}
+	base, suffix := splitContextModeSuffix(clientModel)
+	if suffix != "" {
+		if mapped, exists := a.ModelMap[base]; exists && mapped != "" {
+			return mapped + suffix, true
+		}
+	}
+	for i := strings.LastIndex(base, "-"); i > 0; i = strings.LastIndex(base[:i], "-") {
+		if mapped, exists := a.ModelMap[base[:i]]; exists && mapped != "" {
+			return mapped + suffix, true
+		}
+	}
 	return clientModel, true
+}
+
+// splitContextModeSuffix splits a trailing "[value]" context-mode label off a
+// model name: "claude-opus-5[1m]" → ("claude-opus-5", "[1m]"). Names without
+// one return (model, ""). Kept local to auth so the package doesn't take a
+// dependency on pricing for one string split; pricing.StripContextModeSuffix is
+// the same rule stated for the billing side.
+func splitContextModeSuffix(model string) (base, suffix string) {
+	if !strings.HasSuffix(model, "]") {
+		return model, ""
+	}
+	i := strings.LastIndex(model, "[")
+	if i <= 0 {
+		return model, ""
+	}
+	return model[:i], model[i:]
 }
 
 // AcceptsModel reports whether this credential may serve a request for the

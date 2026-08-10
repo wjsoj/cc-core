@@ -127,7 +127,7 @@ func safeJoin(base, name string) (string, error) {
 	}
 	for _, seg := range strings.Split(slash, "/") {
 		if seg == ".." {
-			return "", fmt.Errorf("archive: member %q contains ..", name)
+			return "", fmt.Errorf("archive: member %q contains a parent-directory segment", name)
 		}
 	}
 	target := filepath.Join(base, filepath.FromSlash(slash))

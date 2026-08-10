@@ -54,13 +54,55 @@ func TestAcquireMultiEmptyGroupsTreatedAsPublic(t *testing.T) {
 func mustOAuth(t *testing.T, id, provider, group string, maxConc int) *Auth {
 	t.Helper()
 	a := &Auth{
-		ID:             id,
-		Provider:       provider,
-		Group:          group,
-		Kind:           KindOAuth,
-		AccessToken:    "fake-token",
-		ExpiresAt:      time.Now().Add(time.Hour),
-		MaxConcurrent:  maxConc,
+		ID:            id,
+		Provider:      provider,
+		Group:         group,
+		Kind:          KindOAuth,
+		AccessToken:   "fake-token",
+		ExpiresAt:     time.Now().Add(time.Hour),
+		MaxConcurrent: maxConc,
 	}
 	return a
+}
+
+// TestAcquireMultiWithOptionsPropagatesAPIKeyOnly guards a flag that used to be
+// silently dropped in the fan-out: AcquireMultiWithOptions rebuilt the per-group
+// AcquireOptions and forgot APIKeyOnly, so a caller replaying a request whose
+// identity rewrite had already failed got handed an OAuth credential — the one
+// outcome the flag exists to prevent.
+func TestAcquireMultiWithOptionsPropagatesAPIKeyOnly(t *testing.T) {
+	dir := t.TempDir()
+	oauth := &Auth{
+		ID: "oauth", Kind: KindOAuth, Provider: ProviderAnthropic,
+		Group: "g", AccessToken: "oauth-token", MaxConcurrent: 5,
+	}
+	key := mustAPIKey(t, dir, "key", ProviderAnthropic)
+	key.Group = "g"
+	p := NewPool([]*Auth{oauth}, []*Auth{key}, time.Minute, false, "")
+
+	group, got := p.AcquireMultiWithOptions(context.Background(), ProviderAnthropic, "tok",
+		[]string{"g"}, "claude-haiku-4-5", "session", AcquireOptions{
+			AllowAPIKeyFallback: true,
+			APIKeyOnly:          true,
+		})
+	if got == nil || got.Kind != KindAPIKey || got.ID != key.ID {
+		t.Fatalf("APIKeyOnly ignored in fan-out: group=%q auth=%+v", group, got)
+	}
+	if group != "g" {
+		t.Fatalf("serving group = %q, want %q", group, "g")
+	}
+}
+
+// TestAcquireMultiWithOptionsHonoursExcludeIDs verifies the caller's skip-list
+// reaches every group attempt, not just the first.
+func TestAcquireMultiWithOptionsHonoursExcludeIDs(t *testing.T) {
+	first := mustOAuth(t, "auth-1", ProviderAnthropic, "groupA", 1)
+	second := mustOAuth(t, "auth-2", ProviderAnthropic, "groupB", 1)
+	p := NewPool([]*Auth{first, second}, nil, time.Minute, false, "")
+
+	group, got := p.AcquireMultiWithOptions(context.Background(), ProviderAnthropic, "tok",
+		[]string{"groupA", "groupB"}, "", "session", AcquireOptions{ExcludeIDs: []string{"auth-1"}})
+	if got == nil || got.ID != "auth-2" || group != "groupB" {
+		t.Fatalf("excluded credential leaked into a later group: group=%q auth=%+v", group, got)
+	}
 }

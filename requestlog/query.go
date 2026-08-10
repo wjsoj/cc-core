@@ -34,14 +34,23 @@ func BucketLocation() *time.Location { return bucketLoc }
 
 // Aggregate sums counters over a set of records.
 type Aggregate struct {
-	Count             int64   `json:"count"`
-	InputTokens       int64   `json:"input_tokens"`
-	OutputTokens      int64   `json:"output_tokens"`
-	CacheReadTokens   int64   `json:"cache_read_tokens"`
-	CacheCreateTokens int64   `json:"cache_create_tokens"`
-	CostUSD           float64 `json:"cost_usd"`
-	Errors            int64   `json:"errors"`
-	TotalDurationMs   int64   `json:"total_duration_ms"`
+	Count             int64 `json:"count"`
+	InputTokens       int64 `json:"input_tokens"`
+	OutputTokens      int64 `json:"output_tokens"`
+	CacheReadTokens   int64 `json:"cache_read_tokens"`
+	CacheCreateTokens int64 `json:"cache_create_tokens"`
+	// CacheCreate1hTokens is the 1h-TTL subset of CacheCreateTokens, not an
+	// addend. Summed here so an operator can read the real 5m/1h mix off the
+	// admin panel before deciding whether to enable the split rate.
+	CacheCreate1hTokens int64   `json:"cache_create_1h_tokens,omitempty"`
+	CostUSD             float64 `json:"cost_usd"`
+	// BilledUSD sums what wallets were actually debited. Rows written before
+	// CostUSD/BilledUSD were split carry the billed figure in CostUSD and no
+	// BilledUSD at all, so this falls back to CostUSD per row — under either
+	// shape the sum is "what customers paid", which is what a spend view means.
+	BilledUSD       float64 `json:"billed_usd"`
+	Errors          int64   `json:"errors"`
+	TotalDurationMs int64   `json:"total_duration_ms"`
 }
 
 func (a *Aggregate) add(r Record) {
@@ -50,7 +59,9 @@ func (a *Aggregate) add(r Record) {
 	a.OutputTokens += r.Output
 	a.CacheReadTokens += r.CacheRead
 	a.CacheCreateTokens += r.CacheCreate
+	a.CacheCreate1hTokens += r.CacheCreate1h
 	a.CostUSD += r.CostUSD
+	a.BilledUSD += r.BilledOrCost()
 	a.TotalDurationMs += r.DurationMs
 	if r.Status >= 400 || r.Error != "" {
 		a.Errors++
@@ -73,8 +84,25 @@ type Filter struct {
 	// Used by public-facing dashboards so a customer sees only their own
 	// bill. Zero = no constraint (operator query).
 	UserID int64
-	Limit  int // page size for Entries (0 = 50)
-	Offset int // number of newest-first records to skip before Limit
+	// FromDay/ToDay express the window as inclusive whole days
+	// ("YYYY-MM-DD") in the bucketing zone — the same labels ByDay is keyed
+	// on. Prefer them over From/To whenever the caller's window really is
+	// whole days, which is what a date picker produces: the pre-summed cube's
+	// finest time grain is a day, so a window stated in days can be answered
+	// from it, while the equivalent timestamp pair cannot (see cubeEligible).
+	// On production data that is the difference between 1.8s and 48ms.
+	//
+	// Resolved into From/To by resolveDays before any matching happens, so
+	// the scanning path and the SQL path see identical bounds. Setting both
+	// these and From/To is a contradiction rather than a refinement; the
+	// timestamps win and the labels are dropped.
+	FromDay string
+	ToDay   string
+	// dayBounds records that From/To below were derived from FromDay/ToDay,
+	// and therefore fall exactly on day boundaries. Set by resolveDays.
+	dayBounds bool
+	Limit     int // page size for Entries (0 = 50)
+	Offset    int // number of newest-first records to skip before Limit
 	// PageOnly turns the query into a cheap table/list lookup: it skips the
 	// Summary/ByClient/ByModel/ByDay aggregates AND stops scanning as soon
 	// as Offset+Limit matching entries have been collected from the newest
@@ -83,6 +111,46 @@ type Filter struct {
 	// callers that render Entries alone and never read the aggregate maps or
 	// Summary.Count (those are left zero/empty when PageOnly is set).
 	PageOnly bool
+}
+
+// resolveDays turns FromDay/ToDay into the exact timestamp bounds every
+// matching path compares against, and records that it did so.
+//
+// It is idempotent: once dayBounds is set the work is done, which matters
+// because Query resolves before dispatching and the SQL path may resolve
+// again on the way in.
+func (f Filter) resolveDays() Filter {
+	if f.dayBounds || (f.FromDay == "" && f.ToDay == "") {
+		return f
+	}
+	if !f.From.IsZero() || !f.To.IsZero() {
+		// A caller that supplies both is describing two different windows.
+		// Honour the more specific one and drop the labels outright — keeping
+		// them would let the cube (which reads labels) and req (which reads
+		// timestamps) answer the same filter differently.
+		f.FromDay, f.ToDay = "", ""
+		return f
+	}
+	if f.FromDay != "" {
+		t, err := time.ParseInLocation("2006-01-02", f.FromDay, bucketLoc)
+		if err != nil {
+			f.FromDay = ""
+		} else {
+			f.From = t
+		}
+	}
+	if f.ToDay != "" {
+		t, err := time.ParseInLocation("2006-01-02", f.ToDay, bucketLoc)
+		if err != nil {
+			f.ToDay = ""
+		} else {
+			// Inclusive of the whole named day, to the last representable
+			// instant — the cube's `bday <= ToDay` covers exactly this.
+			f.To = t.AddDate(0, 0, 1).Add(-time.Nanosecond)
+		}
+	}
+	f.dayBounds = f.FromDay != "" || f.ToDay != ""
+	return f
 }
 
 // Result is the Query return value.
@@ -114,6 +182,9 @@ type HourBucket struct {
 func AggregateHourly(dir string, hours int) ([]HourBucket, error) {
 	if hours <= 0 {
 		hours = 24
+	}
+	if st := indexFor(dir); st != nil {
+		return st.storeAggregateHourly(hours)
 	}
 	now := time.Now().UTC().Truncate(time.Hour)
 	start := now.Add(-time.Duration(hours-1) * time.Hour)
@@ -182,6 +253,9 @@ func AggregateHourly(dir string, hours int) ([]HourBucket, error) {
 // from the request log, bypassing the in-memory counter (which resets on
 // restart / state rebuild).
 func AggregateByAuth(dir string, from, to time.Time) (map[string]Aggregate, error) {
+	if st := indexFor(dir); st != nil {
+		return st.storeAggregateByAuth(from, to)
+	}
 	files, err := listLogFiles(dir)
 	if err != nil {
 		return nil, err
@@ -241,6 +315,10 @@ func Query(f Filter) (*Result, error) {
 	}
 	if f.Offset < 0 {
 		f.Offset = 0
+	}
+	f = f.resolveDays()
+	if st := indexFor(f.Dir); st != nil {
+		return st.storeQuery(f)
 	}
 	// keep is the most newest-first entries we could ever return; collecting
 	// beyond it is wasted memory since Query only returns [Offset, Offset+Limit).

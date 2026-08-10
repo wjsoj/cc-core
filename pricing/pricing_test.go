@@ -200,3 +200,82 @@ func TestStripContextModeSuffix(t *testing.T) {
 		t.Errorf("not idempotent: %q → %q", once, twice)
 	}
 }
+
+// ─── 1-hour cache-write tier ────────────────────────────────────────────────
+
+// TestCacheCreate1hIsOptOutByDefault is the load-bearing guarantee of the whole
+// feature: shipping the CacheCreate1hPer1M axis must not move a single invoice.
+// Every built-in card leaves the 1h rate zero, so even a request whose cache
+// writes are ENTIRELY 1h bills exactly as it did before the field existed.
+//
+// If this test ever fails, a catalogue edit has silently repriced production —
+// on the traffic mix measured in 2026-08 that is a ~32% increase, because cache
+// writes are ~54% of the official-cost base.
+func TestCacheCreate1hIsOptOutByDefault(t *testing.T) {
+	cat := NewCatalog(Config{})
+	for _, m := range []string{
+		"claude-haiku-4-5", "claude-sonnet-4-6", "claude-sonnet-5",
+		"claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-5",
+		"claude-fable-5",
+	} {
+		if got := cat.Lookup(ProviderAnthropic, m); got.CacheCreate1hPer1M != 0 {
+			t.Errorf("%s ships CacheCreate1hPer1M=%v — built-in cards must leave it 0 "+
+				"so enabling the split stays an explicit operator decision", m, got.CacheCreate1hPer1M)
+		}
+	}
+
+	// All 200k cache-write tokens reported as 1h: with the default card the
+	// bill is unchanged from the single-rate formula.
+	p := cat.Lookup(ProviderAnthropic, "claude-sonnet-4-6")
+	all1h := usage.Counts{CacheCreateTokens: 200_000, CacheCreate1hTokens: 200_000}
+	flat := usage.Counts{CacheCreateTokens: 200_000}
+	if got, want := p.Cost(all1h), p.Cost(flat); got != want {
+		t.Fatalf("1h breakdown changed the bill with a zero 1h rate: %v != %v", got, want)
+	}
+	if want := 200_000 * 3.75 / 1e6; p.Cost(all1h) != want {
+		t.Fatalf("Cost=%v want %v (5m rate applied to everything)", p.Cost(all1h), want)
+	}
+}
+
+// TestCacheCreate1hSplitWhenEnabled exercises the opt-in path with Anthropic's
+// published ladder for sonnet-4-6 (5m 1.25×input = 3.75, 1h 2×input = 6.00).
+func TestCacheCreate1hSplitWhenEnabled(t *testing.T) {
+	p := ModelPrice{
+		InputPer1M: 3.00, OutputPer1M: 15.00,
+		CacheReadPer1M: 0.30, CacheCreatePer1M: 3.75, CacheCreate1hPer1M: 6.00,
+	}
+	// 200k writes, 150k of them 1h → 50k×3.75 + 150k×6.00 = 187.5 + 900 = 1087.5 µUSD
+	c := usage.Counts{CacheCreateTokens: 200_000, CacheCreate1hTokens: 150_000}
+	if got, want := p.Cost(c), (50_000*3.75+150_000*6.00)/1e6; got != want {
+		t.Fatalf("split Cost=%v want %v", got, want)
+	}
+	// No breakdown reported → everything stays on the 5m rate. An upstream that
+	// omits `cache_creation` must never be repriced by guesswork.
+	if got, want := p.Cost(usage.Counts{CacheCreateTokens: 200_000}), 200_000*3.75/1e6; got != want {
+		t.Fatalf("absent breakdown Cost=%v want %v (5m rate)", got, want)
+	}
+	// Malformed upstream (1h exceeds the total) must not go negative.
+	bad := usage.Counts{CacheCreateTokens: 100_000, CacheCreate1hTokens: 250_000}
+	if got := p.Cost(bad); got < 0 {
+		t.Fatalf("malformed breakdown produced a negative charge: %v", got)
+	}
+}
+
+// TestCacheCreate1hConfigurable pins that an operator can turn the split on from
+// config.yaml without touching Go code, and that doing so is what it takes.
+func TestCacheCreate1hConfigurable(t *testing.T) {
+	cat := NewCatalog(Config{Models: map[string]ModelPrice{
+		"anthropic/claude-sonnet-4-6": {
+			InputPer1M: 3.00, OutputPer1M: 15.00,
+			CacheReadPer1M: 0.30, CacheCreatePer1M: 3.75, CacheCreate1hPer1M: 6.00,
+		},
+	}})
+	if got := cat.Lookup(ProviderAnthropic, "claude-sonnet-4-6").CacheCreate1hPer1M; got != 6.00 {
+		t.Fatalf("config override did not reach the card: CacheCreate1hPer1M=%v", got)
+	}
+	// A card whose ONLY non-zero field is the 1h rate still counts as "set", so
+	// a provider_defaults entry that just enables the split isn't discarded.
+	if !nonZero(ModelPrice{CacheCreate1hPer1M: 6.00}) {
+		t.Error("nonZero must recognise a card carrying only a 1h cache rate")
+	}
+}

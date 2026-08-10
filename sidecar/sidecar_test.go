@@ -111,7 +111,7 @@ func (r *recorder) firstBatchBody() []byte {
 }
 
 // TestBootstrapFiresAllStepsWithCorrectUA asserts that one Notify triggers
-// the full 9-step bootstrap, that each step hits the right endpoint and
+// the full 10-step bootstrap, that each step hits the right endpoint and
 // claims the right User-Agent / Anthropic-Beta. Real CC mixes Bun fetch,
 // axios, claude-cli, and claude-code across these endpoints — getting any
 // one wrong is its own fingerprint.
@@ -152,15 +152,15 @@ func TestBootstrapFiresAllStepsWithCorrectUA(t *testing.T) {
 		"/api/eval/sdk-zAZezfDKGoZuXXKe": {"Bun/", "oauth-2025-04-20"},
 		// account/settings + grove use claude-cli (NOT claude-code) — verified in
 		// both the 2.1.191 and 2.1.214 live captures (crack/cc2214/SPEC.md §2).
-		"/api/oauth/account/settings":    {"claude-cli/", "oauth-2025-04-20"},
-		"/api/claude_code_grove":         {"claude-cli/", "oauth-2025-04-20"},
-		"/api/claude_cli/bootstrap":      {"claude-code/", "oauth-2025-04-20"},
-		"/api/claude_code_penguin_mode":  {"axios/", "oauth-2025-04-20"},
-		"/v1/messages":                   {"claude-cli/", quotaProbeBeta},
+		"/api/oauth/account/settings":   {"claude-cli/", "oauth-2025-04-20"},
+		"/api/claude_code_grove":        {"claude-cli/", "oauth-2025-04-20"},
+		"/api/claude_cli/bootstrap":     {"claude-code/", "oauth-2025-04-20"},
+		"/api/claude_code_penguin_mode": {"axios/", "oauth-2025-04-20"},
+		"/v1/messages":                  {"claude-cli/", quotaProbeBeta},
 		// mcp-registry uses claude-cli (NOT axios) — 2.1.191 + cc2214, 8 samples.
-		"/mcp-registry/v0/servers":       {"claude-cli/", ""},
-		"/v1/mcp_servers":                {"axios/", "mcp-servers-2025-12-04"},
-		"/v1/code/triggers":              {"claude-cli/", "ccr-triggers-2026-01-30"},
+		"/mcp-registry/v0/servers": {"claude-cli/", ""},
+		"/v1/mcp_servers":          {"axios/", "mcp-servers-2025-12-04"},
+		"/v1/code/triggers":        {"claude-cli/", "ccr-triggers-2026-01-30"},
 		// /claude-code-releases/latest is on a different host (downloads.claude.ai)
 		// — won't hit our test server, so it's not in this list.
 	}
@@ -723,3 +723,39 @@ func waitForCallCount(r *recorder, want int, timeout time.Duration) bool {
 
 // silence unused import warning when building before tests
 var _ = atomic.Int32{}
+
+// The bootstrap URL's model= parameter and the telemetry model describe the
+// same simulated process, so they have to name the same model. They drifted
+// apart at the 2.1.224 bump — bootstrap still said claude-opus-4-8 while
+// event_logging said claude-opus-5 — which no real client can produce.
+func TestBootstrapModelMatchesReportedModel(t *testing.T) {
+	var bootstrap string
+	for _, step := range realBootstrapSteps("https://api.anthropic.com") {
+		if step.name == "claude_cli_bootstrap" {
+			bootstrap = step.url
+		}
+	}
+	if bootstrap == "" {
+		t.Fatal("no claude_cli_bootstrap step")
+	}
+	if want := "model=" + ccDatadogModel; !strings.Contains(bootstrap, want) {
+		t.Errorf("bootstrap URL %q does not carry %q", bootstrap, want)
+	}
+	// Telemetry adds the [1m] suffix; the base model must still agree.
+	if base := strings.TrimSuffix(ccTelemetryModel, "[1m]"); base != ccDatadogModel {
+		t.Errorf("telemetry model %q and datadog model %q disagree", ccTelemetryModel, ccDatadogModel)
+	}
+}
+
+// The quota probe constants are now anchored to crack/cc2224/rows/19; assert
+// the captured values so a silent edit fails loudly, as with the mimicry lists.
+func TestQuotaProbeMatchesCapture(t *testing.T) {
+	const captured = "oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12," +
+		"thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05"
+	if quotaProbeBeta != captured {
+		t.Errorf("quotaProbeBeta = %q, want the captured 6-item list", quotaProbeBeta)
+	}
+	if quotaProbeModel != "claude-haiku-4-5-20251001" {
+		t.Errorf("quotaProbeModel = %q", quotaProbeModel)
+	}
+}
