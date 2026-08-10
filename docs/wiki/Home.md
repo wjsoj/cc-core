@@ -39,6 +39,7 @@
 ### 传输层
 | 页面 | 内容 |
 |---|---|
+| [downstream —— 返回客户端的响应清洗](Downstream) | 上游身份/配额头的白名单剥离、`Retry-After` 保全、错误体与 SSE error 帧脱敏 |
 | [传输层与辅助工具](Transports) | `stream` SSE 中继、`codexws` WebSocket 上游、`thinkingsig` 切号清洗、`backup` 加密快照 |
 
 ---

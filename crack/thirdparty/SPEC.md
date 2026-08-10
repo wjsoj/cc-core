@@ -218,6 +218,13 @@ The gateway returns none of them — its own `trace-id` / `x-mm-request-id` /
 `anthropic-workspace-id` had no prior mention anywhere in this repo; it is
 recorded here and in `cc2224/rows/13` for the first time.
 
+This asymmetry is now enforced rather than merely observed: `cc-core/downstream`
+allowlists the response headers a proxy returns to its client, and this section
+is its evidence — a real gateway returns none of the Anthropic set, and real
+Claude Code works against it unchanged, so dropping them is known-safe behaviour
+rather than a guess. `Retry-After` is synthesized from the unified reset
+timestamps before they are deleted, so client backoff survives.
+
 ---
 
 ## §5 Unresolved

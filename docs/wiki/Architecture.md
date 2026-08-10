@@ -38,6 +38,7 @@ flowchart TD
   subgraph 独立工具
     requestlog["requestlog<br/><i>请求账本 + SQLite 索引</i>"]
     stream["stream<br/><i>SSE 中继</i>"]
+    downstream["downstream<br/><i>响应清洗（零依赖）</i>"]
     thinkingsig["thinkingsig<br/><i>切号签名清洗</i>"]
     ratelimit["ratelimit"]
     clientguard["clientguard"]
@@ -77,6 +78,7 @@ flowchart TD
 | `clienttoken` | 444 | 299 | 下游客户端 token 与其策略（并发、RPM、周额度、组） | [Billing](Billing) |
 | `backup` | 520 | 140 | 关键 SQLite / 状态的异地 NaCl 加密快照 | [Transports](Transports) |
 | `stream` | 297 | 298 | 与框架无关的 SSE 中继（keepalive / 懒提交 / 终止检测） | [Transports](Transports) |
+| `downstream` | 352 | 470 | 返回客户端的响应清洗：头白名单、`Retry-After` 保全、错误体与 SSE error 帧脱敏 | [Downstream](Downstream) |
 | `codexws` | 202 | 77 | Codex over WebSocket 上游传输 | [Transports](Transports) |
 | `clientguard` | 144 | 90 | 入口 User-Agent 黑名单 | [Billing](Billing) |
 | `ratelimit` | 135 | 101 | 按 key 的 RPM + 并发计数器（策略留给调用方） | [Billing](Billing) |
@@ -152,6 +154,7 @@ sequenceDiagram
 | `ratelimit` | **stable** | 纯值类型，零值可用 |
 | `advisor` | **stable** | 只做解析，计费决策留在分叉 |
 | `stream` | **stable** | `net/http` + `bufio` 的薄封装 |
+| `downstream` | **stable** | 纯 `net/http` + `encoding/json`，无内部依赖 |
 | `mimicry` | **可能演进** | CC 版本目标 bump 会成套改动固定常量；函数签名稳定 |
 | `sidecar` | **可能演进** | 同上，bump 版本可能新增 bootstrap 步骤 |
 
