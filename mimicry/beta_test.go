@@ -181,3 +181,51 @@ func TestRepairedVectorFollowsCanonicalOrder(t *testing.T) {
 		previous = position
 	}
 }
+
+// The count_tokens repair is a different, smaller set — and this is the check
+// that it stays correct rather than merely asserted in a comment. Of the
+// OAuth-only betas, only the marker appears in the captured count_tokens
+// vector, so only the marker may be added there.
+func TestCountTokensOAuthOnlyDeltaIsJustTheMarker(t *testing.T) {
+	inCountTokens := make(map[string]bool)
+	for _, beta := range splitBetaList(ClaudeAnthropicBetaCountTokens) {
+		inCountTokens[beta] = true
+	}
+	for _, beta := range claudeOAuthOnlyBetas {
+		if beta == oauthBetaMarker {
+			if !inCountTokens[beta] {
+				t.Errorf("captured count_tokens vector lost the oauth marker")
+			}
+			continue
+		}
+		if inCountTokens[beta] {
+			t.Errorf("OAuth-only beta %q now appears in the count_tokens vector; "+
+				"UpgradeClaudeCountTokensBetaForOAuth must add it too", beta)
+		}
+	}
+}
+
+// Repairing a custom-base-url count_tokens vector must reproduce the captured
+// OAuth count_tokens vector exactly — not the main one.
+func TestUpgradeCountTokensVector(t *testing.T) {
+	// The captured OAuth vector minus the marker is what a client on a custom
+	// base URL would send.
+	var inbound []string
+	for _, beta := range splitBetaList(ClaudeAnthropicBetaCountTokens) {
+		if beta != oauthBetaMarker {
+			inbound = append(inbound, beta)
+		}
+	}
+	got := UpgradeClaudeCountTokensBetaForOAuth(strings.Join(inbound, ","))
+	if got != ClaudeAnthropicBetaCountTokens {
+		t.Errorf("got  %q\nwant %q", got, ClaudeAnthropicBetaCountTokens)
+	}
+
+	// And it must not drag in the main-request entitlements.
+	for _, beta := range []string{"advisor-tool-2026-03-01", "advanced-tool-use-2025-11-20",
+		"extended-cache-ttl-2025-04-11", "cache-diagnosis-2026-04-07"} {
+		if strings.Contains(got, beta) {
+			t.Errorf("count_tokens repair added %q, which real CC never sends there", beta)
+		}
+	}
+}

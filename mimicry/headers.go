@@ -67,6 +67,10 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 		// base URL structurally cannot declare. See beta.go and
 		// crack/thirdparty/SPEC.md §1a; the transform is additive and idempotent.
 		switch {
+		case kind == KindOAuth && isAnthropicBase && countTokens:
+			// count_tokens carries a different, much shorter OAuth vector, so
+			// its repair is a different (smaller) set — see beta.go.
+			req.Header.Set("Anthropic-Beta", UpgradeClaudeCountTokensBetaForOAuth(existing))
 		case kind == KindOAuth && isAnthropicBase:
 			req.Header.Set("Anthropic-Beta", UpgradeClaudeBetaVectorForOAuth(existing))
 		case kind == KindOAuth && !strings.Contains(existing, "oauth"):

@@ -144,10 +144,11 @@ func TestClientSuppliedBetasWinOnCountTokens(t *testing.T) {
 	if got == ClaudeAnthropicBetaCountTokens {
 		t.Fatalf("count_tokens list clobbered a client-declared vector: %q", got)
 	}
-	// context-1m survives, and drags its captured partner in with it.
-	want := "oauth-2025-04-20,context-1m-2025-08-07,advisor-tool-2026-03-01," +
-		"advanced-tool-use-2025-11-20,fallback-credit-2026-06-01," +
-		"extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
+	// count_tokens gets the smaller repair: the marker only. The four
+	// main-request entitlements never appear on this endpoint, and the
+	// context-mode pairing has no evidence here either — the client's
+	// context-1m survives untouched and alone.
+	want := "oauth-2025-04-20,context-1m-2025-08-07"
 	if got != want {
 		t.Errorf("beta vector = %q, want %q", got, want)
 	}

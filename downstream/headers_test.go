@@ -164,6 +164,24 @@ func TestSynthesizedRetryAfter(t *testing.T) {
 			"60",
 		},
 		{
+			// time.Duration.Round would make this 60 — a client that retries at
+			// 60s gets another 429. Rounding must be a ceiling, not a nearest.
+			"one second past a minute rounds up, not down",
+			map[string]string{"Anthropic-Ratelimit-Unified-Reset": strconv.FormatInt(now.Unix()+61, 10)},
+			"120",
+		},
+		{
+			"an exact multiple is left alone",
+			map[string]string{"Anthropic-Ratelimit-Unified-Reset": strconv.FormatInt(now.Unix()+300, 10)},
+			"300",
+		},
+		{
+			// Ceiling must not push the result past the cap.
+			"just under the cap still caps",
+			map[string]string{"Anthropic-Ratelimit-Unified-Reset": strconv.FormatInt(now.Unix()+3599, 10)},
+			"3600",
+		},
+		{
 			"past resets are ignored",
 			map[string]string{"Anthropic-Ratelimit-Unified-Reset": strconv.FormatInt(now.Unix()-10, 10)},
 			"",

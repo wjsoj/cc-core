@@ -165,9 +165,13 @@ func ensureRetryAfter(h http.Header, now time.Time) {
 	if delay > retryAfterCap {
 		delay = retryAfterCap
 	}
-	// Round up: a client that waits slightly too long is correct, one that
-	// retries slightly too early is not.
-	delay = delay.Round(retryAfterGranularity)
+	// Round UP, always. time.Duration.Round goes to the nearest multiple, which
+	// would turn a 61s wait into 60s — a client that retries early gets another
+	// 429, one that waits a little long is simply correct. Ceiling also keeps
+	// the emitted value from being invertible back to the exact reset time.
+	if remainder := delay % retryAfterGranularity; remainder != 0 {
+		delay += retryAfterGranularity - remainder
+	}
 	if delay < retryAfterGranularity {
 		delay = retryAfterGranularity
 	}

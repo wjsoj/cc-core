@@ -90,12 +90,36 @@ func splitBetaList(list string) []string {
 // reject that case themselves — genuine rewrite does, because a request class we
 // cannot identify is not one we can safely synthesize a list for.
 func UpgradeClaudeBetaVectorForOAuth(existing string) string {
+	return upgradeBetaVector(existing, claudeOAuthOnlyBetas, true)
+}
+
+// UpgradeClaudeCountTokensBetaForOAuth is the count_tokens counterpart.
+//
+// count_tokens is its own request class with its own much shorter vector, and
+// of the OAuth-only set only the marker appears in it — real CC's captured
+// count_tokens list (ClaudeAnthropicBetaCountTokens) carries no advisor-tool, no
+// advanced-tool-use, no extended-cache-ttl and no cache-diagnosis. Running the
+// main repair here would add four betas the real client never sends on this
+// endpoint, turning a fingerprint fix into a fingerprint.
+//
+// The context-mode pairing is skipped here for the same reason: it was observed
+// on main requests, and the captured count_tokens vector carries neither half of
+// the pair, so applying it on this endpoint would be inventing a rule rather
+// than reproducing one.
+//
+// TestCountTokensOAuthOnlyDeltaIsJustTheMarker keeps that claim honest against
+// the captured constant.
+func UpgradeClaudeCountTokensBetaForOAuth(existing string) string {
+	return upgradeBetaVector(existing, []string{oauthBetaMarker}, false)
+}
+
+func upgradeBetaVector(existing string, additions []string, pairContextMode bool) string {
 	declared := splitBetaList(existing)
 	if len(declared) == 0 {
 		return ""
 	}
 
-	present := make(map[string]bool, len(declared)+len(claudeOAuthOnlyBetas)+1)
+	present := make(map[string]bool, len(declared)+len(additions)+1)
 	for _, beta := range declared {
 		present[beta] = true
 	}
@@ -103,14 +127,14 @@ func UpgradeClaudeBetaVectorForOAuth(existing string) string {
 		return existing
 	}
 
-	wanted := make(map[string]bool, len(present)+len(claudeOAuthOnlyBetas)+1)
+	wanted := make(map[string]bool, len(present)+len(additions)+1)
 	for beta := range present {
 		wanted[beta] = true
 	}
-	for _, beta := range claudeOAuthOnlyBetas {
+	for _, beta := range additions {
 		wanted[beta] = true
 	}
-	if wanted[claudeBeta1MMarker] {
+	if pairContextMode && wanted[claudeBeta1MMarker] {
 		wanted[claudeBetaFallbackCr] = true
 	}
 
