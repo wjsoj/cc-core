@@ -81,12 +81,14 @@ type Record struct {
 // mapping, and any local fallback decision.
 type ClaudeAudit struct {
 	AccountHash           string   `json:"account_hash,omitempty"`
+	ClientHash            string   `json:"client_hash,omitempty"`
 	RequestClass          string   `json:"request_class"`
 	IdentityMode          string   `json:"identity_mode"`
 	AccountIdentityMapped bool     `json:"account_identity_mapped"`
 	CredentialHardFailed  bool     `json:"credential_hard_failed,omitempty"`
 	PreparationFailed     bool     `json:"preparation_failed,omitempty"`
 	PreparationError      string   `json:"preparation_error,omitempty"`
+	PreparationFailures   int      `json:"preparation_failures,omitempty"`
 	Fallback              string   `json:"fallback,omitempty"`
 	BodyBytes             int      `json:"body_bytes,omitempty"`
 	BodySHA256            string   `json:"body_sha256,omitempty"`

@@ -121,8 +121,8 @@ func TestGenericSynthesizeIsStrictAccountBoundForEveryModel(t *testing.T) {
 			if result.BodyBytes() != len(result.Body()) || len(result.BodySHA256()) != sha256.Size*2 || !result.BillingVerified() {
 				t.Fatalf("prepared audit summary incomplete: bytes=%d sha=%q billing=%t", result.BodyBytes(), result.BodySHA256(), result.BillingVerified())
 			}
-			if got := result.ExtraMetadataKeys(); len(got) != 1 || got[0] != "trace" {
-				t.Fatalf("extra metadata keys = %v", got)
+			if got := result.ExtraMetadataKeys(); len(got) != 0 {
+				t.Fatalf("generic synthesis retained downstream metadata keys = %v", got)
 			}
 
 			req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", nil)
@@ -142,6 +142,138 @@ func TestGenericSynthesizeIsStrictAccountBoundForEveryModel(t *testing.T) {
 				t.Fatalf("session = %q want %q", got, result.SessionID())
 			}
 		})
+	}
+}
+
+func TestGenericSynthesisMigratesSystemMessagesAndPreservesContent(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-sonnet-5",
+		"system":[{"type":"text","text":"top system"}],
+		"metadata":{"user_id":"downstream-user","trace":"downstream-trace"},
+		"messages":[
+			{"role":"system","content":"first migrated system"},
+			{"role":"user","content":[{"type":"text","text":"question"},{"type":"tool_result","tool_use_id":"tool_1","content":"{\"private\":true}"}]},
+			{"role":"system","content":[{"type":"text","text":"second migrated system"}]},
+			{"role":"assistant","content":"answer"}
+		]
+	}`)
+	result, err := PrepareClaudeCodeRequest(body, "claude-sonnet-5", testID(), NewGenericClaudeCodeSynthesizePolicy(), KindOAuth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(result.Body(), []byte("downstream-user")) || bytes.Contains(result.Body(), []byte("downstream-trace")) {
+		t.Fatalf("downstream metadata leaked into prepared body: %s", result.Body())
+	}
+
+	var prepared struct {
+		System []struct {
+			Text string `json:"text"`
+		} `json:"system"`
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(result.Body(), &prepared); err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.System) != 5 {
+		t.Fatalf("system block count=%d want 5: %s", len(prepared.System), result.Body())
+	}
+	for i, want := range []string{"top system", "first migrated system", "second migrated system"} {
+		if got := prepared.System[i+2].Text; got != want {
+			t.Fatalf("system[%d]=%q want %q", i+2, got, want)
+		}
+	}
+	if len(prepared.Messages) != 2 || prepared.Messages[0].Role != "user" || prepared.Messages[1].Role != "assistant" {
+		t.Fatalf("system messages were not removed: %+v", prepared.Messages)
+	}
+	if !bytes.Contains(prepared.Messages[0].Content, []byte(`"tool_use_id":"tool_1"`)) ||
+		!bytes.Contains(prepared.Messages[0].Content, []byte(`private`)) {
+		t.Fatalf("tool-result payload changed: %s", prepared.Messages[0].Content)
+	}
+	var cached []map[string]any
+	if err := json.Unmarshal(prepared.Messages[1].Content, &cached); err != nil || len(cached) != 1 {
+		t.Fatalf("last string content was not normalized for cache: %s err=%v", prepared.Messages[1].Content, err)
+	}
+	if _, ok := cached[0]["cache_control"]; !ok {
+		t.Fatalf("last text block missing cache control: %v", cached[0])
+	}
+}
+
+func TestGenericSynthesisRetainsDirectiveOnlySystemAndSynchronizesCapabilities(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-sonnet-5",
+		"output_config":{"format":{"type":"json_schema","schema":{"type":"object"}}},
+		"context_management":{"edits":[{"type":"clear_tool_uses_20250919"}]},
+		"tools":[{"name":"lookup","description":"lookup data","input_schema":{"type":"object"}}],
+		"tool_choice":{"type":"tool","name":"lookup"},
+		"messages":[
+			{"role":"user","content":"question"},
+			{"role":"system","content":[],"output_config":{"effort":"high"}}
+		]
+	}`)
+	result, err := PrepareClaudeCodeRequest(body, "claude-sonnet-5", testID(), NewGenericClaudeCodeSynthesizePolicy(), KindOAuth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var prepared struct {
+		Messages []struct {
+			Role         string          `json:"role"`
+			Content      json.RawMessage `json:"content"`
+			OutputConfig json.RawMessage `json:"output_config"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(result.Body(), &prepared); err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.Messages) != 2 || prepared.Messages[1].Role != "system" ||
+		!isEmptyContentArray(prepared.Messages[1].Content) || len(prepared.Messages[1].OutputConfig) == 0 {
+		t.Fatalf("directive-only message was not retained: %s", result.Body())
+	}
+
+	req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", nil)
+	req.Header.Set("X-Downstream-Device", "do-not-forward")
+	req.Header.Set("Traceparent", "00-downstream")
+	req.Header.Set("X-Claude-Code-Session-Id", "downstream-session")
+	if err := ApplyClaudeCodePreparedRequest(req, "oauth-token", testID().AccountKey, KindOAuth, true, true, result); err != nil {
+		t.Fatal(err)
+	}
+	if got := req.Header.Get("Anthropic-Beta"); got != ClaudeAnthropicBetaFull+","+structuredOutputsBeta {
+		t.Fatalf("capability beta=%q", got)
+	}
+	for _, header := range []string{"X-Downstream-Device", "Traceparent"} {
+		if got := req.Header.Get(header); got != "" {
+			t.Fatalf("generic header %s leaked as %q", header, got)
+		}
+	}
+	if got := req.Header.Get("X-Claude-Code-Session-Id"); got != result.SessionID() {
+		t.Fatalf("header/body session mismatch: got %q want %q", got, result.SessionID())
+	}
+}
+
+func TestGenericSynthesisRejectsUnsafeStructureWithStableCode(t *testing.T) {
+	cases := map[string]PreparationErrorCode{
+		`{"model":"claude-sonnet-5","messages":[{"role":"system","content":[]},{"role":"user","content":"x"}]}`:           PreparationErrorInvalidDirectiveStructure,
+		`{"model":"claude-sonnet-5","messages":[{"role":"developer","content":"x"}]}`:                                     PreparationErrorInvalidMessageRole,
+		`{"model":"claude-sonnet-5","tools":[],"tool_choice":{"type":"auto"},"messages":[{"role":"user","content":"x"}]}`: PreparationErrorInvalidToolChoice,
+	}
+	for body, wantCode := range cases {
+		result, err := PrepareClaudeCodeRequest([]byte(body), "claude-sonnet-5", testID(), NewGenericClaudeCodeSynthesizePolicy(), KindOAuth)
+		if err == nil || result.IsValid() {
+			t.Fatalf("unsafe body was prepared: %s", body)
+		}
+		if got := PreparationErrorCodeOf(err); got != wantCode || !IsClientRequestPreparationError(err) {
+			t.Fatalf("code=%q clientError=%t want=%q err=%v", got, IsClientRequestPreparationError(err), wantCode, err)
+		}
+	}
+}
+
+func TestClaudeRequestStructureSHA256DoesNotContainPromptValues(t *testing.T) {
+	a := ClaudeRequestStructureSHA256([]byte(`{"model":"claude-sonnet-5","messages":[{"role":"user","content":"first private prompt"}]}`))
+	b := ClaudeRequestStructureSHA256([]byte(`{"model":"claude-other","messages":[{"role":"user","content":"second private prompt"}]}`))
+	if a != b || strings.Contains(a, "private") || len(a) != sha256.Size*2 {
+		t.Fatalf("structural digest must redact values: a=%q b=%q", a, b)
 	}
 }
 
