@@ -20,7 +20,7 @@
 ### 凭据与身份
 | 页面 | 内容 |
 |---|---|
-| [auth —— 凭据调度与健康状态机](Auth-Pool) | `Pool.Acquire` 调度顺序、健康状态迁移、瞬时错误分类（**最重、改动最频繁**） |
+| [auth —— 凭据调度与健康状态机](Auth-Pool) | `Pool.Acquire` 的两轮调度与 last-resort 放行、七态 `HealthState`、API-key 三计数器熔断器、瞬时错误分类（**最重、改动最频繁**） |
 | [auth —— 登录、OAuth 与上游探针](Auth-Login-Codex) | Anthropic PKCE / session-cookie 登录、凭据文件格式、Codex JWT、两类 ChatGPT 探针、uTLS 与 HostProfile |
 
 ### 指纹仿真
@@ -50,6 +50,8 @@
 |---|---|
 | 加一个新模型（否则按 0 计费） | [计费](Billing) → pricing 内置目录 |
 | 排查"凭据莫名其妙全黑了" | [auth 调度与健康](Auth-Pool) → 瞬时错误 vs 凭据错误 |
+| 状态页要判断"整池还能不能服务" | [auth 调度与健康](Auth-Pool) → 七态健康枚举（用 `Pool.Health().Available()`，**不要**用 `healthy` 布尔） |
+| 中转 API key 一直不轮转 / 一直在冷却里空转 | [auth 调度与健康](Auth-Pool) → 三计数器熔断器、API-key 的两级排序 |
 | 升级 Claude Code 指纹版本 | [crack/](Crack) → 版本升级操作手册 → [mimicry](Mimicry) → 升级 checklist |
 | 改健康阈值 / 定价权重 | [约定与维护指南](Conventions) → 行为常量纪律（**必须配测试**） |
 | 排查管理面板统计慢 / 数字不对 | [requestlog](Requestlog) → `agg_cube` 与三大陷阱 |

@@ -165,6 +165,25 @@ type AcquireOptions struct {
 	ExcludeIDs []string
 }
 
+// AcquireResult reports how a credential was obtained, for callers that need
+// to distinguish "scheduled normally" from "we had nothing left".
+//
+// It is returned only by AcquireWithResult. Acquire / AcquireWithOptions keep
+// their exact historical signatures because both consuming forks call them
+// positionally.
+type AcquireResult struct {
+	// LastResort is true when the returned credential was released by the
+	// last-resort scan: every other candidate was gone and this one is still
+	// inside a self-expiring cooldown (quota or circuit-breaker pause).
+	//
+	// The request is expected to have a materially worse success rate. Callers
+	// should surface it (status page, log line, response header) but must NOT
+	// treat it as an error — the alternative was a 503.
+	LastResort bool
+	// Reason explains the last-resort release. Empty when LastResort is false.
+	Reason string
+}
+
 // Acquire is the back-compat entry point: it allows API-key fallback (the
 // historical behaviour) and forwards excludeIDs. Callers that need to gate the
 // fallback (e.g. per-token opt-in) should use AcquireWithOptions instead.
@@ -198,6 +217,19 @@ func (p *Pool) Acquire(ctx context.Context, provider, clientToken, clientGroup, 
 // opts.AllowAPIKeyFallback gates the per-tier API-key fallback (see
 // AcquireOptions); opts.ExcludeIDs is the retry skip-list.
 func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, clientGroup, clientModel, sessionID string, opts AcquireOptions) *Auth {
+	a, _ := p.AcquireWithResult(ctx, provider, clientToken, clientGroup, clientModel, sessionID, opts)
+	return a
+}
+
+// AcquireWithResult is AcquireWithOptions plus the provenance of the pick.
+// It exists because the last-resort release (see the tail of this function)
+// deliberately hands back a credential that is still inside a cooldown, and a
+// caller that cannot tell that apart from a normal schedule would report a
+// degraded pool as healthy.
+//
+// AcquireWithOptions — and therefore Acquire — delegate here and drop the
+// second value, so every entry point shares one implementation.
+func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, clientGroup, clientModel, sessionID string, opts AcquireOptions) (*Auth, AcquireResult) {
 	provider = NormalizeProvider(provider)
 	clientGroup = NormalizeGroup(clientGroup)
 	excluded := make(map[string]bool, len(opts.ExcludeIDs))
@@ -264,7 +296,7 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 					s.authID = ""
 					// fall through to the pick loop below
 				} else {
-					return a
+					return a, AcquireResult{}
 				}
 			} else {
 				s.authID = ""
@@ -288,6 +320,12 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 	// tier we try OAuth first (slot-based scheduling), then any API key in
 	// that tier. If the tier is empty or saturated, fall through to the
 	// next tier (public).
+	//
+	// lastResortPool accumulates, across every tier, the API keys that were
+	// rejected *only* because a self-expiring cooldown is open on them. It is
+	// consulted after the loop — i.e. exactly when the pool would otherwise
+	// return nil. See the round-two comment below.
+	var lastResortPool []apiKeyCandidate
 	for _, tier := range tiers {
 		if !opts.APIKeyOnly {
 			for {
@@ -306,7 +344,7 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 					s.authID = ""
 					continue
 				}
-				return chosen
+				return chosen, AcquireResult{}
 			}
 		}
 		// Per-token opt-in gate: when API-key fallback is disabled, never serve
@@ -316,51 +354,184 @@ func (p *Pool) AcquireWithOptions(ctx context.Context, provider, clientToken, cl
 		if !opts.AllowAPIKeyFallback {
 			continue
 		}
-		for _, k := range p.apikeys {
-			if NormalizeProvider(k.Provider) != provider {
-				continue
-			}
-			if !tier[k.Group] {
-				continue
-			}
-			if excluded[k.ID] {
-				continue
-			}
-			if k.Disabled {
-				continue
-			}
-			if k.IsHardFailed() {
-				continue
-			}
-			if k.IsQuotaExceeded(now) {
-				continue
-			}
-			// Circuit breaker: a channel that just failed repeatedly is paused,
-			// so traffic rotates onto the next key instead of re-paying a
-			// doomed upstream round-trip on every request. Self-expiring — the
-			// key returns for a probe without operator involvement.
-			if k.IsQuarantined(now) {
-				continue
-			}
-			if isGroupIdleNow(k.Group, now) {
-				continue
-			}
-			// ModelMap is rewrite-only and never filters, so AcceptsModel
-			// always passes here; the call is kept for symmetry in case
-			// per-key routing is reintroduced.
-			if !k.AcceptsModel(clientModel) {
-				continue
-			}
+		// Round one: only fully-usable keys. A key paused by the circuit
+		// breaker or sitting in a quota cooldown is skipped here so traffic
+		// rotates onto a working channel instead of re-paying a doomed
+		// upstream round-trip.
+		ready, paused := p.eligibleAPIKeysLocked(now, excluded, tier, provider, clientModel)
+		lastResortPool = append(lastResortPool, paused...)
+		if k := pickReadyAPIKey(ready); k != nil {
 			s.authID = k.ID
 			s.kind = KindAPIKey
 			s.lastSeen = now
 			p.mu.Unlock()
-			return k
+			return k, AcquireResult{}
 		}
 	}
 
+	// Round two — the last resort. We are here only because no OAuth
+	// credential and no fully-usable API key exists for this request, so the
+	// alternative to releasing a paused channel is handing the client a 503.
+	//
+	// Skipping the only channel that can serve a model is self-inflicted
+	// downtime: with one key configured, the circuit breaker's ceiling (15m)
+	// becomes the deployment's outage length, and the client sees hard errors
+	// the whole time even if the upstream recovered a second after the pause
+	// began. Backoff must therefore *lower a candidate's priority*, not remove
+	// it from the candidate set. The routing layer lets the request through;
+	// the health layer (HealthState / PoolHealth) still reports the channel red,
+	// and AcquireResult.LastResort tells the caller which kind of pick this was.
+	//
+	// The exclusions above are NOT relaxed here — disabled is an explicit
+	// operator action, hard-failed is a sticky retirement, an excluded ID was
+	// already tried and failed in *this* request (relaxing it would make the
+	// forks' retry loop hammer one dead key), and provider / tier / group-idle
+	// are correctness boundaries, not health ones.
+	if k, rep := pickLastResortAPIKey(lastResortPool); k != nil {
+		s.authID = k.ID
+		s.kind = KindAPIKey
+		s.lastSeen = now
+		p.mu.Unlock()
+		reason := fmt.Sprintf("last-resort: no usable credential for provider %s; releasing paused api-key %s (%s)",
+			provider, k.ID, rep.State)
+		if rep.RetryAfter > 0 {
+			reason += fmt.Sprintf(", %s early", rep.RetryAfter.Truncate(time.Second))
+		}
+		log.Warnf("auth: %s", reason)
+		return k, AcquireResult{LastResort: true, Reason: reason}
+	}
+
 	p.mu.Unlock()
-	return nil
+	return nil, AcquireResult{}
+}
+
+// apiKeyCandidate pairs an API key with the health picture used to rank it and
+// its position in the pool's Order-sorted slice (the stable-sort tiebreaker).
+type apiKeyCandidate struct {
+	k   *Auth
+	rep HealthReport
+	idx int
+}
+
+// eligibleAPIKeysLocked splits the API keys of one tier into the ones that can
+// serve right now (ready) and the ones blocked *only* by a self-expiring
+// cooldown — quota or circuit-breaker pause (paused).
+//
+// Everything filtered out entirely is a hard boundary: wrong provider/tier,
+// already tried in this request, operator-disabled, sticky hard-failed, group
+// sleeping, or model not accepted. Those are never released, not even as a last
+// resort. Callers hold p.mu.
+func (p *Pool) eligibleAPIKeysLocked(now time.Time, excluded map[string]bool, tier map[string]bool, provider, clientModel string) (ready, paused []apiKeyCandidate) {
+	for i, k := range p.apikeys {
+		if NormalizeProvider(k.Provider) != provider {
+			continue
+		}
+		if !tier[k.Group] {
+			continue
+		}
+		if excluded[k.ID] {
+			continue
+		}
+		if k.Disabled {
+			continue
+		}
+		if k.IsHardFailed() {
+			continue
+		}
+		if isGroupIdleNow(k.Group, now) {
+			continue
+		}
+		// ModelMap is rewrite-only and never filters, so AcceptsModel
+		// always passes here; the call is kept for symmetry in case
+		// per-key routing is reintroduced.
+		if !k.AcceptsModel(clientModel) {
+			continue
+		}
+		// HealthState folds the quota and quarantine expiry checks (and clears
+		// elapsed deadlines) into one locked read, so the two rounds can never
+		// disagree about what "usable" means.
+		c := apiKeyCandidate{k: k, rep: k.HealthState(), idx: i}
+		if c.rep.Serving {
+			ready = append(ready, c)
+		} else {
+			paused = append(paused, c)
+		}
+	}
+	return ready, paused
+}
+
+// pickReadyAPIKey returns the highest-priority fully-usable key.
+//
+// Order is the operator's explicit intent and is never traded away: a key with
+// a lower Order always wins. Within one Order value the pool used to return the
+// first slice entry every time — API keys have no sticky sessions, so every
+// request re-ran the same scan and re-picked the same key, and "several keys at
+// the same priority" silently meant "one key plus spares". Ranking equal-Order
+// keys by (quarantine strikes, last failure) makes the rotation real and
+// self-correcting: the key that just failed sinks to the back of its own tier
+// until it either recovers or the others fail too.
+func pickReadyAPIKey(cands []apiKeyCandidate) *Auth {
+	if len(cands) == 0 {
+		return nil
+	}
+	sort.SliceStable(cands, func(i, j int) bool {
+		ai, aj := cands[i], cands[j]
+		if oi, oj := ai.k.OrderValue(), aj.k.OrderValue(); oi != oj {
+			return oi < oj
+		}
+		if ai.rep.QuarantineStrikes != aj.rep.QuarantineStrikes {
+			return ai.rep.QuarantineStrikes < aj.rep.QuarantineStrikes
+		}
+		if bi, bj := unverifiedFailureAt(ai.rep), unverifiedFailureAt(aj.rep); !bi.Equal(bj) {
+			// Zero time sorts first: nothing outstanding beats an old unverified
+			// failure beats one from a moment ago.
+			return bi.Before(bj)
+		}
+		return ai.idx < aj.idx
+	})
+	return cands[0].k
+}
+
+// unverifiedFailureAt is the "when did this channel last look bad, with nothing
+// since to say otherwise" timestamp used to rank equal-priority keys. A failure
+// that has been followed by a success is not held against the channel at all —
+// otherwise a key that recovered would stay demoted behind an untested one
+// forever, which is the opposite of the rotation this ordering exists for.
+func unverifiedFailureAt(r HealthReport) time.Time {
+	if r.LastFailure.IsZero() || r.LastSuccess.After(r.LastFailure) {
+		return time.Time{}
+	}
+	return r.LastFailure
+}
+
+// pickLastResortAPIKey chooses which paused channel to release: the one closest
+// to coming back on its own — ascending RetryAfter, which is the direct measure
+// of that distance. A zero RetryAfter means no deadline was reported (a quota
+// flag with no reset time); it sorts first, since an unknown deadline is not
+// evidence of a long one and strikes/Order then decide.
+//
+// Tier preference is already encoded in the append order of the candidate list
+// (the caller walks tiers in preference order), and the sort below is stable,
+// so a client's own group still outranks the shared pool at equal recovery
+// distance.
+func pickLastResortAPIKey(cands []apiKeyCandidate) (*Auth, HealthReport) {
+	if len(cands) == 0 {
+		return nil, HealthReport{}
+	}
+	sort.SliceStable(cands, func(i, j int) bool {
+		ai, aj := cands[i], cands[j]
+		if ai.rep.RetryAfter != aj.rep.RetryAfter {
+			return ai.rep.RetryAfter < aj.rep.RetryAfter
+		}
+		if ai.rep.QuarantineStrikes != aj.rep.QuarantineStrikes {
+			return ai.rep.QuarantineStrikes < aj.rep.QuarantineStrikes
+		}
+		if oi, oj := ai.k.OrderValue(), aj.k.OrderValue(); oi != oj {
+			return oi < oj
+		}
+		return ai.idx < aj.idx
+	})
+	return cands[0].k, cands[0].rep
 }
 
 // AcquireMulti walks clientGroups in priority order, calling Acquire for each
@@ -667,13 +838,26 @@ func MaskToken(t string) string {
 	return t[:4] + "..." + t[len(t)-4:]
 }
 
-// HasAPIKeyFor reports whether any usable API-key credential in the pool
-// can serve this (provider, clientGroup, model) tuple. "Usable" means not
-// disabled, not hard-failed, not in quota cooldown, and AcceptsModel(model).
+// HasAPIKeyFor reports whether any API-key credential in the pool can serve
+// this (provider, clientGroup, model) tuple — including as a last resort.
+//
+// It mirrors AcquireWithResult's two rounds exactly, by running the same
+// eligibility split: a key counts when it is fully usable now, and it also
+// counts when it is merely paused by a self-expiring cooldown (quota or the
+// circuit breaker), because Acquire will release such a key rather than return
+// nil once nothing else is left. Only the hard boundaries make the answer
+// false: wrong provider, wrong tier, operator-disabled, sticky hard-failed,
+// group asleep, or AcceptsModel(model) == false.
+//
+// Keeping the two in step is the whole point of the function. Previously it
+// checked quota but not IsQuarantined, so a quarantined key made this return
+// true while Acquire returned nil, and the proxy's fail-fast pre-check
+// promised a route it could not serve.
+//
 // Groups are checked in the same preference order as Acquire: client group
-// first (if non-empty), then the public tier. Used by the proxy to
-// fail-fast on routes (e.g. chat/completions) that OAuth credentials
-// cannot serve, rather than cycling the retry loop to a misleading 503.
+// first (if non-empty), then the shared tier. Used by the proxy to fail-fast on
+// routes (e.g. chat/completions) that OAuth credentials cannot serve, rather
+// than cycling the retry loop to a misleading 503.
 func (p *Pool) HasAPIKeyFor(provider, clientGroup, model string) bool {
 	provider = NormalizeProvider(provider)
 	clientGroup = NormalizeGroup(clientGroup)
@@ -688,26 +872,48 @@ func (p *Pool) HasAPIKeyFor(provider, clientGroup, model string) bool {
 	defer p.mu.Unlock()
 	now := time.Now()
 	for _, tier := range tiers {
-		for _, k := range p.apikeys {
-			if NormalizeProvider(k.Provider) != provider {
-				continue
-			}
-			if !tier[k.Group] {
-				continue
-			}
-			if k.Disabled || k.IsHardFailed() || k.IsQuotaExceeded(now) {
-				continue
-			}
-			if isGroupIdleNow(k.Group, now) {
-				continue
-			}
-			if !k.AcceptsModel(model) {
-				continue
-			}
+		// nil excluded: this is a pre-flight question about the pool, not about
+		// one in-flight request's already-tried set.
+		ready, paused := p.eligibleAPIKeysLocked(now, nil, tier, provider, model)
+		if len(ready) > 0 || len(paused) > 0 {
 			return true
 		}
 	}
 	return false
+}
+
+// Health aggregates the per-credential HealthState of every credential of one
+// provider — OAuth and API keys together, since a status page asks "can this
+// provider serve traffic", and the answer routinely depends on the API keys
+// alone (Fable-class models never touch OAuth) or on the OAuth pool alone (no
+// keys configured).
+//
+// Read PoolHealth.Available() for "is the service up" and PoolHealth.ByState
+// for what to render. Available() staying true while ByState is all half-open
+// is not a contradiction: that is precisely the state a last-resort Acquire
+// serves from.
+func (p *Pool) Health(provider string) PoolHealth {
+	provider = NormalizeProvider(provider)
+	p.mu.Lock()
+	creds := make([]*Auth, 0, len(p.oauths)+len(p.apikeys))
+	for _, a := range p.oauths {
+		if NormalizeProvider(a.Provider) == provider {
+			creds = append(creds, a)
+		}
+	}
+	for _, a := range p.apikeys {
+		if NormalizeProvider(a.Provider) == provider {
+			creds = append(creds, a)
+		}
+	}
+	p.mu.Unlock()
+	// Reports are taken outside p.mu: HealthState takes the credential's own
+	// lock and nothing here needs the two held together.
+	reports := make([]HealthReport, 0, len(creds))
+	for _, a := range creds {
+		reports = append(reports, a.HealthState())
+	}
+	return NewPoolHealth(provider, reports)
 }
 
 // FindByID returns the Auth (OAuth or APIKey) with the given ID, or nil.
@@ -1014,7 +1220,13 @@ func (p *Pool) ReportUpstreamError(a *Auth, status int, resetAt time.Time) {
 		// bans behind perpetual 429s. After enough back-to-back 429s
 		// without any success, MarkRateLimited promotes to sticky
 		// hard-failure so the credential stops cycling through cooldown.
-		n := a.MarkRateLimited(fmt.Sprintf("upstream %d (rate limited)", status))
+		// resetAt is forwarded so the API-key circuit breaker can tell an
+		// upstream that told us when to come back from one that simply
+		// refused. A relay answering "429, retry in 12s" is working as
+		// designed and must not accrue a strike for it; only an unexplained
+		// refusal is evidence we should stop trusting the channel. OAuth is
+		// unaffected either way — its stealth-ban counter advances on both.
+		n := a.MarkRateLimitedRetryAfter(fmt.Sprintf("upstream %d (rate limited)", status), resetAt)
 		// Most 429s from Anthropic are transient rate limits (RPM/TPM),
 		// NOT true quota exhaustion. A 10-minute freeze is far too
 		// aggressive — it takes the credential offline long after the

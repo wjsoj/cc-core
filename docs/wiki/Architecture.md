@@ -64,25 +64,25 @@ flowchart TD
 
 ## 包一览
 
-行数统计（非测试 / 测试，`wc -l`，2026-08-07）：
+行数统计（非测试 / 测试，`wc -l`，2026-08-13）：
 
 | 包 | 源码 | 测试 | 职责 | 页面 |
 |---|---:|---:|---|---|
-| `auth` | 6373 | 2284 | 凭据调度、健康状态机、OAuth 登录与刷新、uTLS 传输、上游探针 | [调度与健康](Auth-Pool) · [登录与探针](Auth-Login-Codex) |
-| `requestlog` | 2774 | 1320 | 每请求一行 JSONL + 派生 SQLite 索引与预汇总立方体 | [Requestlog](Requestlog) |
-| `mimicry` | 2479 | 1628 | Claude Code / Codex 客户端指纹（头 + 体 + 身份派生） | [Mimicry](Mimicry) |
-| `sidecar` | 1375 | 725 | 真实客户端启动时的 bootstrap burst 与心跳复刻 | [Sidecar](Sidecar) |
+| `auth` | 7199 | 3382 | 凭据调度、健康状态机、OAuth 登录与刷新、uTLS 传输、上游探针 | [调度与健康](Auth-Pool) · [登录与探针](Auth-Login-Codex) |
+| `mimicry` | 3121 | 2502 | Claude Code / Codex 客户端指纹（头 + 体 + 身份派生） | [Mimicry](Mimicry) |
+| `requestlog` | 3045 | 2017 | 每请求一行 JSONL + 派生 SQLite 索引与预汇总立方体 | [Requestlog](Requestlog) |
+| `sidecar` | 1389 | 761 | 真实客户端启动时的 bootstrap burst 与心跳复刻 | [Sidecar](Sidecar) |
 | `usage` | 1084 | 616 | 每凭据 / 每 client token 的用量台账、计费幂等 | [Billing](Billing) |
-| `pricing` | 465 | 281 | `(provider, model) → USD`，四级 fallback | [Billing](Billing) |
+| `backup` | 615 | 291 | 关键 SQLite / 状态的异地 NaCl 加密快照 | [Transports](Transports) |
+| `pricing` | 465 | 347 | `(provider, model) → USD`，四级 fallback | [Billing](Billing) |
 | `thinkingsig` | 463 | 359 | 中途切号检测 + `thinking` 签名清洗与恢复 | [Transports](Transports) |
-| `clienttoken` | 444 | 299 | 下游客户端 token 与其策略（并发、RPM、周额度、组） | [Billing](Billing) |
-| `backup` | 520 | 140 | 关键 SQLite / 状态的异地 NaCl 加密快照 | [Transports](Transports) |
-| `stream` | 297 | 298 | 与框架无关的 SSE 中继（keepalive / 懒提交 / 终止检测） | [Transports](Transports) |
-| `downstream` | 352 | 470 | 返回客户端的响应清洗：头白名单、`Retry-After` 保全、错误体与 SSE error 帧脱敏 | [Downstream](Downstream) |
-| `codexws` | 202 | 77 | Codex over WebSocket 上游传输 | [Transports](Transports) |
+| `clienttoken` | 453 | 299 | 下游客户端 token 与其策略（并发、RPM、周额度、组） | [Billing](Billing) |
+| `downstream` | 356 | 488 | 返回客户端的响应清洗：头白名单、`Retry-After` 保全、错误体与 SSE error 帧脱敏 | [Downstream](Downstream) |
+| `stream` | 297 | 306 | 与框架无关的 SSE 中继（keepalive / 懒提交 / 终止检测） | [Transports](Transports) |
+| `codexws` | 211 | 77 | Codex over WebSocket 上游传输 | [Transports](Transports) |
 | `clientguard` | 144 | 90 | 入口 User-Agent 黑名单 | [Billing](Billing) |
 | `ratelimit` | 135 | 101 | 按 key 的 RPM + 并发计数器（策略留给调用方） | [Billing](Billing) |
-| `advisor` | 126 | 93 | 解析 `message_delta.usage.iterations[]`（advisor 子调用计费） | [Billing](Billing) |
+| `advisor` | 126 | 94 | 解析 `message_delta.usage.iterations[]`（advisor 子调用计费） | [Billing](Billing) |
 | `crack/` | — | — | 抓包档案：所有指纹常量的事实来源（非 Go 包） | [Crack](Crack) |
 
 外部依赖（直接）：
@@ -117,9 +117,9 @@ sequenceDiagram
   C->>F: POST /v1/messages (Bearer sk-…)
   F->>CG: UA 黑名单 → token 查找 → RPM/并发闸门
   CG-->>F: 通过（携带 group / 策略）
-  F->>P: Acquire(provider, clientToken, group, model, sessionID)
-  Note over P: sticky 复用 → 组内最少加权用量的 OAuth<br/>→ 按 Order 扫 API key
-  P-->>F: *auth.Auth（已 EnsureFresh）
+  F->>P: Acquire / AcquireWithResult(provider, clientToken, group, model, sessionID)
+  Note over P: sticky 复用 → 组内最少加权用量的 OAuth<br/>→ 第一轮：完全可用的 API key（Order → strikes → 未验证失败）<br/>→ 第二轮：last-resort 放行最接近恢复的暂停 key
+  P-->>F: *auth.Auth（已 EnsureFresh）+ AcquireResult{LastResort}
   F->>M: Classify → Policy → Prepare → Apply<br/>（绑定 account key，重写身份，钉住指纹）
   F->>S: Notify(auth)（首次触达该账号才触发）
   S-->>U: bootstrap burst + event_logging 心跳
@@ -134,6 +134,7 @@ sequenceDiagram
 **几个容易忽略的耦合点**：
 
 - **第 4 步的 `sessionID`** 决定粘性槽位的粒度：同一用户多开窗口会被分散到不同凭据上。见 [Auth-Pool](Auth-Pool)。
+- **第 4 步返回的 `AcquireResult.LastResort`** 表示池里已经没有完全可用的凭据，这一把是从冷却中提前放行的。它**不是错误**（替代方案是 503），但状态页/日志应当把它区分出来。判断"整池是否可用"用 `Pool.Health(provider).Available()`，不要用 `HealthSnapshot` 的 `healthy` 布尔——一个 `half_open` 渠道正在服务流量，但它并不健康。见 [Auth-Pool](Auth-Pool) → 七态健康枚举。
 - **第 7 步（prepare/apply）失败绝不能触发凭据 failover** —— 那是本地准备错误，跟凭据无关。见 [Mimicry](Mimicry)。
 - **第 8 步只对 OAuth 触发**，API-key 凭据永远不发 sidecar 流量。见 [Sidecar](Sidecar)。
 - **第 12 步的错误分类**是整个系统最脆的一环：把 h2 连接死亡误判成凭据失败，会在一秒内把整个池打黑。见 [Auth-Pool](Auth-Pool) → 瞬时错误 vs 凭据错误。
@@ -145,7 +146,7 @@ sequenceDiagram
 
 | 包 | API 稳定性 | 备注 |
 |---|---|---|
-| `auth` | **stable** | 两个生产分叉长期验证；行为常量的改动需配测试 |
+| `auth` | **stable** | 两个生产分叉长期验证；行为常量的改动需配测试。`Acquire` / `AcquireWithOptions` / `HealthSnapshot` 的签名**冻结**（fork 按位置调用），能力扩展一律走新入口：`AcquireWithResult`、`HealthState`、`Pool.Health` |
 | `thinkingsig` | **stable** | 每轮对话都走，长期未变 |
 | `usage` | **stable** | `state.json` 线格式自 cc-core 之前就没变过 |
 | `pricing` | **stable** | 内置目录会增长，签名不变 |

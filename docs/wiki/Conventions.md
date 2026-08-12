@@ -38,11 +38,13 @@ _ = raw["new_field"].(string)   // 缺字段 → 零值，老文件照样加载
 
 | 常量 | 位置 | 改了会怎样 |
 |---|---|---|
-| `hardFailureThreshold = 5` | `auth/types.go:238` | OAuth 自动退休的灵敏度 |
-| `degradedProbeAfter = 5m` | `auth/types.go:233` | 调小 → 对坏凭据反复试探；调大 → 恢复变慢；**去掉 → 凭据池永久变黑** |
-| `rateLimit429HardFailureThreshold = 15` | `auth/types.go:244` | 隐形封禁判定 |
-| `auth401HardFailureThreshold = 8` | `auth/types.go:307` | token 轮转竞态的容忍度 |
-| `apiKeyQuarantineThreshold = 3` | `auth/types.go:261` | API-key 熔断灵敏度 |
+| `hardFailureThreshold = 5` | `auth/types.go:246` | OAuth 自动退休的灵敏度 |
+| `degradedProbeAfter = 5m` | `auth/types.go:241` | 调小 → 对坏凭据反复试探；调大 → 恢复变慢；**去掉 → 凭据池永久变黑** |
+| `rateLimit429HardFailureThreshold = 15` | `auth/types.go:252` | 隐形封禁判定（仅 OAuth） |
+| `auth401HardFailureThreshold = 8` | `auth/types.go:360` | token 轮转竞态的容忍度（仅 OAuth） |
+| `apiKeyQuarantineThreshold = 3` | `auth/types.go:269` | API-key 熔断灵敏度（**通用失败**计数器） |
+| `apiKey429QuarantineThreshold = 6` | `auth/types.go:294` | API-key 熔断灵敏度（**沉默的 429**；上游给了 `Retry-After` 则不记 strike） |
+| `apiKey401QuarantineThreshold = 2` | `auth/types.go:314` | API-key 熔断灵敏度（**401**）。远低于 OAuth 的 8：key 不轮转，不存在那个竞态 |
 | `transientErrFragments` 每一条 | `auth/retry.go:35` | 少一条 → 一次 h2 连接死亡打黑整池 |
 | pricing 权重（1× / 1.25× / 0.1× / 5×） | `usage` | 同时改变账单**和**负载均衡信号 |
 | `groupNewIdleHoursPerDay = 10` | `auth/schedule.go:24` | `new` 组每日休眠时长 |
@@ -119,6 +121,8 @@ go test ./sidecar/ -timeout 60s             # sidecar 用真实时序，跑约 2
 | `mimicry/fingerprint.go` | `ClaudeStainlessOS = "Linux"` 补上"刻意不跟 capture 走"的理由（要与 `HostProfile` 和 sidecar 平台字段自洽） |
 
 **经核实不成立的两条**：`organization_uuid` 其实是被读的（`auth/oauth.go:145`）；`oauthUsableLocked` 不调用 `IsHealthy()` 是**刻意**的 —— degraded 只是管理面口径，把它变成路由过滤器正是 2026-07-14 那次事故的成因（一次上游抖动同时把整池打成 degraded，`Acquire` 无人可返）。代码里已补长注释说明，路由行为**未改**。
+
+> 同一条原则后来在 API-key 侧也落了地：熔断暂停中的 key 不再被移出候选集，而是在**所有其他候选耗尽时**由 last-resort 第二轮放行（`auth/pool.go:368`）。**退避降低优先级，不移出候选集**——跳过唯一渠道等于自断服务。展示口径（`HealthState` / `PoolHealth`）照旧把它标红，两者是两套判定，不能互相顶替。见 [Auth-Pool](Auth-Pool)。
 
 ---
 

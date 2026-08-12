@@ -268,6 +268,51 @@ const rateLimit429HardFailureThreshold = 15
 // relay (a lone 502, a burst of throttling) before pausing anything.
 const apiKeyQuarantineThreshold = 3
 
+// apiKey429QuarantineThreshold is the number of consecutive 429s, with no
+// intervening success and with the upstream declining to say when to come
+// back, after which an API-key channel is paused.
+//
+// 429 gets its own threshold — and its own counter, Consecutive429s — instead
+// of sharing ConsecutiveFailures with 5xx, because the two signals mean
+// opposite things about the channel. A 502 says the relay is broken; a 429
+// says it is working and busy. Feeding both into one counter would put a
+// merely-throttled channel on the same backoff ladder as a dead one, which is
+// the fastest way to turn a burst of load into a self-inflicted outage.
+//
+// 6 rather than 3: throttling is the ordinary weather of a shared relay and
+// costs us only latency, so we tolerate twice as much of it as we do outright
+// failure. But it is nothing like OAuth's 15 — that threshold guards a
+// *sticky* retirement of a scarce paid subscription, where a false positive
+// costs a manual re-login. Here the penalty is a 10-second pause that expires
+// on its own, so the cost of being wrong is roughly nil and there is no reason
+// to keep paying full round-trips to a channel that has refused six requests
+// in a row.
+//
+// The "with no Retry-After" qualifier is load-bearing: see
+// MarkRateLimitedRetryAfter for why an upstream that tells us when to return
+// is trusted rather than distrusted.
+const apiKey429QuarantineThreshold = 6
+
+// apiKey401QuarantineThreshold is the number of consecutive 401s after which
+// an API-key channel is paused.
+//
+// Deliberately far below OAuth's auth401HardFailureThreshold (8), and the
+// asymmetry is not a matter of taste. That threshold is generous for exactly
+// one reason: OAuth access tokens rotate, and Anthropic invalidates the old
+// token the instant a refresh completes, so every proactive refresh on a busy
+// account orphans some in-flight requests into a 401 that means nothing. An
+// API key does not rotate. There is no window in which a valid key produces a
+// 401. A 401 on an API-key channel means the key is wrong, revoked, or the
+// relay is misconfigured — all of which are true of the *next* request too.
+//
+// 2 rather than 1 buys one round-trip of corroboration against a relay that
+// mistranslates an unrelated backend error into 401, which is common enough in
+// the wild to be worth a second opinion. Beyond that, waiting costs a
+// guaranteed-doomed round-trip per request. (An explicit credential rejection
+// routed through MarkHardFailure still trips on the first strike; that path
+// carries upstream's own verdict, not our inference from a status code.)
+const apiKey401QuarantineThreshold = 2
+
 // apiKeyQuarantineBackoff returns how long an API-key channel stays paused
 // after its n-th consecutive quarantine round.
 //
@@ -338,8 +383,12 @@ func (a *Auth) Snapshot() AuthInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now := time.Now()
-	a.clearExpiredQuotaLocked(now)
-	a.quarantinedLocked(now) // drop an expired pause so the panel never shows a stale one
+	// healthStateLocked subsumes the old clearExpiredQuotaLocked +
+	// quarantinedLocked pair (it performs both expiry side effects) and returns
+	// the classification, so the snapshot carries State instead of leaving every
+	// consumer to re-derive it from raw fields — which is how three call sites
+	// ended up with three different ladders.
+	health := a.healthStateLocked(now)
 	var mm map[string]string
 	if len(a.ModelMap) > 0 {
 		mm = make(map[string]string, len(a.ModelMap))
@@ -374,6 +423,14 @@ func (a *Auth) Snapshot() AuthInfo {
 		RelayPeer:           a.RelayPeer,
 		QuarantineUntil:     a.QuarantineUntil,
 		QuarantineStrikes:   a.QuarantineStrikes,
+		State:               health.State,
+		ConsecutiveFailures: health.ConsecutiveFailures,
+		Consecutive429s:     health.Consecutive429s,
+		Consecutive401s:     health.Consecutive401s,
+		LastFailure:         health.LastFailure,
+		LastFailureReason:   health.LastFailureReason,
+		LastSuccess:         health.LastSuccess,
+		HardFailureAt:       health.HardFailureAt,
 		ModelMap:            mm,
 		CodexRateLimits:     rl,
 		CodexRateLimitsAt:   a.CodexRateLimitsAt,
@@ -408,11 +465,26 @@ type AuthInfo struct {
 	// circuit closed.
 	QuarantineUntil   time.Time
 	QuarantineStrikes int
-	ModelMap          map[string]string
-	CodexRateLimits   map[string]string
-	CodexRateLimitsAt time.Time
-	CodexUsage        *CodexUsageInfo
-	CodexUsageAt      time.Time
+	// Failure counters and timestamps. Exposed because a panel cannot tell a
+	// channel that is quietly deteriorating from one that is fine without
+	// them: below the quarantine threshold an API key shows no other outward
+	// sign at all, and after a pause elapses every quarantine field is cleared
+	// while ConsecutiveFailures still carries the history. State is the
+	// classification these feed (see HealthState); it is carried here so
+	// callers projecting AuthInfo to JSON don't have to re-derive it.
+	State               HealthState
+	ConsecutiveFailures int
+	Consecutive429s     int
+	Consecutive401s     int
+	LastFailure         time.Time
+	LastFailureReason   string
+	LastSuccess         time.Time
+	HardFailureAt       time.Time
+	ModelMap            map[string]string
+	CodexRateLimits     map[string]string
+	CodexRateLimitsAt   time.Time
+	CodexUsage          *CodexUsageInfo
+	CodexUsageAt        time.Time
 	// CodexSubscription is shared by pointer, like CodexUsage: the snapshot
 	// replaces the pointer wholesale on each fetch and never mutates the
 	// struct in place, so readers of an old snapshot keep a consistent view.
@@ -431,6 +503,14 @@ func (a *Auth) IsQuotaExceeded(now time.Time) bool {
 	return !a.QuotaExceededAt.IsZero()
 }
 
+// MarkQuotaExceeded parks the credential until resetAt. This is the "we were
+// told to wait" half of the pair described in MarkRateLimitedRetryAfter — it
+// deliberately touches no failure counter and no breaker state, because a
+// cooldown is a schedule, not a verdict on the credential.
+//
+// It composes with the quarantine breaker rather than duplicating it: both are
+// deadlines, so a credential carrying both returns at the later one. Nothing
+// here is additive, and neither mechanism can extend the other.
 func (a *Auth) MarkQuotaExceeded(resetAt time.Time) {
 	a.mu.Lock()
 	a.QuotaExceededAt = time.Now()
@@ -478,10 +558,30 @@ func (a *Auth) quarantinedLocked(now time.Time) bool {
 // apiKeyQuarantineThreshold for ordinary upstream weather, 1 for a
 // definitive credential rejection, which needs no corroboration.
 func (a *Auth) tripQuarantineLocked(now time.Time, reason string, threshold int) {
+	a.openBreakerLocked(now, reason, "consecutive failures", a.ConsecutiveFailures, threshold)
+}
+
+// openBreakerLocked is the single entry point to the API-key circuit breaker,
+// parameterised by *which* counter is being judged.
+//
+// The breaker used to read ConsecutiveFailures and nothing else, which meant
+// the two most common ways a relay channel dies — an endless run of 429s and
+// an endless run of 401s — could never open it: MarkRateLimited and
+// MarkAuthRejection deliberately keep their own counters and never touch
+// ConsecutiveFailures (they must not, or an OAuth account that merely
+// exhausted its 5h window would march toward the hard-fail threshold). The
+// result was a key that cycled "try → cooldown → try" forever without ever
+// rotating away. Each signal now brings its own counter and its own threshold
+// here, while the backoff ladder (QuarantineStrikes) stays shared — a channel
+// failing three different ways is not three independently healthy channels.
+//
+// counterName appears in the log line only.
+// Caller MUST hold a.mu.
+func (a *Auth) openBreakerLocked(now time.Time, reason, counterName string, count, threshold int) {
 	if a.Kind != KindAPIKey {
 		return
 	}
-	if a.ConsecutiveFailures < threshold {
+	if count < threshold {
 		return
 	}
 	if now.Before(a.QuarantineUntil) {
@@ -491,8 +591,8 @@ func (a *Auth) tripQuarantineLocked(now time.Time, reason string, threshold int)
 	d := apiKeyQuarantineBackoff(a.QuarantineStrikes)
 	jitter := 1 + (rand.Float64()*0.4 - 0.2) //nolint:gosec // jitter spread, not a security decision
 	a.QuarantineUntil = now.Add(time.Duration(float64(d) * jitter))
-	log.Warnf("auth: api-key %s paused until %s (strike %d, %d consecutive failures): %s",
-		a.ID, a.QuarantineUntil.Format(time.RFC3339), a.QuarantineStrikes, a.ConsecutiveFailures, reason)
+	log.Warnf("auth: api-key %s paused until %s (strike %d, %d %s): %s",
+		a.ID, a.QuarantineUntil.Format(time.RFC3339), a.QuarantineStrikes, count, counterName, reason)
 }
 
 // QuarantineSnapshot returns the current pause deadline and strike count for
@@ -538,18 +638,72 @@ func (a *Auth) MarkFailure(reason string) {
 //
 // Returns the new Consecutive429s value so callers (the pool) can pick a
 // backoff length that grows with repeated hits.
+//
+// Equivalent to MarkRateLimitedRetryAfter with no reset hint, i.e. the
+// pessimistic reading: the upstream said "no" without saying when to come
+// back, so an API-key channel accrues a breaker strike once the run is long
+// enough. Callers that DID receive a Retry-After should use
+// MarkRateLimitedRetryAfter and pass it.
 func (a *Auth) MarkRateLimited(reason string) int {
+	return a.MarkRateLimitedRetryAfter(reason, time.Time{})
+}
+
+// MarkRateLimitedRetryAfter records a 429 together with the moment the
+// upstream said it would accept traffic again (from Retry-After or an
+// equivalent reset header). Pass the zero time when the upstream gave no hint.
+//
+// This distinction exists to keep the two throttling mechanisms from punishing
+// the same failure twice, and the division of labour between them is:
+//
+//   - The quota cooldown (MarkQuotaExceeded → QuotaResetAt) is an instruction
+//     we were given. It is precise, it is the upstream's own number, and it
+//     ends exactly when the upstream says it ends.
+//   - The quarantine breaker (QuarantineUntil) is an inference we made. It
+//     exists for the case where nobody told us anything and we have to guess
+//     from a pattern of refusals that the channel is not worth trying.
+//
+// So when the upstream supplies a reset time we take it at its word and do NOT
+// add a strike: a well-behaved relay that answers "429, retry in 12s" on a
+// burst is doing its job, and stacking a 15-minute breaker pause on top of its
+// 12-second window would retire a healthy channel for being honest. Only the
+// silent 429s — the ones that leave us guessing — feed the breaker.
+//
+// Note this is an overlap, not a sum, in every case: both mechanisms are
+// deadlines on the same credential, so when both are set the credential simply
+// returns at the later of the two rather than serving them back to back.
+//
+// The 429 counter itself advances either way, so OAuth's stealth-ban detection
+// at rateLimit429HardFailureThreshold is unchanged: a cooperative Retry-After
+// is evidence about *this* request's timing, not about whether the account is
+// quietly banned.
+func (a *Auth) MarkRateLimitedRetryAfter(reason string, retryAfter time.Time) int {
 	a.mu.Lock()
+	now := time.Now()
 	a.Consecutive429s++
 	n := a.Consecutive429s
 	// API-key channels never auto-retire (see MarkFailure): a relay serving
 	// a stretch of 429s is throttling, not stealth-banning a subscription
 	// account, and the operator manages disabling manually.
 	if a.Kind != KindAPIKey && a.Consecutive429s >= rateLimit429HardFailureThreshold && a.HardFailureAt.IsZero() {
-		a.HardFailureAt = time.Now()
+		a.HardFailureAt = now
 		a.HardFailureReason = fmt.Sprintf("%d consecutive 429s (suspected stealth ban): %s", a.Consecutive429s, reason)
 		a.LastFailure = a.HardFailureAt
 		a.LastFailureReason = a.HardFailureReason
+	}
+	if a.Kind == KindAPIKey {
+		// Record the failure timestamp so the panel can see a channel
+		// deteriorating (HealthDegraded) before the breaker takes it out, and
+		// so that after a pause expires the credential reads HealthHalfOpen
+		// rather than jumping straight back to green with nothing verified.
+		// Safe for API keys specifically: IsHealthy short-circuits on
+		// KindAPIKey, so LastFailure here cannot leak into a routing decision
+		// the way it would for OAuth — which is why this stays inside the
+		// Kind guard rather than applying to both.
+		a.LastFailure = now
+		a.LastFailureReason = reason
+		if retryAfter.IsZero() {
+			a.openBreakerLocked(now, reason, "consecutive 429s", n, apiKey429QuarantineThreshold)
+		}
 	}
 	a.mu.Unlock()
 	return n
@@ -572,8 +726,12 @@ func (a *Auth) MarkRateLimited(reason string) int {
 //
 // API-key channels never auto-retire (see MarkFailure): a flaky relay backend
 // serving an occasional 401 must not pull the whole operator-managed channel
-// out of rotation. The count is still returned for backoff, but the sticky
-// hard-failure escalation is skipped.
+// out of rotation. The sticky hard-failure escalation is therefore skipped for
+// them — but they do get the bounded breaker, at their own much lower
+// threshold (apiKey401QuarantineThreshold), because the token-rotation race
+// that makes OAuth 401s ambiguous does not exist for a key that never rotates.
+// Without that the exemption was total: an API key could 401 forever and never
+// leave rotation, which is precisely the loop this path now closes.
 func (a *Auth) MarkAuthRejection(reason string) int {
 	if len(reason) > 200 {
 		reason = reason[:200] + "..."
@@ -581,6 +739,15 @@ func (a *Auth) MarkAuthRejection(reason string) int {
 	a.mu.Lock()
 	a.Consecutive401s++
 	n := a.Consecutive401s
+	if a.Kind == KindAPIKey {
+		now := time.Now()
+		// See MarkRateLimitedRetryAfter: recording the failure keeps the
+		// degraded window visible and makes the post-pause state half-open
+		// instead of a falsely-green healthy.
+		a.LastFailure = now
+		a.LastFailureReason = reason
+		a.openBreakerLocked(now, reason, "consecutive 401s", n, apiKey401QuarantineThreshold)
+	}
 	if a.Kind != KindAPIKey && a.Consecutive401s >= auth401HardFailureThreshold && a.HardFailureAt.IsZero() {
 		a.HardFailureAt = time.Now()
 		a.HardFailureReason = fmt.Sprintf("%d consecutive 401s (auth rejected, refresh still valid — presumed revoked): %s", a.Consecutive401s, reason)
@@ -748,8 +915,24 @@ func (a *Auth) MarkSuccess() {
 	a.mu.Unlock()
 }
 
-// ClearFailure wipes transient and hard failure state, returning the
-// credential to "healthy". Invoked from the admin panel.
+// ClearFailure wipes every piece of state this package inferred about the
+// credential's health — counters, the sticky hard-failure flag, and the
+// quarantine breaker — returning it to "healthy". This is the admin panel's
+// "Mark healthy" button.
+//
+// Clearing the breaker here is required, not incidental: the breaker is now
+// reachable from three counters (failures, 429s, 401s), so a button that reset
+// the counters but left QuarantineUntil/QuarantineStrikes standing would
+// report the channel healthy while it stayed paused, and the surviving strike
+// count would send the next trip straight to a late rung of the backoff
+// ladder. LastSuccess is stamped so the credential reads verified rather than
+// half-open.
+//
+// It deliberately does NOT clear the quota cooldown; that is ClearQuota's job.
+// The split is the same one the mechanisms have everywhere else: this button
+// says "forget what you concluded about this credential", the other says
+// "ignore the wait the upstream asked for". An operator who wants both presses
+// both.
 func (a *Auth) ClearFailure() {
 	a.mu.Lock()
 	a.LastFailure = time.Time{}
@@ -917,6 +1100,18 @@ func (a *Auth) IsHardFailed() bool {
 	return !a.HardFailureAt.IsZero()
 }
 
+// ClearQuota drops the account-wide cooldown and every per-model scoped limit
+// — the admin panel's "Clear quota" button. It is the counterpart to
+// ClearFailure and stops exactly where that one begins: it must NOT clear the
+// quarantine breaker.
+//
+// The two buttons answer different questions. Quota state records a wait the
+// upstream imposed; an operator overriding it is saying "I don't believe that
+// window applies any more". Breaker state records our own loss of confidence
+// after a run of refusals, and silently discarding that while restoring
+// quota would put a channel we distrust back into rotation through a button
+// whose label promises nothing of the sort. "Mark healthy" is the button that
+// means that, and it says so.
 func (a *Auth) ClearQuota() {
 	a.mu.Lock()
 	a.QuotaExceededAt = time.Time{}

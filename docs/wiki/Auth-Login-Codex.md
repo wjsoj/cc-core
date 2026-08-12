@@ -193,7 +193,7 @@ Cookie: sessionKey=<sid02>
 
 `writeAnthropicLoginCredential`（`auth/login.go:380`）在 `saveMu` 下完成"解析候选 → 读现有文件 → 比对账号 → 落盘 → 重解析"，
 如果目标路径上已有**另一个账号**的凭据，直接返回 `ErrCredentialFileAccountMismatch`
-（`auth/login.go:396`，判定逻辑 `sameAnthropicOAuthAccount` 在 `auth/pool.go:758`：优先比 `account_uuid`，都为空时比 email）。
+（`auth/login.go:396`，判定逻辑 `sameAnthropicOAuthAccount` 在 `auth/pool.go:969`：优先比 `account_uuid`，都为空时比 email）。
 `LoadAuthDir` 还会拒绝整目录内 `account_uuid` 重复的 Anthropic OAuth 凭据
 （`ErrDuplicateClaudeAccountUUID`，`auth/oauth.go:410-423`）。
 
@@ -201,7 +201,7 @@ Cookie: sessionKey=<sid02>
 
 ## 凭据文件格式
 
-`parseFile(path, data)`（`auth/oauth.go:71`，导出别名 `ParseFile` 在 `auth/oauth.go:672`）
+`parseFile(path, data)`（`auth/oauth.go:93`，导出别名 `ParseFile` 在 `auth/oauth.go:701`）
 先读 `type` 分派，再读独立的 `provider` 字段（存在时优先）：
 
 | `type` 取值 | kind | 默认 provider | 解析函数 |
@@ -297,16 +297,16 @@ Cookie: sessionKey=<sid02>
 ### 刷新
 
 ```go
-func (a *Auth) EnsureFresh(ctx context.Context, leeway time.Duration, useUTLS bool) error // auth/oauth.go:704
-func (a *Auth) MinRefreshLeeway() time.Duration                                          // auth/oauth.go:724
+func (a *Auth) EnsureFresh(ctx context.Context, leeway time.Duration, useUTLS bool) error // auth/oauth.go:733
+func (a *Auth) MinRefreshLeeway() time.Duration                                          // auth/oauth.go:753
 ```
 
 有效 leeway = `max(传入值, MinRefreshLeeway())`。Anthropic 5 分钟；OpenAI **5 天**
 （Codex access token 约 30 天寿命，提前 5 天刷新留出恢复窗口）。
-并发调用由每凭据的 `refreshMu` + double-check 去重（`auth/oauth.go:711-716`），
+并发调用由每凭据的 `refreshMu` + double-check 去重（`auth/oauth.go:740-745`），
 避免轮换型 refresh_token 被并行交换烧掉。
 
-Anthropic 刷新（`refreshAnthropicLocked`，`auth/oauth.go:747`）复用同一个
+Anthropic 刷新（`refreshAnthropicLocked`，`auth/oauth.go:776`）复用同一个
 `platform.claude.com/v1/oauth/token`，body 字段序 `grant_type, refresh_token, client_id`。
 状态码映射：
 
@@ -594,7 +594,7 @@ func (p HostProfile) IsZero() bool                                   // auth/hos
 **派生方式**：`sha256("cpa-claude-hostprofile/" + accountKey)` 取前 8 字节大端解成 uint64，
 对 `hostProfileTotalWeight` 取模，再在加权池上线性扫描（`auth/hostprofile.go:95-106`）。
 同一 `accountKey` 永远得到同一 profile —— 一个账号即使被 N 个 client token 复用，
-对外也只表现为一台机器。`AccountKey()` 的优先级是 `account_uuid` → `email` → 文件名（`auth/oauth.go:207`）。
+对外也只表现为一台机器。`AccountKey()` 的优先级是 `account_uuid` → `email` → 文件名（`auth/oauth.go:229`）。
 
 **只有四个字段会变**（`auth/hostprofile.go:24-31`）：`distro_id` / `kernel` / `terminal` / `shell`。
 `platform`、`arch`、`node_version`、`is_running_with_bun` 等**固定不变**——
@@ -734,10 +734,10 @@ go test ./auth/ -run TestCodexBillingRequestIdentity -v
 | `auth/oauth.go:23` | token URL / client id / axios UA |
 | `auth/oauth.go:37` | `fileFormat`（仅文档作用）|
 | `auth/oauth.go:58` | `DefaultClaudeOAuthModelMap` |
-| `auth/oauth.go:71` | `parseFile`（type 分派 + append-only 取值）|
+| `auth/oauth.go:93` | `parseFile`（type 分派 + append-only 取值）|
 | `auth/oauth.go:187` | `parseHostProfile` |
-| `auth/oauth.go:207` | `AccountKey` |
-| `auth/oauth.go:220` | `AccountUUIDValue` |
+| `auth/oauth.go:229` | `AccountKey` |
+| `auth/oauth.go:242` | `AccountUUIDValue` |
 | `auth/oauth.go:226` | `parseAPIKeyFile` |
 | `auth/oauth.go:283` | `parseCodexOAuthFile` |
 | `auth/oauth.go:341` | `validatedProxyValue`（fail-closed）|
@@ -745,18 +745,18 @@ go test ./auth/ -run TestCodexBillingRequestIdentity -v
 | `auth/oauth.go:381` | `LoadAuthDir`（含 account_uuid 唯一性检查）|
 | `auth/oauth.go:427` | `saveMu` |
 | `auth/oauth.go:432` | `saveAuth`（保留未知键、清退役键）|
-| `auth/oauth.go:586` | `Persist` |
+| `auth/oauth.go:615` | `Persist` |
 | `auth/oauth.go:590` | `InstallCredentialFile` |
 | `auth/oauth.go:628` | `UpdateSubscriptionInfo` |
 | `auth/oauth.go:660` | `MarkStripThinking` |
-| `auth/oauth.go:672` | `ParseFile`（导出别名）|
+| `auth/oauth.go:701` | `ParseFile`（导出别名）|
 | `auth/oauth.go:686` | `needsRefresh` |
-| `auth/oauth.go:704` | `EnsureFresh` |
-| `auth/oauth.go:724` | `MinRefreshLeeway`（Anthropic 5min / OpenAI 5d）|
+| `auth/oauth.go:733` | `EnsureFresh` |
+| `auth/oauth.go:753` | `MinRefreshLeeway`（Anthropic 5min / OpenAI 5d）|
 | `auth/oauth.go:737` | `doRefreshLocked` |
-| `auth/oauth.go:747` | `refreshAnthropicLocked` |
+| `auth/oauth.go:776` | `refreshAnthropicLocked` |
 | `auth/pool.go:16` | `ErrDuplicateClaudeAccountUUID` / `ErrCredentialFileAccountMismatch` |
-| `auth/pool.go:758` | `sameAnthropicOAuthAccount` |
+| `auth/pool.go:969` | `sameAnthropicOAuthAccount` |
 | `auth/types.go:59` | `IDToken` / `AccountID` / `PlanType` 字段 |
 | `auth/types.go:196` | `CodexUsage` / `CodexUsageAt` |
 | `auth/types.go:205` | `CodexSubscription` / `CodexSubscriptionAt` |
