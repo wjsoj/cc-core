@@ -54,21 +54,31 @@ const (
 
 // Severity orders states from best to worst for aggregation ("what is the
 // worst thing happening in this pool"). Higher is worse.
+//
+// HealthDisabled sits just above HealthHealthy rather than at the top, because
+// the question this ladder answers is about faults and a disabled credential
+// is not one — it is an operator who switched something off on purpose. Ranked
+// worst it outranked every real failure, so a pool of {3 healthy, 3
+// hard_failed, 2 disabled} reported its worst state as "disabled" and the
+// three retired credentials vanished from the headline. That string is
+// user-visible in two places, both of them the moment you most need the truth:
+// the 503 body when a pool is exhausted ("no credential can serve (worst
+// state: …)") and the monitor's per-provider error line.
 func (s HealthState) Severity() int {
 	switch s {
 	case HealthHealthy:
 		return 0
-	case HealthHalfOpen:
-		return 1
-	case HealthDegraded:
-		return 2
-	case HealthQuota:
-		return 3
-	case HealthCooling:
-		return 4
-	case HealthHardFailed:
-		return 5
 	case HealthDisabled:
+		return 1
+	case HealthHalfOpen:
+		return 2
+	case HealthDegraded:
+		return 3
+	case HealthQuota:
+		return 4
+	case HealthCooling:
+		return 5
+	case HealthHardFailed:
 		return 6
 	}
 	return 0
