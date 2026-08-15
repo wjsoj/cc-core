@@ -216,9 +216,9 @@ func (s *Store) recordIngest(file string, size, mtimeNS, offset, added int64, re
 const insertReq = `INSERT OR IGNORE INTO req (
 	ts, day, bday, client, client_token, provider, auth_id, auth_label, auth_kind,
 	model, input, output, cache_read, cache_create, cache_create_1h,
-	cost_usd, billed_usd, multiplier, status, duration_ms, stream,
+	cost_usd, billed_usd, multiplier, cny_rate, status, duration_ms, stream,
 	path, attempts, error, attempt_only, user_id, audit, src_file, src_off
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // ingestFile folds the records in path[from:] into req and returns how many
 // rows were added and the byte offset just past the last complete line.
@@ -356,7 +356,7 @@ func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff i
 		r.AuthID, r.AuthLabel, r.AuthKind,
 		r.Model,
 		r.Input, r.Output, r.CacheRead, r.CacheCreate, r.CacheCreate1h,
-		r.CostUSD, r.BilledUSD, r.Multiplier,
+		r.CostUSD, r.BilledUSD, r.Multiplier, r.CNYPerUSD,
 		r.Status, r.DurationMs, boolToInt(r.Stream),
 		r.Path, r.Attempts, r.Error, boolToInt(r.AttemptOnly),
 		r.UserID, audit, srcFile, srcOff,

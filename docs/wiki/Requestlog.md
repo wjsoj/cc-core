@@ -153,7 +153,13 @@ flowchart TD
 
 ## 索引 schema
 
-迁移列表 `storeMigrations`（`store.go:303-487`）是**只追加**的：每一项是一个完整的 schema delta，**永远不要重排或改写既有条目，只能追加**。`migrate()`（`store.go:489-513`）按 `PRAGMA user_version` 逐条在事务内执行并推进版本号。当前 v3。
+迁移列表 `storeMigrations`（`store.go:344`）是**只追加**的：每一项是一个完整的 schema delta，**永远不要重排或改写既有条目，只能追加**。`migrate()`（`store.go:553`）按 `PRAGMA user_version` 逐条在事务内执行并推进版本号。**当前 v4**。
+
+**迁移 4（v0.8.89）—— `req.cny_rate`**：`ALTER TABLE req ADD COLUMN cny_rate REAL NOT NULL DEFAULT 0`（`store.go:549`）。存的是**结算时刻的 USD→CNY 汇率快照**，不是人民币金额。默认 0 表示「汇率未知」而非「免费」——历史行与不计费部署都落在这里，`Record.BilledCNY()` 对此返回 `ok=false`，绝不按 0 换算。常量默认值的 `ADD COLUMN` 只改元数据、**不重写表**，生产库首次被新二进制打开时自动迁移，历史行原样保留。
+
+**刻意不进 `agg_cube`**：汇率是某一瞬间的快照，求和或分组都没有意义；需要人民币的视图逐行读。代价是聚合路径永远拿不到 CNY。
+
+⚠️ **`OpenStoreForRead` 要求版本严格相等**（`store_write.go`）。同一个库若被新旧二进制混用，只读打开会硬失败：旧二进制打不开已迁到 v4 的库，新二进制也打不开尚未迁移的 v3 库。读写路径没有这个问题（旧代码对 v4 库 `migrate()` 是 no-op，所有 SELECT 都用显式列名），所以**回滚是安全的，只要不走只读入口**。同一个库的所有二进制要同批升级。
 
 ### 连接参数（`store.go:154-170`）
 

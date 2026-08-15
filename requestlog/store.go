@@ -525,6 +525,29 @@ ALTER TABLE req ADD COLUMN src_off  INTEGER NOT NULL DEFAULT -1;
 
 CREATE UNIQUE INDEX idx_req_src ON req(src_file, src_off) WHERE src_off >= 0;
 `,
+
+	// 4: the settle-time USD→CNY rate.
+	//
+	// Wallets are USD-denominated while users pay and read their spend in CNY,
+	// so every yuan figure is a conversion. Doing it at display time leaves the
+	// number floating — the same range exported a week apart totals differently
+	// and neither figure can be recomputed once the live rate moves. Storing the
+	// rate the row settled at makes its yuan amount a fact rather than a current
+	// opinion, which is the difference between a spend statement and an estimate.
+	//
+	// Deliberately the rate and not the converted amount: rounding a per-row CNY
+	// to cents makes the sum of the rows disagree with the sum of the range, and
+	// the debit that actually happened was in USD anyway. Storing the input lets
+	// a reader reproduce either total at full precision.
+	//
+	// Default 0 means "no rate known", not "free" — legacy rows and non-billing
+	// deployments both land there, and Record.BilledCNY reports that as ok=false
+	// rather than converting at zero. Not carried into agg_cube: a rate is a
+	// per-instant snapshot, so summing or grouping it is meaningless, and the
+	// spend views that need CNY read rows individually.
+	`
+ALTER TABLE req ADD COLUMN cny_rate REAL NOT NULL DEFAULT 0;
+`,
 }
 
 func (s *Store) migrate() error {
