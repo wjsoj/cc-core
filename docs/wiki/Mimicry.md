@@ -493,6 +493,29 @@ func ApplyCodexHeadersWithProfile(req *http.Request, p CodexClientProfile, acces
 
 > **被新抓包推翻的旧表述**：本页此前写"`x-codex-turn-metadata` / `x-codex-window-id` / `x-codex-beta-features` / `thread-id` 是 WS/TUI-only，代理没有真实 workspace/window，伪造比省略更像假的"。**在 0.135.0 上这句是对的**——那一代的 `x-codex-turn-metadata` 带一个 `workspaces` map，内含用户 cwd、git remote URL、commit hash 与 dirty 标志，代理确实伪造不了。`crack/codexapp0.147.0/rows/10` 显示 0.147.0 Desktop **已经删掉了那个 map**（workspace 状态搬到了 turn 变体上的一个 `workspace_kind` 字符串），握手变体里只剩代理本就合法拥有的 id。于是这五个头**在 WS 握手上改为发送**（HTTP 路径仍不发，那边没有任何抓包支持）。
 
+### Codex WS 客户端帧改写（`mimicry/codex_frame.go`）
+
+WS 中继会把下游客户端的 `response.create` 帧转发给上游。逐字转发是错的：帧里的 `client_metadata` 带的是**下游客户端自己的** installation / session / thread / turn / window id，于是一个池账号上会出现 N 个 installation；更要命的是这些值与我们握手时发的 id **对不上**，而真实客户端两处必然相同。
+
+| 签名 | 位置 | 说明 |
+|---|---|---|
+| `type CodexFrameIdentity struct { AccountKey, SessionID, ThreadID, InstallationID string; WindowIndex int }` | `mimicry/codex_frame.go:75` | `codexws.UpstreamHeaderOptions.Identity` 吃同一个类型 |
+| `func (id CodexFrameIdentity) Normalized() (CodexFrameIdentity, error)` | `mimicry/codex_frame.go:103` | 填默认值并校验；`SessionID` 必须是规范 UUID |
+| `func RewriteCodexClientFrame(frame []byte, id CodexFrameIdentity) ([]byte, error)` | `mimicry/codex_frame.go:184` | 主入口 |
+| `func CodexTurnIDFor(accountKey, clientTurnID string) string` | `mimicry/codex_frame.go:141` | 把下游 turn id 映射进我们的域；源是 v7 时保留其时间戳 |
+| `func RemoveCodexPreviousResponseID(frame []byte) []byte` | `mimicry/codex_frame.go:282` | **字节级**删除，见下 |
+| `func CodexPreviousResponseID(frame []byte) string` | `mimicry/codex_frame.go:319` | 顶层扫描读取，不会被 prompt 里的同名字符串骗到 |
+
+**为什么是 token 替换而不是重新编码**：顶层键序在每一个抓包帧里都稳定，是形状的一部分，map 往返会被 Go 排序毁掉。而要改的 id 都是 UUID，且同一个 turn id 会同时出现在 `client_metadata.turn_id`、内嵌的 `x-codex-turn-metadata` 字符串、以及 `input[].internal_chat_message_metadata_passthrough.turn_id` 三处 —— 结构化改写就得走 `input`（帧里最大最多变的部分）。改成**单遍字面 token 替换**，三处自动一致，其余字节一个不动。
+
+三条硬约束（都有回归测试）：
+- **只替换规范 36 字符 UUID**（`looksLikeUUID`）。`from` 完全由下游控制，一个单字符的 "session id" 会把帧里每一个该字符都换成 36 字符 UUID —— JSON 语法和用户正文一起遭殃。
+- **帧类型走真解析**，不是子串匹配。客户端在 prompt 里讨论协议时会写出 `"response.create"`，子串门控会把它的 cancel 帧误改。
+- **`prompt_cache_key` 显式重绑**。真实客户端它恒等于 session_id（替换会顺带命中），但第三方客户端发自己的值时会原样泄漏上游、且与我们宣告的 session 矛盾。
+
+**`RemoveCodexPreviousResponseID` 为什么是字节级**：中继在 `previous_response_id` 属于另一凭据服务的响应时必须删掉它。两个 fork 原本都是 `unmarshal → delete → marshal`，而 Go 输出 map 键是**排序**的，帧回来时顶层键序已被重写 —— 悄悄抵消了本文件其余部分维护的字节保真。
+
+
 ### Codex 身份派生（`mimicry/codex_identity.go`）
 
 与 Claude 侧一样是内容寻址的，但换了一套 ID 形态：

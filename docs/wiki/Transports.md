@@ -117,10 +117,11 @@ flowchart LR
 | `const CodexOpenAIBetaWSV1 = "responses_websockets=2026-02-04"` | `codexws/headers.go:18` | v1 |
 | `const TextMessage / BinaryMessage / CloseMessage / PingMessage / PongMessage` | `codexws/dial.go:43-47` | 转出 gorilla 常量，调用方不必直接依赖 gorilla |
 | `func HandshakeHeaderOrder() []string` | `codexws/headers.go:52` | 抓包中的握手头顺序副本 |
-| `type UpstreamHeaderOptions struct { AccessToken, AccountID, SessionID, ThreadID, InstallationID, BetaValue string; Profile *mimicry.CodexClientProfile }` | `codexws/headers.go:66` | |
-| `func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header` | `codexws/headers.go:98` | **新入口** |
-| `func BuildUpstreamHeaders(accessToken, accountID, sessionID, betaValue, model, serviceTier string) http.Header` | `codexws/headers.go:175` | 位置参数签名**冻结**（两个 fork 按位置调用），委托给上面那个 |
-| `func SessionIDForAccount(anchor string, startedAt time.Time) string` | `codexws/headers.go:189` | 便捷包装 `mimicry.CodexSessionUUIDFor` |
+| `type UpstreamHeaderOptions struct { AccessToken, AccountID string; Identity *mimicry.CodexFrameIdentity; SessionID, ThreadID, InstallationID, BetaValue string; Profile *mimicry.CodexClientProfile }` | `codexws/headers.go:66` | **`Identity` 是首选入口**：它与 `mimicry.RewriteCodexClientFrame` 吃同一个类型，一个值喂两处才能保证握手头与帧内 `client_metadata` 不打架。松散字段是遗留路径，此时 installation id 从 `AccountID` 派生，与帧改写方（从 account key 派生）**不是同一个值** |
+| `type SessionRegistry` / `NewSessionRegistry` / `SessionID` / `Identity` / `Forget` / `Len` | `codexws/session.go` | 见下方「会话注册表」 |
+| `func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header` | `codexws/headers.go:111` | **新入口** |
+| `func BuildUpstreamHeaders(accessToken, accountID, sessionID, betaValue, model, serviceTier string) http.Header` | `codexws/headers.go:205` | 位置参数签名**冻结**（两个 fork 按位置调用），委托给上面那个 |
+| `func SessionIDForAccount(anchor string, startedAt time.Time) string` | `codexws/headers.go:219` | 便捷包装 `mimicry.CodexSessionUUIDFor` |
 | `type DialConfig struct { URL string; Header http.Header; ProxyURL string; UseUTLS bool; Timeout time.Duration; ReadLimit int64 }` | `codexws/dial.go:51-58` | |
 | `type Conn interface` | `codexws/dial.go:64-76` | `WriteJSON` / `WriteMessage` / `ReadMessage` / `Ping(deadline)` / `SetReadDeadline` / `SetWriteDeadline` / `HandshakeResponse() *http.Response` / `Close()` |
 | `func Dial(ctx context.Context, cfg DialConfig) (Conn, *http.Response, error)` | `codexws/dial.go:82` | |
@@ -130,26 +131,26 @@ flowchart LR
 
 ### 握手头：18 个，顺序固定
 
-`BuildUpstreamHeadersWithOptions`（`codexws/headers.go:98`）写出下表；`Host` / `Connection` / `Upgrade` / `Sec-WebSocket-Version` / `Sec-WebSocket-Key` 由 gorilla dialer 拥有，**不在这里设**。
+`BuildUpstreamHeadersWithOptions`（`codexws/headers.go:111`）写出下表；`Host` / `Connection` / `Upgrade` / `Sec-WebSocket-Version` / `Sec-WebSocket-Key` 由 gorilla dialer 拥有，**不在这里设**。
 
 | Header | 值 | 行号 |
 |---|---|---|
-| `chatgpt-account-id` | `opts.AccountID`（非空时） | `headers.go:126-128` |
-| `authorization` | `Bearer <AccessToken>` | `headers.go:129` |
-| `user-agent` | `profile.UserAgent`（默认 Desktop） | `headers.go:142-143` |
-| `originator` | `profile.Originator`（默认 `Codex Desktop`） | `headers.go:144` |
-| `openai-beta` | `BetaValue`，空则 `CodexOpenAIBetaWS` | `headers.go:145` |
-| `version` | `profile.Version` | `headers.go:146` |
-| `x-codex-beta-features` | `profile.BetaFeatures`（空则整头省略） | `headers.go:147-149` |
-| `x-client-request-id` | `= sessionID` | `headers.go:153` |
-| `session-id` | `opts.SessionID`，空则 `mimicry.NewCodexSessionUUID()`（UUIDv7） | `headers.go:154` |
-| `thread-id` | `opts.ThreadID`，空则 `= sessionID` | `headers.go:155` |
-| `x-codex-window-id` | `"<sessionID>:0"` | `headers.go:156` |
-| `x-codex-turn-metadata` | `NewCodexHandshakeMetadata(...).Encode()` | `headers.go:157-158` |
+| `chatgpt-account-id` | `opts.AccountID`（非空时） | `headers.go:150-152` |
+| `authorization` | `Bearer <AccessToken>` | `headers.go:153` |
+| `user-agent` | `profile.UserAgent`（默认 Desktop） | `headers.go:166-167` |
+| `originator` | `profile.Originator`（默认 `Codex Desktop`） | `headers.go:168` |
+| `openai-beta` | `BetaValue`，空则 `CodexOpenAIBetaWS` | `headers.go:169` |
+| `version` | `profile.Version` | `headers.go:170` |
+| `x-codex-beta-features` | `profile.BetaFeatures`（空则整头省略） | `headers.go:171-173` |
+| `x-client-request-id` | `= sessionID` | `headers.go:177` |
+| `session-id` | `opts.SessionID`，空则 `mimicry.NewCodexSessionUUID()`（UUIDv7） | `headers.go:178` |
+| `thread-id` | `opts.ThreadID`，空则 `= sessionID` | `headers.go:179` |
+| `x-codex-window-id` | `"<sessionID>:0"` | `headers.go:180` |
+| `x-codex-turn-metadata` | `NewCodexHandshakeMetadata(...).Encode()` | `headers.go:181-182` |
 
-后五项由 `profile.SendsTurnMetadata` 门控（`headers.go:150`）。`InstallationID` 为空且有 `AccountID` 时按账号派生（`mimicry.CodexInstallationIDFor`，`headers.go:115-121`）——**绝不发 `"installation_id":""`**，真实客户端总是有一个。
+后五项由 `profile.SendsTurnMetadata` 门控（`headers.go:174`）。`InstallationID` 为空且有 `AccountID` 时按账号派生（`mimicry.CodexInstallationIDFor`，`headers.go:139-144`）——**绝不发 `"installation_id":""`**，真实客户端总是有一个。
 
-**头名是裸小写 map 键**（`set := func(name, value string) { h[name] = []string{value} }`，`headers.go:124`），不是 `Header.Set`：后者会把 `session-id` 规范成 `Session-Id`。**读回时也必须用同样的字面 key，不能用 `Header.Get`。**
+**头名是裸小写 map 键**（`set := func(name, value string) { h[name] = []string{value} }`，`headers.go:148`），不是 `Header.Set`：后者会把 `session-id` 规范成 `Session-Id`。**读回时也必须用同样的字面 key，不能用 `Header.Get`。**
 
 #### 两处被新抓包改写的行为
 
@@ -157,7 +158,7 @@ flowchart LR
    旧理由在 0.135.0 上是**成立**的：那一代的 `x-codex-turn-metadata` 带 `workspaces` map，含用户 cwd、git remote URL、commit hash 与 dirty 标志，代理伪造不了。
    `crack/codexapp0.147.0/rows/10` 显示 0.147.0 Desktop 已删掉该 map，握手变体里只剩代理合法拥有的 id；此时**少发五个每个真实客户端都发的头**才是更大的破绽。
    注意 **turn 变体**（在 WS 帧体内、不是头）另加了 `code_mode_tool_names`——用户装的 71 个工具与 MCP server 名单，那仍然是代理没资格发明的用户侧指纹。
-2. **`x-codex-routing-hint` 从握手上移除。** 它曾依据对 codex-rs `build_websocket_headers` 的源码阅读被设置在这里；`crack/codexv0.135.0/rows/01` 与 `crack/codexapp0.147.0/rows/10` 的 upgrade **各 18 个头都不含它**，CLIProxyAPI 也不发。因此 `BuildUpstreamHeaders` 的 `model` / `serviceTier` 两个位置参数**现在被接受但忽略**（`headers.go:175-176`）——签名不能改，两个 fork 按位置调用。HTTP 路径仍发（`mimicry.ApplyCodexCLIHeaders`），那里的源码阅读没有被反证。
+2. **`x-codex-routing-hint` 从握手上移除。** 它曾依据对 codex-rs `build_websocket_headers` 的源码阅读被设置在这里；`crack/codexv0.135.0/rows/01` 与 `crack/codexapp0.147.0/rows/10` 的 upgrade **各 18 个头都不含它**，CLIProxyAPI 也不发。因此 `BuildUpstreamHeaders` 的 `model` / `serviceTier` 两个位置参数**现在被接受但忽略**（`headers.go:205-206`）——签名不能改，两个 fork 按位置调用。HTTP 路径仍发（`mimicry.ApplyCodexCLIHeaders`），那里的源码阅读没有被反证。
 
 ### 头顺序重排（`codexws/handshake_order.go`）
 
@@ -181,6 +182,30 @@ x-codex-window-id / x-codex-turn-metadata / sec-websocket-extensions
 - 重复同名头保持相对顺序。
 - 畸形头块（无 request line、有行无冒号）**原样返回**；缓冲超过 `maxHandshakeBuffer`（64 KiB，`handshake_order.go:14`）就直接放行并退出干预——退化回旧行为好过损坏流。
 
+### 会话注册表（`codexws/session.go`）
+
+会话 id 不是装饰：它同时是握手的 `session-id`、`thread-id`、`x-codex-window-id` 前缀，而**最贵的是它就是帧里的 `prompt_cache_key`** —— 抓包那一轮 22735 个输入 token 里有 22272 个命中了上游缓存。每次 WS 连接现铸一个新 id，等于每次重连都按原价重付一遍。
+
+`mimicry.CodexSessionUUIDFor(anchor, startedAt)` 是确定性的，所以缺的只是一个**跨重连稳定的 `startedAt`**。两种无状态方案都被否掉了，理由值得记住：
+
+| 方案 | 为什么不行 |
+|---|---|
+| 用 anchor 哈希出时间戳 | UUIDv7 的前 48 位是真实 Unix 毫秒；哈希出来的落在任意年份，没有任何真实客户端会这样 |
+| 把 `time.Now()` 截断到时间桶 | 比看起来糟得多：代理服务的**所有**会话会在同一瞬间集体轮换 id，**跨账号**同步轮换本身就是可关联信号 |
+
+所以注册表记录每个会话**真正第一次出现**的时刻，那正是真实客户端的 session start。
+
+| 签名 | 位置 | 说明 |
+|---|---|---|
+| `func NewSessionRegistry(ttl time.Duration) *SessionRegistry` | `codexws/session.go:75` | `ttl<=0` → `DefaultSessionTTL`（**6h**，长于工作会话的静默间隙、短于抓包报告的 24h `prompt_cache_retention`，条目绝不会活得比它要命中的缓存更久） |
+| `func (r *SessionRegistry) SessionID(anchor string) string` | `codexws/session.go:95` | 首次铸造、之后复用；每次调用刷新空闲计时器 |
+| `func (r *SessionRegistry) Identity(accountKey, anchor string) mimicry.CodexFrameIdentity` | `codexws/session.go:124` | **首选入口**——握手与帧改写拿到同一个值，从构造上杜绝两者不一致 |
+| `func (r *SessionRegistry) Forget(anchor string)` / `Len()` | `codexws/session.go:132` / `:142` | |
+
+**anchor 的选取是安全边界，不只是缓存键。** 它决定的 id 就是我们的上游 prompt-cache 命名空间，所以**绝不能是下游客户端能单独左右的值**——能操纵 anchor 的调用方就能瞄准另一个租户的缓存前缀。要用凭据 + 下游调用方复合，例如 `accountKey + "|" + clientToken + "|" + slot`。
+
+`nil` 接收者会退化成每次现铸新 id 而不是 panic：丢缓存命中远好过丢掉这一轮请求（`session.go:96-98`）。
+
 ### 拨号流程
 
 `Dial`（`codexws/dial.go:82`）：解析 URL → 取 host，端口空则 443 → 组 `addr` → 建 `gorillaws.Dialer{HandshakeTimeout, ReadBufferSize:4096, WriteBufferSize:4096, EnableCompression:true, NetDialTLSContext:…}` → `dialer.DialContext(ctx, cfg.URL, cfg.Header)` → `ws.SetReadLimit(limit)`。`NetDialTLSContext` 里先做 uTLS 握手，再用 `newHandshakeOrderConn` 包一层（`dial.go:126`）。
@@ -196,7 +221,7 @@ x-codex-window-id / x-codex-turn-metadata / sec-websocket-extensions
 
 - **`Sec-WebSocket-Extensions` 的取值是一处已知且刻意保留的不匹配。** `EnableCompression: true` 让 gorilla 宣告 `permessage-deflate; server_no_context_takeover; client_no_context_takeover`，而真实 Codex 发的是 `permessage-deflate; client_max_window_bits`。**不要去改这个字符串**：gorilla 只实现了 no-context-takeover 模式，一个没有被要求关闭 context takeover 的服务端可能保留 gorilla 的 inflater 解不了的压缩器状态——那是正确性 bug，不是指纹修复。要对齐得先换压缩实现（`crack/codexapp0.147.0/SPEC.md` §7）。
 - **`session-id`（连字符）** 才是真实头名；cc-core 曾连续两代抓包都发 `Session_id`。断言必须读原始 map 键。
-- **User-Agent 必须同时占两个键，那个 `nil` 不是冗余**（`headers.go:142-143`）。`Request.Write` 从一个专用槽位写 User-Agent，而它按**精确字符串** `"User-Agent"` 查表——小写键匹配不上，于是 Go 回落到默认值写出 `User-Agent: Go-http-client/1.1`；随后 `writeSubset` 只排除规范拼写，又把我们的小写键写了第二遍。结果是握手带**两个** User-Agent，其中一个自报是 Go 程序。把规范键赋成 `nil` 让那个槽位解析为空串（net/http 便不写），同时 `writeSubset` 仍然排除它，小写键成为线上唯一的值。`TestHandshakeOrderConnAgainstRealRequestWrite` 直接断言线上字节里没有 `Go-http-client` 且 `user-agent:` 恰好出现一次。
+- **User-Agent 必须同时占两个键，那个 `nil` 不是冗余**（`headers.go:166-167`）。`Request.Write` 从一个专用槽位写 User-Agent，而它按**精确字符串** `"User-Agent"` 查表——小写键匹配不上，于是 Go 回落到默认值写出 `User-Agent: Go-http-client/1.1`；随后 `writeSubset` 只排除规范拼写，又把我们的小写键写了第二遍。结果是握手带**两个** User-Agent，其中一个自报是 Go 程序。把规范键赋成 `nil` 让那个槽位解析为空串（net/http 便不写），同时 `writeSubset` 仍然排除它，小写键成为线上唯一的值。`TestHandshakeOrderConnAgainstRealRequestWrite` 直接断言线上字节里没有 `Go-http-client` 且 `user-agent:` 恰好出现一次。
   同样的陷阱在 `auth` 侧以镜像形式出现：`/oauth/token` 要求**完全不发** User-Agent，而 `Header.Del` 与 `Set("User-Agent", "")` 都做不到，只有赋 `nil` 可以（见 [Auth-Login-Codex](Auth-Login-Codex)）。
 - `CodexOpenAIBetaWS` 是 **WS 握手独有**的。HTTP 路径**不发任何 `OpenAI-Beta`**——旧的 `mimicry.CodexOpenAIBeta`（`"responses=experimental"`）已删除，0.147.0 的 codex-rs 里根本不存在这个字符串。
 - ALPN 必须是 `http/1.1`；给 h2 会让 Upgrade 失败。
