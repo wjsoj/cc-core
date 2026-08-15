@@ -650,3 +650,167 @@ func TestRemoveThenRewriteComposes(t *testing.T) {
 		t.Errorf("identity not bound after strip: %q", f.ClientMetadata["session_id"])
 	}
 }
+
+// --- regressions from the third review pass --------------------------------
+
+// A client that sends non-UUID identifiers got NO rebinding at all: addSub
+// requires a canonical UUID (it must, or a one-character id would rewrite the
+// whole frame), and the synthesize branch only fires when client_metadata is
+// missing entirely. So its ids went upstream and contradicted the handshake —
+// the exact tell this file removes.
+func TestRewriteCodexClientFrameOverwritesNonUUIDMetadata(t *testing.T) {
+	frame := `{"type":"response.create","model":"gpt-5.6-sol","input":[],` +
+		`"client_metadata":{"session_id":"sess-abc","thread_id":"sess-abc",` +
+		`"turn_id":"turn-xyz","x-codex-installation-id":"install-1",` +
+		`"x-codex-window-id":"sess-abc:3"}}`
+	out, err := RewriteCodexClientFrame([]byte(frame), testIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leaked := range []string{"sess-abc", "turn-xyz", "install-1"} {
+		if strings.Contains(string(out), leaked) {
+			t.Errorf("non-UUID client id %q survived:\n%s", leaked, out)
+		}
+	}
+	var f struct {
+		ClientMetadata map[string]string `json:"client_metadata"`
+	}
+	if err := json.Unmarshal(out, &f); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if f.ClientMetadata["session_id"] != ourSessionID {
+		t.Errorf("session_id = %q, want %q", f.ClientMetadata["session_id"], ourSessionID)
+	}
+	if f.ClientMetadata["x-codex-window-id"] != ourSessionID+":0" {
+		t.Errorf("window id = %q", f.ClientMetadata["x-codex-window-id"])
+	}
+	if f.ClientMetadata["turn_id"] == "turn-xyz" || f.ClientMetadata["turn_id"] == "" {
+		t.Errorf("turn_id = %q, want it mapped into our domain", f.ClientMetadata["turn_id"])
+	}
+}
+
+// A partial client_metadata is neither "absent" nor fully substitutable; it
+// must still come out complete and ours.
+func TestRewriteCodexClientFrameCompletesPartialMetadata(t *testing.T) {
+	frame := `{"type":"response.create","model":"gpt-5.6-sol","input":[],` +
+		`"client_metadata":{"session_id":"` + clientSessionID + `"}}`
+	out, err := RewriteCodexClientFrame([]byte(frame), testIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		ClientMetadata map[string]string `json:"client_metadata"`
+	}
+	if err := json.Unmarshal(out, &f); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	for _, k := range []string{
+		"session_id", "thread_id", "turn_id", "x-codex-installation-id",
+		"x-codex-window-id", "x-codex-turn-metadata",
+		"ws_request_header_x_openai_internal_codex_responses_lite",
+		"x-codex-ws-stream-request-start-ms",
+	} {
+		if _, ok := f.ClientMetadata[k]; !ok {
+			t.Errorf("completed metadata is missing %q: %v", k, f.ClientMetadata)
+		}
+	}
+	if f.ClientMetadata["session_id"] != ourSessionID {
+		t.Errorf("session_id = %q", f.ClientMetadata["session_id"])
+	}
+	// An empty turn_id may only pair with prewarm.
+	var md map[string]string
+	if err := json.Unmarshal([]byte(f.ClientMetadata["x-codex-turn-metadata"]), &md); err != nil {
+		t.Fatal(err)
+	}
+	if md["turn_id"] == "" && md["request_kind"] != CodexRequestKindPrewarm {
+		t.Errorf("empty turn_id paired with %q; no captured frame does that", md["request_kind"])
+	}
+}
+
+// The client's own non-identity metadata describes ITS turn and is not ours to
+// invent or discard.
+func TestRewriteCodexClientFramePreservesForeignMetadataKeys(t *testing.T) {
+	frame := `{"type":"response.create","model":"gpt-5.6-sol","input":[],` +
+		`"client_metadata":{"session_id":"` + clientSessionID + `",` +
+		`"turn_id":"` + clientTurnID + `",` +
+		`"x-codex-turn-metadata":"{\"session_id\":\"` + clientSessionID + `\",\"turn_id\":\"` + clientTurnID +
+		`\",\"request_kind\":\"turn\",\"thread_source\":\"ambient_suggestions\",\"sandbox\":\"danger-full-access\"}",` +
+		`"some-client-key":"keep-me"}}`
+	out, err := RewriteCodexClientFrame([]byte(frame), testIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		ClientMetadata map[string]string `json:"client_metadata"`
+	}
+	if err := json.Unmarshal(out, &f); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if f.ClientMetadata["some-client-key"] != "keep-me" {
+		t.Error("an unrecognized client key was dropped")
+	}
+	var md map[string]string
+	if err := json.Unmarshal([]byte(f.ClientMetadata["x-codex-turn-metadata"]), &md); err != nil {
+		t.Fatal(err)
+	}
+	// thread_source is genuinely variable (user / system / ambient_suggestions
+	// all appear in the captures) and sandbox describes the client's own
+	// environment — neither is an identity field.
+	if md["thread_source"] != "ambient_suggestions" || md["sandbox"] != "danger-full-access" {
+		t.Errorf("non-identity turn metadata was overwritten: %v", md)
+	}
+	if md["session_id"] != ourSessionID {
+		t.Errorf("embedded session_id = %q, want ours", md["session_id"])
+	}
+}
+
+// Rebinding an absent prompt_cache_key used to be a no-op, so a third-party
+// client reached upstream with no cache key — the stable session id bought
+// nothing and every request paid list price.
+func TestRewriteCodexClientFrameInsertsMissingPromptCacheKey(t *testing.T) {
+	for name, frame := range map[string]string{
+		"before text": `{"type":"response.create","model":"gpt-5.6-sol","input":[],` +
+			`"include":["reasoning.encrypted_content"],"text":{"verbosity":"low"},` +
+			`"client_metadata":{"session_id":"` + clientSessionID + `"}}`,
+		"no text": `{"type":"response.create","model":"gpt-5.6-sol","input":[],` +
+			`"client_metadata":{"session_id":"` + clientSessionID + `"}}`,
+		"nothing but type": `{"type":"response.create"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out, err := RewriteCodexClientFrame([]byte(frame), testIdentity())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var f struct {
+				PromptCacheKey string `json:"prompt_cache_key"`
+			}
+			if err := json.Unmarshal(out, &f); err != nil {
+				t.Fatalf("invalid JSON: %v\n%s", err, out)
+			}
+			if f.PromptCacheKey != ourSessionID {
+				t.Errorf("prompt_cache_key = %q, want %q\n%s", f.PromptCacheKey, ourSessionID, out)
+			}
+		})
+	}
+}
+
+// Inserting must not disturb the captured top-level order.
+func TestPromptCacheKeyInsertKeepsCapturedOrder(t *testing.T) {
+	frame := `{"type":"response.create","model":"gpt-5.6-sol","input":[],` +
+		`"include":["reasoning.encrypted_content"],"text":{"verbosity":"low"},` +
+		`"client_metadata":{"session_id":"` + clientSessionID + `"}}`
+	out, err := RewriteCodexClientFrame([]byte(frame), testIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"type", "model", "input", "include", "prompt_cache_key", "text", "client_metadata"}
+	got := topLevelKeyOrder(t, string(out))
+	if len(got) != len(want) {
+		t.Fatalf("key order = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("key %d = %q, want %q (full: %v)", i, got[i], want[i], got)
+		}
+	}
+}

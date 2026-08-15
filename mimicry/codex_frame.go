@@ -267,11 +267,97 @@ func RewriteCodexClientFrame(frame []byte, id CodexFrameIdentity) ([]byte, error
 		out = substituteTokens(out, subs)
 	}
 
-	// Everything below addresses a specific top-level key or stays inside
-	// client_metadata, so none of it can reach into user prose.
-	out = rebindCodexWindowID(out, norm.WindowID())
+	// Substitution alone is not enough, and the gap is exactly the case this
+	// function exists for. addSub only fires on canonical UUIDs — it has to,
+	// since a one-character client "session id" would otherwise rewrite every
+	// occurrence of that character in the frame — so a client that sends
+	// `"session_id":"sess-abc"`, or that sends only some of the eight keys, got
+	// no substitution AND did not qualify for the synthesize branch above. Its
+	// own identifiers went upstream and contradicted the ids we had just put on
+	// the handshake, which is the one-comparison tell all of this removes.
+	//
+	// So the identity keys are overwritten outright rather than substituted.
+	// This is safe here and nowhere else in the file: client_metadata's key
+	// order varies between frames of a single captured session (it is a Rust
+	// HashMap), so re-encoding that object loses no signal — unlike the frame's
+	// top level, whose order is stable and is part of the shape.
+	out = overwriteCodexClientMetadata(out, meta, norm, clientTurn)
+
+	// Everything below addresses a specific top-level key, so none of it can
+	// reach into user prose.
 	out = rebindCodexPromptCacheKey(out, norm.SessionID)
 	return out, nil
+}
+
+// overwriteCodexClientMetadata replaces the identity fields of an existing
+// client_metadata, keeping any key the client sent that we have no opinion
+// about.
+func overwriteCodexClientMetadata(frame []byte, meta map[string]any, id CodexFrameIdentity, clientTurn string) []byte {
+	start, end, ok := topLevelValueSpan(frame, "client_metadata")
+	if !ok {
+		return frame
+	}
+	next := make(map[string]any, len(meta)+3)
+	for k, v := range meta {
+		next[k] = v
+	}
+
+	turnID := ""
+	if clientTurn != "" {
+		turnID = CodexTurnIDFor(id.AccountKey, clientTurn)
+	}
+	next["session_id"] = id.SessionID
+	next["thread_id"] = id.ThreadID
+	next["turn_id"] = turnID
+	next["x-codex-installation-id"] = id.InstallationID
+	next["x-codex-window-id"] = id.WindowID()
+
+	// The embedded copy has to agree with the flat keys or the frame
+	// contradicts itself. Rebuild it from our identity, carrying over the
+	// non-identity fields the client declared (request_kind, thread_source,
+	// sandbox, code_mode_tool_names …) — those describe the CLIENT's turn and
+	// are not ours to invent.
+	md := CodexTurnMetadata{
+		InstallationID: id.InstallationID,
+		SessionID:      id.SessionID,
+		ThreadID:       id.ThreadID,
+		TurnID:         turnID,
+		WindowID:       id.WindowID(),
+		RequestKind:    CodexRequestKindTurn,
+		ThreadSource:   "user",
+		Sandbox:        "seccomp",
+	}
+	if embedded := decodeEmbeddedTurnMetadata(meta); embedded != nil {
+		if v := metaString(embedded, "request_kind"); v != "" {
+			md.RequestKind = v
+		}
+		if v := metaString(embedded, "thread_source"); v != "" {
+			md.ThreadSource = v
+		}
+		if v := metaString(embedded, "sandbox"); v != "" {
+			md.Sandbox = v
+		}
+	} else if turnID == "" {
+		// No turn id and nothing declaring otherwise: prewarm is the only
+		// request_kind the captures ever pair with an empty turn_id.
+		md.RequestKind = CodexRequestKindPrewarm
+	}
+	next["x-codex-turn-metadata"] = md.Encode()
+
+	// The lite switch travels in the body because a WebSocket cannot set
+	// per-message headers; a frame without it is not a Codex frame.
+	if _, present := next["ws_request_header_x_openai_internal_codex_responses_lite"]; !present {
+		next["ws_request_header_x_openai_internal_codex_responses_lite"] = "true"
+	}
+	if _, present := next["x-codex-ws-stream-request-start-ms"]; !present {
+		next["x-codex-ws-stream-request-start-ms"] = strconv.FormatInt(time.Now().UnixMilli(), 10)
+	}
+
+	encoded, err := json.Marshal(next)
+	if err != nil {
+		return frame
+	}
+	return replaceSpan(frame, start, end, encoded)
 }
 
 // RemoveCodexPreviousResponseID deletes the top-level `previous_response_id`
@@ -341,18 +427,54 @@ func CodexPreviousResponseID(frame []byte) string {
 // sends some other value would otherwise leak its own identifier upstream and
 // land in a cache namespace that disagrees with the session we advertised.
 func rebindCodexPromptCacheKey(b []byte, sessionID string) []byte {
+	quoted, err := json.Marshal(sessionID)
+	if err != nil {
+		return b
+	}
 	start, end, ok := topLevelValueSpan(b, "prompt_cache_key")
-	if !ok || end-start < 2 || b[start] != '"' {
+	if !ok {
+		// INSERT it. Rebinding an absent key used to be a no-op, which meant a
+		// third-party client that never sends one — the very client this
+		// function is written for — reached upstream with no cache key at all.
+		// That is both a shape difference (every captured frame carries it) and
+		// the reason codexws.SessionRegistry keeps state: without the key, the
+		// stable session id buys nothing, and the captured turn's 22272-of-22735
+		// cached input tokens are paid for at list price on every request.
+		return insertCodexPromptCacheKey(b, quoted)
+	}
+	if end-start < 2 || b[start] != '"' {
 		return b
 	}
 	if string(b[start+1:end-1]) == sessionID {
 		return b
 	}
-	quoted, err := json.Marshal(sessionID)
-	if err != nil {
+	return replaceSpan(b, start, end, quoted)
+}
+
+// insertCodexPromptCacheKey adds the key at its captured position: after
+// `include`, before `text`. Falling back to just-before-client_metadata and
+// then to the end keeps a frame with an unusual key set well-formed.
+func insertCodexPromptCacheKey(b, quoted []byte) []byte {
+	member := append(append([]byte(`"prompt_cache_key":`), quoted...), ',')
+	for _, before := range []string{"text", "generate", "client_metadata"} {
+		if start, _, ok := topLevelValueSpan(b, before); ok {
+			keyStart := bytes.LastIndex(b[:start], []byte(`"`+before+`"`))
+			if keyStart < 0 {
+				continue
+			}
+			return replaceSpan(b, keyStart, keyStart, member)
+		}
+	}
+	// No anchor to insert before: append as the last member instead.
+	end := bytes.LastIndexByte(b, '}')
+	if end < 0 {
 		return b
 	}
-	return replaceSpan(b, start, end, quoted)
+	tail := append([]byte(`"prompt_cache_key":`), quoted...)
+	if len(bytes.TrimSpace(b[1:end])) > 0 {
+		tail = append([]byte{','}, tail...)
+	}
+	return replaceSpan(b, end, end, tail)
 }
 
 // rebindCodexWindowID pins every window id to ours.
