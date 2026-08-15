@@ -526,3 +526,97 @@ func mustJSON(t *testing.T, s string) string {
 	}
 	return string(b)
 }
+
+// --- previous_response_id stripping ----------------------------------------
+
+// Both forks stripped this key with unmarshal → delete → marshal, which makes
+// Go re-emit the top-level keys in sorted order. Codex's own order is stable
+// across every captured frame and is part of the shape, so the round-trip
+// undid the byte fidelity everything else here protects.
+func TestRemoveCodexPreviousResponseIDPreservesKeyOrder(t *testing.T) {
+	out := RemoveCodexPreviousResponseID([]byte(capturedFrameShape))
+	if strings.Contains(string(out), "previous_response_id") {
+		t.Fatalf("key survived:\n%s", out)
+	}
+	want := []string{
+		"type", "model", "input", "tool_choice", "parallel_tool_calls",
+		"reasoning", "store", "stream", "stream_options", "include",
+		"prompt_cache_key", "text", "client_metadata",
+	}
+	got := topLevelKeyOrder(t, string(out))
+	if len(got) != len(want) {
+		t.Fatalf("key order = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("key %d = %q, want %q (full: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestRemoveCodexPreviousResponseIDPositions(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"middle", `{"a":1,"previous_response_id":"resp_x","b":2}`, `{"a":1,"b":2}`},
+		{"first", `{"previous_response_id":"resp_x","b":2}`, `{"b":2}`},
+		{"last", `{"a":1,"previous_response_id":"resp_x"}`, `{"a":1}`},
+		{"only", `{"previous_response_id":"resp_x"}`, `{}`},
+		{"absent", `{"a":1}`, `{"a":1}`},
+		{"spaced", `{"a":1, "previous_response_id" : "resp_x" , "b":2}`, `{"a":1, "b":2}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(RemoveCodexPreviousResponseID([]byte(tc.in)))
+			if got != tc.want {
+				t.Errorf("got %s, want %s", got, tc.want)
+			}
+			var probe map[string]any
+			if err := json.Unmarshal([]byte(got), &probe); err != nil {
+				t.Errorf("result is not valid JSON: %v", err)
+			}
+		})
+	}
+}
+
+// The key name must not be matched inside user prose.
+func TestRemoveCodexPreviousResponseIDIgnoresProse(t *testing.T) {
+	in := `{"type":"response.create","input":[{"type":"message","content":` +
+		`[{"type":"input_text","text":"set \"previous_response_id\":\"resp_1\" to chain"}]}]}`
+	if got := string(RemoveCodexPreviousResponseID([]byte(in))); got != in {
+		t.Errorf("prose was edited:\n got %s\nwant %s", got, in)
+	}
+}
+
+func TestCodexPreviousResponseID(t *testing.T) {
+	if got := CodexPreviousResponseID([]byte(capturedFrameShape)); got != "resp_CLIENT" {
+		t.Errorf("got %q, want resp_CLIENT", got)
+	}
+	if got := CodexPreviousResponseID([]byte(`{"a":1}`)); got != "" {
+		t.Errorf("absent key should yield empty, got %q", got)
+	}
+	// Must not read it out of prose either.
+	in := `{"type":"response.create","input":[{"text":"\"previous_response_id\":\"resp_evil\""}]}`
+	if got := CodexPreviousResponseID([]byte(in)); got != "" {
+		t.Errorf("read %q out of user prose", got)
+	}
+}
+
+// Strip-then-rewrite is the order the forks will use; the result must still be
+// a well-formed frame with our identity bound.
+func TestRemoveThenRewriteComposes(t *testing.T) {
+	stripped := RemoveCodexPreviousResponseID([]byte(capturedFrameShape))
+	out, err := RewriteCodexClientFrame(stripped, testIdentity())
+	if err != nil {
+		t.Fatalf("rewrite after strip: %v", err)
+	}
+	if strings.Contains(string(out), "previous_response_id") {
+		t.Error("stripped key came back")
+	}
+	var f struct {
+		ClientMetadata map[string]string `json:"client_metadata"`
+	}
+	if err := json.Unmarshal(out, &f); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if f.ClientMetadata["session_id"] != ourSessionID {
+		t.Errorf("identity not bound after strip: %q", f.ClientMetadata["session_id"])
+	}
+}

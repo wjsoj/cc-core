@@ -265,6 +265,65 @@ func RewriteCodexClientFrame(frame []byte, id CodexFrameIdentity) ([]byte, error
 	return out, nil
 }
 
+// RemoveCodexPreviousResponseID deletes the top-level `previous_response_id`
+// key from a client frame, preserving every other byte.
+//
+// A relay has to drop this key when the id belongs to a response served by a
+// different credential — the new upstream has never heard of it. The obvious
+// implementation is unmarshal → delete → marshal, and both forks did exactly
+// that; the problem is that Go emits map keys in sorted order, so the frame
+// comes back with its top-level key order rewritten. Codex's own order is
+// stable across every captured frame and is part of the shape, which makes the
+// map round-trip a fingerprint defect that survives all the identity work in
+// this file.
+//
+// Frames without the key are returned unchanged, sharing the input's backing
+// array.
+func RemoveCodexPreviousResponseID(frame []byte) []byte {
+	start, end, ok := topLevelValueSpan(frame, "previous_response_id")
+	if !ok {
+		return frame
+	}
+	// Widen the cut to swallow the key, its colon, and exactly one adjacent
+	// comma, so the object stays well-formed whether the key was first, last,
+	// or in the middle.
+	keyStart := bytes.LastIndex(frame[:start], []byte(`"previous_response_id"`))
+	if keyStart < 0 {
+		return frame
+	}
+	cutFrom, cutTo := keyStart, end
+
+	trailing := skipJSONSpace(frame, cutTo)
+	if trailing < len(frame) && frame[trailing] == ',' {
+		// Swallow the separator AND the whitespace that followed it, so the
+		// member that moves up keeps the spacing style of the one we removed
+		// rather than inheriting both.
+		cutTo = skipJSONSpace(frame, trailing+1)
+	} else {
+		// No comma after: this was the last member, so take the one before it.
+		leading := cutFrom
+		for leading > 0 && isJSONSpace(frame[leading-1]) {
+			leading--
+		}
+		if leading > 0 && frame[leading-1] == ',' {
+			cutFrom = leading - 1
+		}
+	}
+	out := make([]byte, 0, len(frame)-(cutTo-cutFrom))
+	out = append(out, frame[:cutFrom]...)
+	out = append(out, frame[cutTo:]...)
+	return out
+}
+
+// CodexPreviousResponseID reads the top-level previous_response_id, or "".
+func CodexPreviousResponseID(frame []byte) string {
+	start, end, ok := topLevelValueSpan(frame, "previous_response_id")
+	if !ok || end-start < 2 || frame[start] != '"' {
+		return ""
+	}
+	return string(frame[start+1 : end-1])
+}
+
 // rebindCodexPromptCacheKey forces the top-level prompt_cache_key to our
 // session id.
 //
