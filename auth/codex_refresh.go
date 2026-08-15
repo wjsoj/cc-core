@@ -20,6 +20,52 @@ const (
 	openaiClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 )
 
+// applyCodexTokenEndpointHeaders shapes a POST auth.openai.com/oauth/token
+// request to match what a real Codex client sends. The captured request
+// (crack/codexapp0.147.0/rows/01-post-oauth-token-authorization-code.json,
+// Codex Desktop 0.147.0-alpha.6.6) carries exactly four headers, in order:
+//
+//	content-type: application/x-www-form-urlencoded
+//	accept: */*
+//	host
+//	content-length
+//
+// Two things are load-bearing:
+//
+//   - There is NO User-Agent. Leaving it unset is not neutral — net/http
+//     substitutes "Go-http-client/1.1", which is the single loudest
+//     third-party tell in the whole login flow. Deleting the key is also not
+//     enough, and Set("User-Agent", "") is a no-op for the same reason: both
+//     http1 Request.write and http2 encodeHeaders fall back to the default
+//     when the key is ABSENT. Assigning a nil slice makes the key present
+//     with no value, which is the documented way to suppress it entirely.
+//
+//   - Accept is "*/*", not "application/json". The token endpoint answers
+//     JSON regardless, so this only ever mattered as a fingerprint.
+//
+// The Codex CLI sends the same shape here; this is one of the few Codex
+// endpoints where the CLI and Desktop header sets agree, so it needs no
+// per-identity variant.
+// maxReasonBodyBytes bounds how much of an upstream error body is retained on a
+// credential. Long enough to keep the machine-readable `error`/`code` fields
+// that classification and an operator both need, short enough that an echoed
+// request or a stack trace cannot ride along.
+const maxReasonBodyBytes = 256
+
+// truncateForReason renders an upstream body for storage in a failure reason.
+func truncateForReason(body []byte) string {
+	s := strings.TrimSpace(string(body))
+	if len(s) <= maxReasonBodyBytes {
+		return s
+	}
+	return s[:maxReasonBodyBytes] + "… (truncated)"
+}
+
+func applyCodexTokenEndpointHeaders(req *http.Request) {
+	req.Header["User-Agent"] = nil
+	req.Header.Set("Accept", "*/*")
+}
+
 // refreshCodexLocked refreshes an OpenAI/ChatGPT OAuth access token. Also
 // reparses the returned id_token so plan_type / account_id / email stay in
 // sync with whatever the upstream reports now (subscription tier can change
@@ -48,7 +94,7 @@ func (a *Auth) refreshCodexLocked(ctx context.Context, useUTLS bool) error {
 			return nil, rerr
 		}
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.Header.Set("Accept", "application/json")
+		applyCodexTokenEndpointHeaders(r)
 		return r, nil
 	}
 
@@ -96,8 +142,16 @@ func (a *Auth) refreshCodexLocked(ctx context.Context, useUTLS bool) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		bodyStr := string(body)
-		lower := strings.ToLower(bodyStr)
+		// Classify on the FULL body, but never store or return it whole.
+		//
+		// Whatever goes into MarkHardFailure/MarkFailure lands in
+		// LastFailureReason, which Snapshot() surfaces to the admin panel, and
+		// the returned error may be bubbled into a client-facing response by a
+		// consumer. auth.openai.com's rejections can echo request context back,
+		// so an unbounded copy of a token-endpoint body is the wrong thing to
+		// keep on a credential record.
+		lower := strings.ToLower(string(body))
+		bodyStr := truncateForReason(body)
 		switch {
 		case strings.Contains(lower, "refresh_token_reused"), strings.Contains(lower, "refresh_token_invalidated"):
 			// Burned / invalidated refresh token — terminal. OpenAI aggressively
@@ -134,6 +188,27 @@ func (a *Auth) refreshCodexLocked(ctx context.Context, useUTLS bool) error {
 			planType = claims.PlanType()
 			accountID = claims.AccountID()
 			email = claims.Email
+		}
+	}
+	// Fall back to the ACCESS token for anything the ID token did not supply.
+	//
+	// A refresh is only guaranteed to return an access_token; id_token is
+	// optional, and when it is absent the fields above stay empty and the
+	// credential keeps whatever it was created with — so a plan upgrade or an
+	// account migration would never be picked up. The access token carries
+	// chatgpt_account_id / chatgpt_plan_type under the same claim namespace
+	// (crack/codexapp0.147.0/rows/02), so there is no reason to go stale.
+	if planType == "" || accountID == "" || email == "" {
+		if claims, perr := ParseCodexAccessToken(tr.AccessToken); perr == nil && claims != nil {
+			if planType == "" {
+				planType = claims.PlanType()
+			}
+			if accountID == "" {
+				accountID = claims.AccountID()
+			}
+			if email == "" {
+				email = claims.Email()
+			}
 		}
 	}
 	a.mu.Lock()

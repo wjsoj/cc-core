@@ -76,7 +76,7 @@ REGEX_SUBS = [
 # README 文件是手写文档，里面的"脱敏说明表"故意保留原始值用作映射查阅。
 # 完全跳过自动脱敏 — 如果未来 README 写错引入了真敏感值，靠 audit 兜底，
 # 而不是让 sanitize 去乱改散文。
-SKIP_RELPATHS = {'README.md', 'login/README.md'}
+SKIP_RELPATHS = {'README.md', 'claudev2.1.126-login/README.md'}
 
 
 def sanitize_text(text: str, literal_subs: dict) -> str:

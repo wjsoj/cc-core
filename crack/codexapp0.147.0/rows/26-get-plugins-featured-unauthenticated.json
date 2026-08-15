@@ -1,0 +1,37 @@
+{
+  "_note": "PRE-AUTH variant of the same endpoint. No authorization, no chatgpt-account-id, no oai-product-sku -> 401. Emitted repeatedly at app start before a token exists (12 of 23 calls this session).",
+  "_capture_id": "003",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/plugins/featured?platform=codex",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "accept": "*/*",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body": null,
+  "status": 401,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:18:31 GMT",
+    "content-type": "application/json",
+    "content-length": "25",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "da0a32ab-a65d-49e2-9faf-82382b19c579",
+    "x-build": "47f4c4b01f9d",
+    "x-content-type-options": "nosniff",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<masked>",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=IgEKGowTy59ueiQ4%2FCRpOk%2FrA1Etj99eJhzlTjJRSST3c4oMpfh4UTFtovxG%2FT1pNH9L%2BBcZhOj%2Fd4HfSopy17xpAJiUv89VTYr5UM0jSISN%2Bcc7mhIoZYZZ7CMm\"}]}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b146a4dd086e50-AMS"
+  },
+  "res_body": "{\"detail\": \"Unauthorized\"}"
+}

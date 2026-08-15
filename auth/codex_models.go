@@ -11,7 +11,7 @@ package auth
 // Pro list — matches CLIProxyAPI's default, i.e. favor availability
 // over restriction.
 //
-// Verified against a live codex-tui/0.135.0 Pro session (crack/codex/SPEC.md,
+// Verified against a live codex-tui/0.135.0 Pro session (crack/codexv0.135.0/SPEC.md,
 // 2026-05-30): default model gpt-5.5, plus the metered gpt-5.3-codex-spark —
 // both already present in the Pro/Plus lists.
 //

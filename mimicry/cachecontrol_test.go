@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// thirdPartyGenuineBody mirrors crack/thirdparty/rows/01-v1_messages.json: the
+// thirdPartyGenuineBody mirrors crack/claudev2.1.226-inbound/rows/01-v1_messages.json: the
 // billing block with no breakpoint, then two blocks carrying the bare
 // {"type":"ephemeral"} a custom-base-url client is limited to. Written as a
 // literal, not built from a map, so the key order under test is the captured
@@ -60,7 +60,7 @@ func systemCachePattern(t *testing.T, body []byte) []string {
 }
 
 // The headline case: the captured inbound breakpoint layout becomes the
-// captured OAuth one on the last two blocks (crack/thirdparty/SPEC.md §2c).
+// captured OAuth one on the last two blocks (crack/claudev2.1.226-inbound/SPEC.md §2c).
 func TestGenuineRewriteRestoresCacheBreakpoints(t *testing.T) {
 	result := mustTransform(t, thirdPartyGenuineBody(t), testID(), GenuineRequestRewrite)
 

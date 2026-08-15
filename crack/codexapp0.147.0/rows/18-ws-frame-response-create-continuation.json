@@ -1,0 +1,126 @@
+{
+  "_note": "Continuation frame from the SAME session as rows/15, for contrast: with previous_response_id the client drops additional_tools and the developer system prompt entirely and sends only the new input item. Everything else — key order, tool_choice, reasoning, store/stream/stream_options/include, prompt_cache_key, text, client_metadata — is unchanged from the opener.",
+  "_source": "WS session <SESSION_ID> (whistle 1786761697562-745) frames 318 and 461",
+  "frames": [
+    {
+      "_label": "user follow-up message",
+      "dir": "client->server",
+      "opcode": 1,
+      "frame": {
+        "type": "response.create",
+        "model": "gpt-5.6-sol",
+        "previous_response_id": "<RESP_ID>",
+        "input": [
+          {
+            "type": "message",
+            "id": "<ITEM_ID>",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 9 chars>"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "<TURN_ID>"
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": {
+          "effort": "medium",
+          "summary": "detailed",
+          "context": "all_turns"
+        },
+        "store": false,
+        "stream": true,
+        "stream_options": {
+          "reasoning_summary_delivery": "sequential_cutoff"
+        },
+        "include": [
+          "reasoning.encrypted_content"
+        ],
+        "prompt_cache_key": "<SESSION_ID>",
+        "text": {
+          "verbosity": "low"
+        },
+        "client_metadata": {
+          "x-codex-turn-metadata": "{\"installation_id\":\"<INSTALLATION_ID>\",\"session_id\":\"<SESSION_ID>\",\"thread_id\":\"<SESSION_ID>\",\"turn_id\":\"<TURN_ID>\",\"window_id\":\"<SESSION_ID>:0\",\"request_kind\":\"turn\",\"thread_source\":\"user\",\"sandbox\":\"seccomp\",\"code_mode_tool_names\":\"<elided: 71 entries, verbatim copy in rows/11-ws-frame-response-create.json>\",\"turn_started_at_unix_ms\":1786761886966,\"workspace_kind\":\"projectless\"}",
+          "x-codex-window-id": "<SESSION_ID>:0",
+          "turn_id": "<TURN_ID>",
+          "x-codex-installation-id": "<INSTALLATION_ID>",
+          "session_id": "<SESSION_ID>",
+          "thread_id": "<SESSION_ID>",
+          "x-codex-ws-stream-request-start-ms": "1786761887106",
+          "ws_request_header_x_openai_internal_codex_responses_lite": "true"
+        }
+      }
+    },
+    {
+      "_label": "tool-output continuation (same shape as rows/11)",
+      "dir": "client->server",
+      "opcode": 1,
+      "frame": {
+        "type": "response.create",
+        "model": "gpt-5.6-sol",
+        "previous_response_id": "<RESP_ID>",
+        "input": [
+          {
+            "type": "custom_tool_call_output",
+            "id": "<ITEM_ID>",
+            "call_id": "<CALL_ID>",
+            "output": [
+              {
+                "type": "input_text",
+                "text": "<masked tool output: 47 chars>"
+              },
+              {
+                "type": "input_text",
+                "text": "<masked tool output: 48 chars>"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "<TURN_ID>",
+              "executed_tool_calls": "<masked: see rows/11 for the verbatim shape>"
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": {
+          "effort": "medium",
+          "summary": "detailed",
+          "context": "all_turns"
+        },
+        "store": false,
+        "stream": true,
+        "stream_options": {
+          "reasoning_summary_delivery": "sequential_cutoff"
+        },
+        "include": [
+          "reasoning.encrypted_content"
+        ],
+        "prompt_cache_key": "<SESSION_ID>",
+        "text": {
+          "verbosity": "low"
+        },
+        "client_metadata": {
+          "x-codex-ws-stream-request-start-ms": "1786761892272",
+          "session_id": "<SESSION_ID>",
+          "x-codex-window-id": "<SESSION_ID>:0",
+          "x-codex-turn-metadata": "{\"installation_id\":\"<INSTALLATION_ID>\",\"session_id\":\"<SESSION_ID>\",\"thread_id\":\"<SESSION_ID>\",\"turn_id\":\"<TURN_ID>\",\"window_id\":\"<SESSION_ID>:0\",\"request_kind\":\"turn\",\"thread_source\":\"user\",\"sandbox\":\"seccomp\",\"code_mode_tool_names\":\"<elided: 71 entries, verbatim copy in rows/11-ws-frame-response-create.json>\",\"turn_started_at_unix_ms\":1786761886966,\"workspace_kind\":\"projectless\"}",
+          "turn_id": "<TURN_ID>",
+          "x-codex-installation-id": "<INSTALLATION_ID>",
+          "thread_id": "<SESSION_ID>",
+          "ws_request_header_x_openai_internal_codex_responses_lite": "true"
+        }
+      }
+    }
+  ],
+  "observations": [
+    "Diff vs the opening frame (rows/15): `previous_response_id` appears (position 3, right after `model`), `input` shrinks to one item, `generate` is absent. No other key changes and no key is reordered.",
+    "The dropped tools/system prompt are what makes prompt_cache_key load-bearing: input_tokens stays ~22.5k across these frames with cached_tokens 22272, i.e. the prefix the opener paid for.",
+    "A continuation still carries the full client_metadata block including the 71-entry code_mode_tool_names inside x-codex-turn-metadata."
+  ]
+}

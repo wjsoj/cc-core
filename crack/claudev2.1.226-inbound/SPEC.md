@@ -1,4 +1,4 @@
-# crack/thirdparty — Claude Code on a custom base URL (INBOUND shape)
+# crack/claudev2.1.226-inbound — Claude Code on a custom base URL (INBOUND shape)
 
 Capture: **2026-08-09**, `claude-cli/2.1.226` on Arch Linux, `ANTHROPIC_BASE_URL`
 pointing at a third-party Anthropic-compatible gateway (`api.minimaxi.com/anthropic`),
@@ -15,7 +15,7 @@ question: *"what does Claude Code send to **us**?"* — the shape we must
 Both forks are reverse proxies. A user points their Claude Code at us with
 `ANTHROPIC_BASE_URL`, so every inbound request has the shape recorded here; we
 then forward it to `api.anthropic.com` on a real OAuth credential, which means
-it must leave looking like `cc2224/rows/13-v1_messages.json`. This file is the
+it must leave looking like `claudev2.1.224/rows/13-v1_messages.json`. This file is the
 **left-hand side of that transform**, and `mimicry`'s genuine-rewrite path is
 the transform itself.
 
@@ -23,7 +23,7 @@ Counterpart OAuth rows for the same comparison:
 
 | this dir | counterpart |
 |---|---|
-| `rows/01-v1_messages.json` (main) | `../cc2224/rows/13-v1_messages.json` |
+| `rows/01-v1_messages.json` (main) | `../claudev2.1.224/rows/13-v1_messages.json` |
 | `rows/02-v1_messages_title.json` (title) | — no OAuth title row in tree (**gap**) |
 
 The OAuth side was captured 2026-08-07 on `claude-cli/2.1.224` — the two sessions
@@ -90,7 +90,7 @@ build if the two ever disagree.
 **`context-1m-2025-08-07` and `fallback-credit-2026-06-01` are deliberately NOT
 in the set.** They are the 1M-context pair (`ClaudeAnthropicBeta1M` = Full + those
 two), and the custom-base-url session was not in 1M mode, so this capture cannot
-distinguish "gated by OAuth" from "gated by context mode". `cc2220/SPEC.md §1a`
+distinguish "gated by OAuth" from "gated by context mode". `claudev2.1.220/SPEC.md §1a`
 already established they track context mode, so cc-core does not inject them:
 claiming a 1M window we cannot verify is worse than not claiming it.
 
@@ -130,7 +130,7 @@ component; it is stable for a given first user message.
 
 Consequence for us, stated plainly: we rewrite `cc_version` to our pinned target
 but **cannot** synthesize `cch` (its signer is unbroken —
-`cc2224/SPEC.md §Unresolved`). Outbound requests therefore carry a billing block
+`claudev2.1.224/SPEC.md §Unresolved`). Outbound requests therefore carry a billing block
 that real OAuth Claude Code never emits: version + entrypoint with no `cch`. This
 is a known, permanent 100%-discriminable gap, accepted because the alternative —
 forwarding a fabricated `cch` — is worse. `mimicry` fails closed if either field
@@ -160,7 +160,7 @@ Recorded as `_notes.system_cache_pattern`, where `null` = no `cache_control`,
 
 | capture | blocks | pattern |
 |---|---|---|
-| OAuth main (`cc2224/rows/13`) | 4 | `[null, null, true, false]` → `[-, -, ephemeral+1h+global, ephemeral+1h]` |
+| OAuth main (`claudev2.1.224/rows/13`) | 4 | `[null, null, true, false]` → `[-, -, ephemeral+1h+global, ephemeral+1h]` |
 | custom main (`rows/01`) | 3 | `[null, false, false]` → `[-, ephemeral, ephemeral]` |
 | custom title (`rows/02`) | 3 | `[null, null, null]` — no breakpoints at all |
 
@@ -188,7 +188,7 @@ without it every forwarded request writes a 5-minute cache entry instead of a
 ## §3 Auxiliary traffic — none
 
 The OAuth session emitted the full first-party burst plus heartbeats (see
-`cc2224/SPEC.md §5`, reproduced by `sidecar/`). Across the entire custom-base-url
+`claudev2.1.224/SPEC.md §5`, reproduced by `sidecar/`). Across the entire custom-base-url
 session there were **zero** requests to `api.anthropic.com`, `platform.claude.com`,
 `downloads.claude.ai`, or the Datadog intake — only `/v1/messages` to the gateway
 and unrelated local MCP traffic. The whistle buffer still held the 2026-08-07
@@ -216,7 +216,7 @@ The gateway returns none of them — its own `trace-id` / `x-mm-request-id` /
 `eo-cache-status` instead, and `content-encoding: br` rather than `gzip`.
 
 `anthropic-workspace-id` had no prior mention anywhere in this repo; it is
-recorded here and in `cc2224/rows/13` for the first time.
+recorded here and in `claudev2.1.224/rows/13` for the first time.
 
 This asymmetry is now enforced rather than merely observed: `cc-core/downstream`
 allowlists the response headers a proxy returns to its client, and this section
@@ -244,7 +244,7 @@ timestamps before they are deleted, so client backoff survives.
 ## §6 Side result — quota probe confirmed at 2.1.224
 
 The 2026-08-07 OAuth capture also caught the Haiku quota probe, now stored as
-`../cc2224/rows/19-quota_probe.json`. Both `sidecar.quotaProbeBeta` (6 items) and
+`../claudev2.1.224/rows/19-quota_probe.json`. Both `sidecar.quotaProbeBeta` (6 items) and
 `sidecar.quotaProbeModel` (`claude-haiku-4-5-20251001`) match it **verbatim**.
 Those constants previously cited a 2.1.170-era file that has since been pruned
 from the tree, leaving them unbacked; they are now anchored at the current target.

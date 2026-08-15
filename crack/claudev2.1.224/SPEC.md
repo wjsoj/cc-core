@@ -74,7 +74,7 @@ Top-level keys, in the order emitted:
 model, max_tokens, messages, system, tools, metadata, stream, thinking, context_management, output_config
 ```
 
-Unchanged from the 2.1.220 Linux capture (`cc2220/rows-2026-07-31/08-v1_messages.json`), including:
+Unchanged from the 2.1.220 Linux capture (`claudev2.1.220/rows-2026-07-31/08-v1_messages.json`), including:
 
 ```json
 "thinking":            {"type": "adaptive"},
@@ -152,7 +152,7 @@ Two sidecar edits **were** needed and were missed when this file was first writt
 - **Non-1M main request beta.** The session ran entirely in 1M mode, so `ClaudeAnthropicBetaFull` (the 13-item non-1M list) was **not observed at 2.1.224**. It carries forward from 2.1.220 unverified. Nothing here contradicts it, but a non-1M capture is the way to settle it.
 - **`count_tokens`.** No `POST /v1/messages/count_tokens` was fired, so `ClaudeAnthropicBetaCountTokens` (5 items) and the "no `X-Stainless-Timeout`" rule are likewise carried forward unverified at 2.1.224.
 - **`cch` signer.** Still unresolved, as at 2.1.220 — the values are captured (`2.1.224.779` / `cch=1dc46`) but the signer is not reproduced.
-- **No custom-base-url counterpart in this session.** Captured separately on 2026-08-09 at 2.1.226 — see `../thirdparty/SPEC.md`, which is the inbound shape both forks receive and repair.
+- **No custom-base-url counterpart in this session.** Captured separately on 2026-08-09 at 2.1.226 — see `../claudev2.1.226-inbound/SPEC.md`, which is the inbound shape both forks receive and repair.
 - **Forward signals seen but not acted on.** The bootstrap response carries `client_data.cedar_lagoon = {"claude-fable": true, "claude-mythos": true}` and `cedar_basin: "2026-08-31"`, and `additional_model_options` lists `claude-fable-5[1m]`. `claude-mythos` is an unreleased label; no cc-core constant depends on it yet.
 
 ## Redaction

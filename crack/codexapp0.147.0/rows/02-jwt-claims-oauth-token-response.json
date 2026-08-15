@@ -1,0 +1,91 @@
+{
+  "_note": "Claim SKELETON decoded from row 01's access_token / id_token. Identity values masked; constants (iss, aud for access_token, client_id, scp, amr, claim namespaces) kept verbatim.",
+  "jwt_header": {
+    "alg": "RS256",
+    "kid": "<masked>",
+    "typ": "JWT"
+  },
+  "access_token_claims": {
+    "aud": [
+      "https://api.openai.com/v1"
+    ],
+    "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
+    "https://api.openai.com/auth": {
+      "amr": [
+        "otp",
+        "urn:openai:amr:otp_email"
+      ],
+      "chatgpt_account_id": "<masked:uuid>",
+      "chatgpt_account_user_id": "<masked:\"user-<id>__<account uuid>\">",
+      "chatgpt_compute_residency": "no_constraint",
+      "chatgpt_plan_type": "plus",
+      "chatgpt_user_id": "<masked:user-...>",
+      "localhost": true,
+      "poid": "<masked:org-...>",
+      "user_id": "<masked:user-...>"
+    },
+    "https://api.openai.com/profile": {
+      "email": "<masked>",
+      "email_verified": true,
+      "name": "<masked>"
+    },
+    "iss": "https://auth.openai.com",
+    "pwd_auth_time": "<masked:int ms>",
+    "scp": [
+      "openid",
+      "profile",
+      "email",
+      "offline_access",
+      "api.connectors.read",
+      "api.connectors.invoke"
+    ],
+    "session_id": "<masked:authsess_...>",
+    "sl": true,
+    "sub": "<masked:auth0|...>",
+    "iat": "<masked:int>",
+    "exp": "<masked:int, iat+864000>",
+    "jti": "<masked:hex32>",
+    "nbf": "<masked:int>"
+  },
+  "id_token_claims": {
+    "amr": [
+      "otp",
+      "urn:openai:amr:otp_email"
+    ],
+    "aud": [
+      "app_EMoamEEZ73f0CkXaXp7hrann"
+    ],
+    "auth_provider": "passwordless",
+    "auth_time": "<masked:int>",
+    "email": "<masked>",
+    "email_verified": true,
+    "https://api.openai.com/auth": {
+      "chatgpt_account_id": "<masked:uuid>",
+      "chatgpt_plan_type": "plus",
+      "chatgpt_subscription_active_start": "<masked:RFC3339>",
+      "chatgpt_subscription_active_until": "<masked:RFC3339>",
+      "chatgpt_subscription_last_checked": "<masked:RFC3339>",
+      "chatgpt_user_id": "<masked:user-...>",
+      "groups": [],
+      "localhost": true,
+      "organizations": [
+        {
+          "id": "<masked:org-...>",
+          "is_default": true,
+          "role": "owner",
+          "title": "<masked>"
+        }
+      ],
+      "user_id": "<masked:user-...>"
+    },
+    "iss": "https://auth.openai.com",
+    "name": "<masked>",
+    "rat": "<masked:int>",
+    "sid": "<masked:uuid>",
+    "sub": "<masked:auth0|...>",
+    "iat": "<masked:int>",
+    "exp": "<masked:int, iat+3600>",
+    "jti": "<masked:hex32>",
+    "at_hash": "<masked>"
+  }
+}

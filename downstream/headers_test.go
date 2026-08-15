@@ -9,7 +9,7 @@ import (
 )
 
 // capturedOAuthResponseHeaders is the header set a real /v1/messages answer from
-// api.anthropic.com carries, taken from crack/cc2224/rows/13-v1_messages.json.
+// api.anthropic.com carries, taken from crack/claudev2.1.224/rows/13-v1_messages.json.
 // It is the thing this package exists to filter, so the test filters the real
 // article rather than a hand-picked subset.
 func capturedOAuthResponseHeaders() http.Header {
@@ -213,7 +213,7 @@ func TestSynthesizedRetryAfter(t *testing.T) {
 
 // The gateway's own response is already the shape we aim for, so scrubbing it
 // must be close to a no-op — evidence the allowlist is not over-tight.
-// Values from crack/thirdparty/rows/01-v1_messages.json.
+// Values from crack/claudev2.1.226-inbound/rows/01-v1_messages.json.
 func TestScrubIsNearlyNoOpOnGatewayResponse(t *testing.T) {
 	h := http.Header{}
 	for name, value := range map[string]string{

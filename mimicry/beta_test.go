@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Captured verbatim from crack/thirdparty/rows/ — the Anthropic-Beta headers a
+// Captured verbatim from crack/claudev2.1.226-inbound/rows/ — the Anthropic-Beta headers a
 // real Claude Code 2.1.226 sent through a custom base URL on 2026-08-09. These
 // are the left-hand side of every repair in beta.go; edit only with a new
 // capture, exactly like the OAuth-side constants in fingerprint.go.

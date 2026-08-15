@@ -11,7 +11,7 @@ import (
 
 // Auxiliary login-phase endpoints. Real Claude Code fires these around the
 // token exchange on every fresh `/login` — captured from a live 2.1.191 OAuth
-// session, re-confirmed at 2.1.214 (crack/cc2214/rows/{01,03,04,05,06}). Doing
+// session, re-confirmed at 2.1.214 (crack/claudev2.1.214/rows/{01,03,04,05,06}). Doing
 // only the bare token
 // exchange leaves a lone POST with none of the surrounding probes, which is
 // itself a "not the official client" signal at Anthropic's edge. We replay
@@ -81,7 +81,7 @@ func performPostLoginProbes(ctx context.Context, client *http.Client, accessToke
 	cli := mimicry.ClaudeCLIUserAgent
 	// The three probes are NOT header-identical: profile carries Content-Type
 	// and Cache-Control: no-cache, roles carries neither. Verified on the
-	// 2026-07-31 login capture (crack/cc2220/SPEC.md §2).
+	// 2026-07-31 login capture (crack/claudev2.1.220/SPEC.md §2).
 	profileExtra := map[string]string{
 		"Content-Type":  "application/json",
 		"Cache-Control": "no-cache",

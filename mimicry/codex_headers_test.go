@@ -17,14 +17,62 @@ func TestApplyCodexCLIHeadersSendsNoLegacyBeta(t *testing.T) {
 	if got := req.Header.Get("OpenAI-Beta"); got != "" {
 		t.Errorf("OpenAI-Beta = %q; the HTTP path must send none", got)
 	}
+	// The default identity is Codex Desktop, not codex-tui.
+	if got := req.Header.Get("User-Agent"); got != CodexDesktopUserAgent {
+		t.Errorf("User-Agent = %q, want %q", got, CodexDesktopUserAgent)
+	}
+	if got := req.Header.Get("Version"); got != CodexDesktopVersion {
+		t.Errorf("Version = %q, want %q", got, CodexDesktopVersion)
+	}
+	if got := req.Header.Get("Originator"); got != CodexDesktopOriginator {
+		t.Errorf("Originator = %q, want %q", got, CodexDesktopOriginator)
+	}
+}
+
+// The three identity fields are validated against each other upstream (an
+// originator that disagrees with the UA's leading segment 404s), so a profile
+// must never be assembled from parts of two.
+func TestCodexProfilesAreSelfConsistent(t *testing.T) {
+	for _, p := range []CodexClientProfile{CodexDesktopClientProfile(), CodexTUIClientProfile()} {
+		if !strings.HasPrefix(p.UserAgent, p.Originator+"/"+p.Version+" ") {
+			t.Errorf("profile %q: User-Agent %q must start with %q", p.Originator, p.UserAgent, p.Originator+"/"+p.Version)
+		}
+	}
+}
+
+// Regression guard for the header name. cc-core sent "Session_id" for two
+// capture generations while every genuine Codex client sends "session-id";
+// Header.Get would mask the difference, so this reads the raw map key.
+func TestApplyCodexCLIHeadersSessionIDHeaderName(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil)
+	req.Header.Set("Session_id", "stale-value-from-a-previous-attempt")
+	ApplyCodexCLIHeaders(req, "tok", "acct", false, "gpt-5.6-sol", "")
+
+	if _, ok := req.Header["Session_id"]; ok {
+		t.Error(`"Session_id" (underscore) must be removed, not carried alongside`)
+	}
+	if _, ok := req.Header["Session-Id"]; ok {
+		t.Error(`"Session-Id" (canonicalized) must not be sent; the wire name is all-lowercase`)
+	}
+	v, ok := req.Header[CodexSessionIDHeader]
+	if !ok || len(v) == 0 || v[0] == "" {
+		t.Fatalf("header %q must be set, got %v", CodexSessionIDHeader, req.Header)
+	}
+}
+
+// An explicit profile must override the default end to end.
+func TestApplyCodexHeadersWithProfile(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil)
+	ApplyCodexHeadersWithProfile(req, CodexTUIClientProfile(), "tok", "acct", false, "", "")
+
+	if got := req.Header.Get("Originator"); got != CodexOriginator {
+		t.Errorf("Originator = %q, want %q", got, CodexOriginator)
+	}
 	if got := req.Header.Get("User-Agent"); got != CodexCLIUserAgent {
 		t.Errorf("User-Agent = %q, want %q", got, CodexCLIUserAgent)
 	}
 	if got := req.Header.Get("Version"); got != CodexCLIVersion {
 		t.Errorf("Version = %q, want %q", got, CodexCLIVersion)
-	}
-	if got := req.Header.Get("Originator"); got != CodexOriginator {
-		t.Errorf("Originator = %q, want %q", got, CodexOriginator)
 	}
 }
 

@@ -1,0 +1,39 @@
+{
+  "_note": "Only endpoint in this capture that sends cache-control and omits originator entirely.",
+  "_capture_id": "266",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/wham/settings/user",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "cache-control": "no-cache, no-store",
+    "accept": "*/*",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:29:16 GMT",
+    "content-type": "application/json",
+    "content-length": "485",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "665371fb-8bd7-434c-9650-b8184cb0e8e8",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<masked>",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=zMvDqMHrmeQHJ9AnsWf7Wsd%2FIQCQijo5Mu02IZABuCA2GcTei8qdaSzw1xZhEdDlKG%2BLMN%2BbU1JoJTSUIn5cBUmd7wMqjZBtsMwrfOk7jJUyLed7OLwooOkMbkQZc7APF3%2FbVydmLFy%2B\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b15660eb2014d3-AMS"
+  },
+  "res_body": "{\"user_id\": \"<masked>\", \"git_diff_mode\": \"unified\", \"branch_format\": \"codex/{feature}\", \"custom_instructions\": null, \"preferred_github_connector_id\": null, \"preferred_gitlab_connector_id\": null, \"code_review_preference\": \"repo_default\", \"code_review_trigger_policy\": \"pr_open\", \"exhaustive_code_review\": false, \"security_review\": null, \"alpha_opt_in\": false, \"allow_credits_for_code_reviews\": false, \"commit_attribution_enabled\": false}"
+}

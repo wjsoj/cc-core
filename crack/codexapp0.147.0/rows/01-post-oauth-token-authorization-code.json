@@ -1,0 +1,40 @@
+{
+  "method": "POST",
+  "url": "https://auth.openai.com/oauth/token",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "content-type": "application/x-www-form-urlencoded",
+    "accept": "*/*",
+    "host": "auth.openai.com",
+    "content-length": "326",
+    "Connection": "close"
+  },
+  "req_body": "grant_type=authorization_code&code=<masked>&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&client_id=app_EMoamEEZ73f0CkXaXp7hrann&code_verifier=<masked>",
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:28:44 GMT",
+    "content-type": "application/json",
+    "content-length": "5046",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-is-update": "<masked>",
+    "timing-allow-origin": "*",
+    "openai-version": "2020-10-01",
+    "x-request-id": "<masked>",
+    "openai-processing-ms": "133",
+    "x-content-type-options": "nosniff",
+    "cache-control": "no-store",
+    "pragma": "no-cache",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": [
+      "<masked>"
+    ],
+    "cf-cache-status": "DYNAMIC",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.1,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=GXlpMHOamnsrPXwr6XkiMkBkfbGIpMiffv9uN%2BSz5QMOo2HuIDDMEENLqzL3Eg5rPLXW9DGiCr5lLdSRZc8jM%2Fj0LLViY33nfHW%2FN%2Fr875oKN3vdwleUc6SYFZw60e0CpGCx2%2BxUW0YuGk92ww%3D%3D\"}]}",
+    "cf-ray": "<masked>",
+    "alt-svc": "h3=\":443\"; ma=86400"
+  },
+  "res_body": "{\n  \"access_token\": \"<masked:JWT RS256>\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 864000,\n  \"scope\": \"openid profile email offline_access api.connectors.read api.connectors.invoke\",\n  \"id_token\": \"<masked:JWT RS256>\",\n  \"earliest_refresh_at\": \"<masked:int unix, iat+777600 (=expires_in-86400)>\",\n  \"refresh_token\": \"<masked:opaque \\\"rt.1.<base64url>\\\" 196 chars, 2 dots>\",\n  \"oai_is\": \"<masked:opaque \\\"ois1.<b64>.<b64>.<b64>\\\" ~1019 chars, mirrors res header x-oai-is-update>\"\n}"
+}

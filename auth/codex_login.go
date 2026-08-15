@@ -69,7 +69,7 @@ func finishCodexLogin(
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
+	applyCodexTokenEndpointHeaders(req)
 
 	client := ClientFor(sess.ProxyURL, useUTLS)
 	resp, err := client.Do(req)

@@ -5,8 +5,8 @@ import "strings"
 // Anthropic-Beta repair for genuine Claude Code requests that reached us over a
 // custom base URL.
 //
-// A reverse proxy receives the shape in crack/thirdparty/SPEC.md §1a and must
-// forward the shape in crack/cc2224/rows/13-v1_messages.json. Those two differ
+// A reverse proxy receives the shape in crack/claudev2.1.226-inbound/SPEC.md §1a and must
+// forward the shape in crack/claudev2.1.224/rows/13-v1_messages.json. Those two differ
 // by a fixed set of betas that a client talking to a third-party gateway cannot
 // declare, because it has no Anthropic account to declare them against. The
 // surviving items keep their relative order, so the repair is a deterministic
@@ -21,7 +21,7 @@ import "strings"
 
 // claudeOAuthOnlyBetas are the betas real Claude Code sends on the first-party
 // OAuth path and omits on a custom base URL. Derived by subtracting the captured
-// custom-base-url main vector (crack/thirdparty/rows/01-v1_messages.json) from
+// custom-base-url main vector (crack/claudev2.1.226-inbound/rows/01-v1_messages.json) from
 // ClaudeAnthropicBetaFull; TestOAuthOnlyBetasMatchCapturedDelta re-derives it
 // from both constants and fails the build if they drift apart.
 //
@@ -37,7 +37,7 @@ var claudeOAuthOnlyBetas = []string{
 }
 
 // claudeBeta1MPair is the context-mode pair. Both captures that observed
-// context-1m-2025-08-07 (crack/cc2220/SPEC.md §1a, crack/cc2224/rows/13) also
+// context-1m-2025-08-07 (crack/claudev2.1.220/SPEC.md §1a, crack/claudev2.1.224/rows/13) also
 // carried fallback-credit-2026-06-01, and neither was ever seen alone, so a
 // client that declares the first gets the second.
 //
@@ -148,7 +148,7 @@ func upgradeBetaVector(existing string, additions []string, pairContextMode bool
 	}
 	// Betas with no canonical position keep the caller's relative order and
 	// trail the known ones, which is where every newer beta has appeared in
-	// capture (structured-outputs-2025-12-15 in crack/thirdparty/rows/02).
+	// capture (structured-outputs-2025-12-15 in crack/claudev2.1.226-inbound/rows/02).
 	for _, beta := range declared {
 		if !emitted[beta] {
 			out = append(out, beta)

@@ -4,7 +4,7 @@
 
 ## 问题
 
-转发上游响应头会把我们凭据池的运行状态直接交给下游用户。一条来自 `api.anthropic.com` 的 200 就带着（`crack/cc2224/rows/13-v1_messages.json`）：
+转发上游响应头会把我们凭据池的运行状态直接交给下游用户。一条来自 `api.anthropic.com` 的 200 就带着（`crack/claudev2.1.224/rows/13-v1_messages.json`）：
 
 ```
 anthropic-ratelimit-unified-status                  ← 服务该请求的账号的配额裁决
@@ -25,7 +25,7 @@ server: cloudflare / server-timing
 
 ## 为什么剥离是安全的，而不是猜测
 
-`crack/thirdparty/SPEC.md §4` 记录了对照：真实第三方网关**一个 `anthropic-*` 响应头都不返回**，只有 `content-type` / `cache-control` / `vary` / `content-encoding` 和它自己的 correlator，而真实 Claude Code 对着它工作完全正常。所以白名单是**已知可行的行为**。
+`crack/claudev2.1.226-inbound/SPEC.md §4` 记录了对照：真实第三方网关**一个 `anthropic-*` 响应头都不返回**，只有 `content-type` / `cache-control` / `vary` / `content-encoding` 和它自己的 correlator，而真实 Claude Code 对着它工作完全正常。所以白名单是**已知可行的行为**。
 
 ## 白名单
 
@@ -77,6 +77,68 @@ server: cloudflare / server-timing
 
 错误体的处理与请求侧不同：**不做字节手术**。请求体要对齐抓包所以键顺序重要；网关返回的错误形状是它自己的，没有 capture 要匹配，`encoding/json` 往返即可。
 
+## Codex：两条白名单够不着的泄漏通道
+
+`downstream/headers.go` 的做法之所以成立，是因为 Anthropic 侧**所有敏感信息都以响应头的形式到达**，一个白名单就能拦全。Codex 不是这样——它从两个 header 白名单永远看不到的地方漏出去，于是有了 `downstream/codex.go`。
+
+ground truth：`crack/codexapp0.147.0/rows/10`（握手）与 `rows/13`（每种服务端事件各一条样本）。
+
+### 1. WebSocket 的 101 响应头
+
+一个 101 不是普通响应，原样转发等于把这些交给调用方：
+
+| 头 | 泄漏什么 |
+|---|---|
+| `cf-ray` | **后缀就是 Cloudflare 数据中心代码**，直接定位我们的出口 |
+| `set-cookie` | 上游的 `__cf_bm` bot-management 状态 |
+| `x-models-etag` | 每账号的模型目录版本；**能把两次请求关联到同一个上游账号** |
+| `x-openai-proxy-wasm` | 上游基础设施版本 |
+| `cf-cache-status` / `server` / `report-to` / `nel` 等 | 基础设施指纹，且点名了服务商 |
+
+放行的**只有** 4 个协议头（`allowedWSHandshakeHeaders`，`downstream/codex.go:42`）：`Connection`、`Upgrade`、`Sec-Websocket-Accept`、`Sec-Websocket-Extensions`（另有 `Sec-Websocket-Protocol`，仅在协商过子协议时出现）。
+
+| 函数 | 用途 | 行号 |
+|---|---|---|
+| `WSHandshakeHeaderAllowed(name)` | 单头判定，大小写无关 | `codex.go:67` |
+| `ScrubWSHandshakeHeaders(h)` | 就地清洗一个我们独占的 header map | `codex.go:77` |
+| `CopyWSHandshakeHeaders(dst, src)` | **写出处应该用的入口**：清洗 `src` 的副本后追加到 `dst` | `codex.go:93` |
+
+与 HTTP 侧同一条纪律：**清洗上游那份，绝不清洗 `dst`**（`dst` 里已经有代理自己设的头），也**绝不就地改 `src`**（调用方还要用它做 401/403/429 的凭据分类，见 [Transports](Transports) → `Conn.HandshakeResponse()`）。
+
+这里不需要像 HTTP 侧那样"先派生再删除"：101 上根本没有限流信息，Codex 把限流放在流里。
+
+### 2. 流内事件帧
+
+| 帧类型 | 泄漏什么 | 处置 | 行号 |
+|---|---|---|---|
+| `codex.rate_limits` | `plan_type`、`used_percent`、`window_minutes`、`reset_after_seconds`、`reset_at`、`credits.balance`、`promo` | **重写**为 `{allowed, limit_reached}` | `codex.go:113`、`253` |
+| `codex.response.metadata` | `x-models-etag`、加密的 `x-codex-turn-state`、内部安全模型名 | **整帧丢弃** | `codex.go:118` |
+| `responsesapi.websocket_timing` | `engine_ids`（如 `gpt56sol-codex-a-c321`）、队列深度、每引擎的缓存/非缓存 prompt token 总量 | **整帧丢弃** | `codex.go:123` |
+
+`codex.rate_limits` 是 Codex 版的"十二个 `anthropic-ratelimit-unified-*` 头"——同样的披露，只是到达的位置让 header 白名单完全够不着。保留 `allowed` / `limit_reached` 是因为**被限流的客户端有正当理由知道自己被限流了**，但它没有理由知道是谁的配额、还剩多少、窗口什么时候滚动。
+
+此外，`response.created` / `.in_progress` / `.completed` 上回声的 `response` 对象里有三个字段被删（`codexResponseObjectFields`，`codex.go:132`）：
+
+- **`safety_identifier`** —— 字面就是服务该请求账号的 `user-<chatgpt_user_id>`；
+- `service_tier` —— 该账号解析到的档位；
+- `prompt_cache_retention` —— 我们账号的上游缓存策略。
+
+| 函数 | 用途 | 行号 |
+|---|---|---|
+| `ScrubCodexEvent(frame)` | WS 帧形态；返回 `(要转发的帧, 是否转发)` | `codex.go:163` |
+| `ScrubCodexSSELine(line)` | HTTP/SSE 形态的同一套逻辑，处理 `data: {...}` 行 | `codex.go:197` |
+| `CodexEventDropped(eventType)` | 不做实际工作地判断该类型是否会被整帧丢弃（给指标/日志用） | `codex.go:328` |
+
+三条实现纪律：
+
+1. **热路径先走子串扫描。** 抓到的那一轮 541 帧里有 495 条（**91%**）是 `*.delta`，它们必须只付一次 `bytes.Contains` 的代价，而不是一次 JSON 解析。命中子串后还要用 `codexEventType`（`codex.go:231`）复核 `"type"` 字段，防止类型名出现在工具参数或错误文本里造成误伤。
+2. **无法解析的 `codex.rate_limits` 一律 fail-closed（丢弃）**（`codex.go:260-265`）。这个帧是咨询性的，丢掉不影响进展；而一个未知形状里完全可能带着我们正要删的字段。
+3. **`scrubCodexResponseObject` 是 cc-core 里唯一允许 map 往返的地方**（`codex.go:287`）。map 会重排 key，而 key 顺序只在**我们向上游伪装客户端**时才重要；这里是我们回给自己下游调用方的响应，且每轮只跑 3–4 帧。
+
+### 尚未覆盖
+
+**Codex 方向的 `Retry-After` 合成还没有。** `ensureRetryAfter` 目前只读 `Anthropic-Ratelimit-Unified-*`，而这次抓包里没有出现任何 Codex 的 429，没有可依据的形状（`crack/codexapp0.147.0/SPEC.md` §7）。在拿到一次真实的 Codex 429 之前不要照猜。
+
 ## 已知残留
 
 - **`usage.cache_creation.ephemeral_1h_input_tokens`。** 客户端在自定义 base URL 下只能发裸 `ephemeral`，而 `mimicry` 会把断点升级成 1h（见 [mimicry](Mimicry) 的 cache_control 修补），于是响应里报的是 1h 档的 cache-creation 数字。细心的客户端能据此推断请求被中间层改过。折算回 5m 需要知道客户端原本要什么，是响应清洗层拿不到的状态，且会篡改 fork 自己也在解析的计费数字 —— 记录在案，暂不处理。
@@ -84,6 +146,21 @@ server: cloudflare / server-timing
 
 ## 测试
 
-`downstream/headers_test.go` 直接拿 `crack/cc2224/rows/13` 的**真实完整响应头集合**做输入 —— 过滤的是真货，不是挑出来的子集。`TestScrubbedHeadersAreGoneIndividually` 逐条断言，这样将来某次改动放行了其中一个，失败信息里会直接带上那个头的名字。
+`downstream/headers_test.go` 直接拿 `crack/claudev2.1.224/rows/13` 的**真实完整响应头集合**做输入 —— 过滤的是真货，不是挑出来的子集。`TestScrubbedHeadersAreGoneIndividually` 逐条断言，这样将来某次改动放行了其中一个，失败信息里会直接带上那个头的名字。
 
 `TestScrubIsNearlyNoOpOnGatewayResponse` 反向验证白名单没有过紧：对着我们要模仿的网关响应，清洗应该几乎什么都不做。
+
+Codex 侧在 `downstream/codex_test.go`：
+
+| 测试 | 断言 | 位置 |
+|---|---|---|
+| `TestScrubWSHandshakeHeaders` | 101 只剩 4 个协议头 | `:12` |
+| `TestCopyWSHandshakeHeadersLeavesSrcAndDstAlone` | 不改 `src`、不清洗 `dst` | `:62` |
+| `TestScrubCodexEventRewritesRateLimits` / `…PreservesLimitReached` | 重写成 `{allowed, limit_reached}`，且被限流状态不丢 | `:94,127` |
+| `TestScrubCodexEventDropsUnparseableRateLimits` | 无法解析即 fail-closed | `:158` |
+| `TestScrubCodexEventDropsTelemetryFrames` | 两类遥测帧整帧丢弃 | `:164` |
+| `TestScrubCodexEventStripsResponseObjectFields` | `safety_identifier` / `service_tier` / `prompt_cache_retention` 被删 | `:177` |
+| `TestScrubCodexEventLeavesDeltaFramesUntouched` | delta 帧逐字节不变 | `:211` |
+| `TestScrubCodexEventIgnoresTypeNameInPayload` | 类型名出现在 payload 里不误伤 | `:229` |
+| `TestScrubCodexSSELine` | `data:` 行的前缀/空格/换行保持 | `:246` |
+| `TestWSAllowlistIsSeparateFromHTTPAllowlist` | 两个白名单不得合并 | `:312` |

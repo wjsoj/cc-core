@@ -114,7 +114,7 @@ Main body shape:
 
 ## 2. OAuth login flow (2026-07-31 capture)
 
-The 2026-07-31 session included a **complete fresh `authorization_code` login**, re-anchoring the login path for the first time since cc2214. Observed order:
+The 2026-07-31 session included a **complete fresh `authorization_code` login**, re-anchoring the login path for the first time since claudev2.1.214. Observed order:
 
 ```
 POST platform.claude.com/v1/oauth/token   axios/1.15.2   (token exchange)
@@ -126,7 +126,7 @@ GET  api.anthropic.com/api/claude_cli/bootstrap?entrypoint=cli&model=…  claude
 
 **Token exchange — matches cc-core verbatim.** Body param order confirmed again as `grant_type, code, redirect_uri, client_id, code_verifier, state` (the struct order in `finishAnthropicLogin`), `grant_type=authorization_code`, `client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e`. Headers are exactly `Accept: application/json, text/plain, */*` + `Content-Type: application/json` + `User-Agent: axios/1.15.2` + `Accept-Encoding: gzip, br` — **no `anthropic-beta`, no `anthropic-version`**. Matches `applyAxiosOAuthHeaders`.
 
-**`redirect_uri` is a random loopback port** — `http://localhost:33007/callback` here vs `46473` in the older `crack/login/` capture. The port is chosen per-login by the CLI's temporary callback server, so cc-core pinning its own `54545` is correct: the only requirement is that the authorize and token requests echo the same value. **No change needed.**
+**`redirect_uri` is a random loopback port** — `http://localhost:33007/callback` here vs `46473` in the older `crack/claudev2.1.126-login/` capture. The port is chosen per-login by the CLI's temporary callback server, so cc-core pinning its own `54545` is correct: the only requirement is that the authorize and token requests echo the same value. **No change needed.**
 
 **Post-probe headers are NOT uniform** — the one correction this capture produced:
 
@@ -135,9 +135,9 @@ GET  api.anthropic.com/api/claude_cli/bootstrap?entrypoint=cli&model=…  claude
 | `/api/oauth/profile` | `application/json, text/plain, */*` | `application/json` | **`no-cache`** | axios |
 | `/api/oauth/claude_cli/roles` | `application/json, text/plain, */*` | *(absent)* | *(absent)* | axios |
 
-cc-core sent one identical header set for both, so `profile` was missing `Content-Type` and `Cache-Control`. `doLoginProbe` now takes a per-probe `extra` map; `roles` keeps neither. Response shapes (`account`/`organization`/`application` on profile, `organization_role` etc. on roles) are unchanged from cc2214.
+cc-core sent one identical header set for both, so `profile` was missing `Content-Type` and `Cache-Control`. `doLoginProbe` now takes a per-probe `extra` map; `roles` keeps neither. Response shapes (`account`/`organization`/`application` on profile, `organization_role` etc. on roles) are unchanged from claudev2.1.214.
 
-**Not re-anchored by this capture:** `/v1/oauth/hello`, `/api/hello`, and the `/api/oauth/account/settings` post-probe did not appear in the 64-frame window. Whistle's buffer had already rolled past the start of the login, so this is **absence of evidence, not evidence of absence** — those probes are left exactly as cc2214 established them.
+**Not re-anchored by this capture:** `/v1/oauth/hello`, `/api/hello`, and the `/api/oauth/account/settings` post-probe did not appear in the 64-frame window. Whistle's buffer had already rolled past the start of the login, so this is **absence of evidence, not evidence of absence** — those probes are left exactly as claudev2.1.214 established them.
 
 ## Title/Haiku request
 
@@ -238,7 +238,7 @@ Two consequences that are actionable today:
 1. **Do not "fix" cc-core to send `cch=00000`.** It is what the bundle's source literally contains, but no real request ever carries it — 43/43 captured values (37 at 2.1.220 macOS + 6 at 2.1.220 Linux) are non-zero and distinct. Emitting the placeholder would be a value Anthropic's edge never sees from a genuine client.
 2. cc-core's deterministic seeded-xxhash `cch` remains a **best-effort stand-in**: wrong algorithm, right shape (5 hex, non-zero, unique per request). Keep it until a capture-plus-instrumentation approach (not static analysis) recovers the real one.
 
-Also worth recording from the same function: `cch` and `cc_prev_req` are emitted **only** when the endpoint resolves to `firstParty` (`api.anthropic.com`) or `vertex`. A client pointed at a third-party base URL sends neither — which is exactly why the apikey/gateway path in `crack/apikey/` shows no `cch`.
+Also worth recording from the same function: `cch` and `cc_prev_req` are emitted **only** when the endpoint resolves to `firstParty` (`api.anthropic.com`) or `vertex`. A client pointed at a third-party base URL sends neither — which is exactly why the apikey/gateway path in `crack/claudev2.1.126-apikey/` shows no `cch`.
 
 ## Multi-turn `cc_prev_req`
 

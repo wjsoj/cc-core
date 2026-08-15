@@ -123,7 +123,7 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 	// (X-OpenAI-Internal-Codex-Responses-Lite) then rejects the request with
 	// invalid_request_error ("requires parallel_tool_calls to be false"). Like
 	// sub2api, we now preserve whatever the client sent (present → kept as-is,
-	// absent → left absent). See crack/codex/SPEC.md §5.
+	// absent → left absent). See crack/codexv0.135.0/SPEC.md §5.
 	raw["include"] = []any{"reasoning.encrypted_content"}
 
 	// Fields the backend rejects or that leak through from openai.com-
@@ -336,7 +336,7 @@ func StripThinkingSuffix(model string) string {
 // it requires parallel_tool_calls=false and only accepts function / custom /
 // client-executed-search tools — it rejects server built-ins like
 // image_generation. Callers use this to avoid injecting anything the Lite path
-// would 400 on. See crack/codex/SPEC.md §5.
+// would 400 on. See crack/codexv0.135.0/SPEC.md §5.
 func codexResponsesLiteModel(baseModel string) bool {
 	return strings.HasPrefix(baseModel, "gpt-5.6")
 }

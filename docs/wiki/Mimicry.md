@@ -2,7 +2,7 @@
 
 > [← Wiki 首页](Home) · [架构总览](Architecture)
 
-> 本页所有行号对应 `cc-core` 仓库 `main` 分支当前源码（Claude 目标 `2.1.224`，Codex 目标 `0.147.0`）。
+> 本页所有行号对应 `cc-core` 仓库 `main` 分支当前源码（Claude 目标 `2.1.224`；Codex 默认目标 **Codex Desktop `0.147.0-alpha.6.6`**，CLI profile `codex-tui/0.147.0` 仍可选）。
 
 ## 概览
 
@@ -24,7 +24,7 @@
 | prepared-request 管线（新路径，fail-closed） | `request_policy.go` | `ClassifyClaudeCodeRequest` → `NewClaudeCodeRequestPolicy` → `PrepareClaudeCodeRequest` → `ApplyClaudeCodePreparedRequest` |
 | 身份派生 | `identity.go` | `SimIdentity`、`DeviceIDFor`、`SessionIDFor`、`SessionIDForSource` |
 
-另有两个横切件：`dateline.go`（抹除 Claude Code 在非官方 base URL 下埋入日期句的 3 bit 隐写信标）、`codex.go` + `codex_body.go`（Codex CLI 侧的头/体）。
+另有两个横切件：`dateline.go`（抹除 Claude Code 在非官方 base URL 下埋入日期句的 3 bit 隐写信标）、`codex_identity.go` + `codex.go` + `codex_body.go`（Codex 侧的身份 profile / 头 / 体）。
 
 ---
 
@@ -36,29 +36,29 @@
 
 | 常量 | 值 | 出处 capture | 行号 |
 |---|---|---|---|
-| `CLICurrentVersion` | `2.1.224` | `crack/cc2224/SPEC.md`（2026-08-07 Linux，完整 login→对话链路） | `fingerprint.go:48` |
+| `CLICurrentVersion` | `2.1.224` | `crack/claudev2.1.224/SPEC.md`（2026-08-07 Linux，完整 login→对话链路） | `fingerprint.go:48` |
 | `ClaudeCLIUserAgent` | `claude-cli/2.1.224 (external, cli)` | 同上 | `fingerprint.go:49` |
-| `ClaudeStainlessLang` | `js` | cc2224 SPEC §1（2.1.220→224 未变） | `fingerprint.go:50` |
+| `ClaudeStainlessLang` | `js` | claudev2.1.224 SPEC §1（2.1.220→224 未变） | `fingerprint.go:50` |
 | `ClaudeStainlessRuntime` | `node` | 同上 | `fingerprint.go:43` |
-| `ClaudeStainlessRuntimeV` | `v26.3.0` | 2.1.191 起（Node v24.3.0→v26.3.0），cc2224 复核未变；同时喂给 sidecar 遥测 `env.node_version` | `fingerprint.go:58` |
-| `ClaudeStainlessPackageV` | `0.94.0` | cc2224 SPEC（@anthropic-ai/sdk 0.94.0，未变） | `fingerprint.go:59` |
-| `ClaudeStainlessOS` | `Linux` | **刻意不取自 capture**：cc2220 抓包主机是 `MacOS`（cc2224 恰好是 Linux，但这不构成新约束），SPEC 明确要求不要把抓包主机属性写进合成 host profile | `fingerprint.go:67` |
-| `ClaudeStainlessArch` | `x64` | cc2224 SPEC | `fingerprint.go:68` |
-| `ClaudeStainlessTimeout` | `600` | cc2224 SPEC（main 有；`count_tokens` **无**，后者 2.1.224 未复核） | `fingerprint.go:69` |
-| `ClaudeStainlessRetryCnt` | `0` | cc2224 SPEC | `fingerprint.go:70` |
-| `ClaudeAnthropicVersion` | `2023-06-01` | cc2224 / COMPARE.md（OAuth 与 apikey 相同） | `fingerprint.go:71` |
-| `ClaudeAnthropicBetaFull` | 13 项，`claude-code-20250219,oauth-2025-04-20,interleaved-thinking-…,…,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07` | `crack/cc2220/SPEC.md` §1 + §1a 非 1M 列表（macOS Sonnet 5 20 条 + Linux opus-4-8 5 条，跨两主机两 OS）。**cc2224 未复核**（该次抓包全程 1M，无非 1M 主请求） | `fingerprint.go:102` |
-| `ClaudeAnthropicBeta1M` | 15 项（第 3 位插 `context-1m-2025-08-07`，`effort` 与 `extended-cache-ttl` 之间插 `fallback-credit-2026-06-01`） | `crack/cc2220/SPEC.md` §1a + `crack/cc2224/SPEC.md` §1（opus-5 1M）逐项复核，**两版本两抓包** | `fingerprint.go:116` |
-| `ClaudeAnthropicBetaCountTokens` | 5 项，含独有的 `token-counting-2024-11-01` | `crack/cc2220/SPEC.md` §1b（4 个样本完全一致）。**cc2224 未复核**（无 count_tokens 请求） | `fingerprint.go:125` |
-| `ClaudeReportedBetas` | 9 项，止于 `mid-conversation-system-2026-04-07` | 遥测体（event_logging / datadog），`crack/cc2224/SPEC.md` §3 逐字节复核，2.1.156→2.1.224 未变 | `fingerprint.go:144` |
-| `ClaudeAnthropicBetaApikey` | 8 项，无 `oauth-*` / `advanced-tool-use-*` / `cache-diagnosis-*`，含 `context-1m-2025-08-07` | `crack/apikey/rows/*-POST-…v1_messages`；差集分析见 `crack/COMPARE.md` §3.2 | `fingerprint.go:154` |
-| `ClaudeDefaultCacheTTL` | `1h` | cc2224 主体 system 块（未变） | `fingerprint.go:162` |
+| `ClaudeStainlessRuntimeV` | `v26.3.0` | 2.1.191 起（Node v24.3.0→v26.3.0），claudev2.1.224 复核未变；同时喂给 sidecar 遥测 `env.node_version` | `fingerprint.go:58` |
+| `ClaudeStainlessPackageV` | `0.94.0` | claudev2.1.224 SPEC（@anthropic-ai/sdk 0.94.0，未变） | `fingerprint.go:59` |
+| `ClaudeStainlessOS` | `Linux` | **刻意不取自 capture**：claudev2.1.220 抓包主机是 `MacOS`（claudev2.1.224 恰好是 Linux，但这不构成新约束），SPEC 明确要求不要把抓包主机属性写进合成 host profile | `fingerprint.go:67` |
+| `ClaudeStainlessArch` | `x64` | claudev2.1.224 SPEC | `fingerprint.go:68` |
+| `ClaudeStainlessTimeout` | `600` | claudev2.1.224 SPEC（main 有；`count_tokens` **无**，后者 2.1.224 未复核） | `fingerprint.go:69` |
+| `ClaudeStainlessRetryCnt` | `0` | claudev2.1.224 SPEC | `fingerprint.go:70` |
+| `ClaudeAnthropicVersion` | `2023-06-01` | claudev2.1.224 / COMPARE.md（OAuth 与 apikey 相同） | `fingerprint.go:71` |
+| `ClaudeAnthropicBetaFull` | 13 项，`claude-code-20250219,oauth-2025-04-20,interleaved-thinking-…,…,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07` | `crack/claudev2.1.220/SPEC.md` §1 + §1a 非 1M 列表（macOS Sonnet 5 20 条 + Linux opus-4-8 5 条，跨两主机两 OS）。**claudev2.1.224 未复核**（该次抓包全程 1M，无非 1M 主请求） | `fingerprint.go:102` |
+| `ClaudeAnthropicBeta1M` | 15 项（第 3 位插 `context-1m-2025-08-07`，`effort` 与 `extended-cache-ttl` 之间插 `fallback-credit-2026-06-01`） | `crack/claudev2.1.220/SPEC.md` §1a + `crack/claudev2.1.224/SPEC.md` §1（opus-5 1M）逐项复核，**两版本两抓包** | `fingerprint.go:116` |
+| `ClaudeAnthropicBetaCountTokens` | 5 项，含独有的 `token-counting-2024-11-01` | `crack/claudev2.1.220/SPEC.md` §1b（4 个样本完全一致）。**claudev2.1.224 未复核**（无 count_tokens 请求） | `fingerprint.go:125` |
+| `ClaudeReportedBetas` | 9 项，止于 `mid-conversation-system-2026-04-07` | 遥测体（event_logging / datadog），`crack/claudev2.1.224/SPEC.md` §3 逐字节复核，2.1.156→2.1.224 未变 | `fingerprint.go:144` |
+| `ClaudeAnthropicBetaApikey` | 8 项，无 `oauth-*` / `advanced-tool-use-*` / `cache-diagnosis-*`，含 `context-1m-2025-08-07` | `crack/claudev2.1.126-apikey/rows/*-POST-…v1_messages`；差集分析见 `crack/COMPARE.md` §3.2 | `fingerprint.go:154` |
+| `ClaudeDefaultCacheTTL` | `1h` | claudev2.1.224 主体 system 块（未变） | `fingerprint.go:162` |
 | `ClaudeDefaultCacheScope` | `global` | 同上（倒数第二块） | `fingerprint.go:163` |
-| `ClaudeCodeSystemPrompt` | `You are Claude Code, Anthropic's official CLI for Claude.` | cc2220 system[1]（57B，无 cache_control） | `fingerprint.go:140` |
+| `ClaudeCodeSystemPrompt` | `You are Claude Code, Anthropic's official CLI for Claude.` | claudev2.1.220 system[1]（57B，无 cache_control） | `fingerprint.go:140` |
 | `ClaudeCodePromptPrefixes` | 4 条前缀（Claude Code / Claude Agent SDK / file search specialist / summarizing conversations） | 官方各请求类前缀族 | `fingerprint.go:144-149` |
-| `fingerprintSalt` | `59cf53e54c78`（非导出） | 2.1.198 bundle 静态提取的 `awo`，cc2220 静态分析再确认 | `body.go:49` |
-| `cchSeed` | `0x6E52736AC806831E`（非导出） | **不是真实算法**：cc2220 37/37 样本 0 命中，legacy best-effort | `body.go:53` |
-| `claudeBillingHeaderPrefix` | `x-anthropic-billing-header` | cc2220「Billing…」节 | `body.go:74` |
+| `fingerprintSalt` | `59cf53e54c78`（非导出） | 2.1.198 bundle 静态提取的 `awo`，claudev2.1.220 静态分析再确认 | `body.go:49` |
+| `cchSeed` | `0x6E52736AC806831E`（非导出） | **不是真实算法**：claudev2.1.220 37/37 样本 0 命中，legacy best-effort | `body.go:53` |
+| `claudeBillingHeaderPrefix` | `x-anthropic-billing-header` | claudev2.1.220「Billing…」节 | `body.go:74` |
 | `claudeEntrypointMarker` | `cc_entrypoint=` | 同上；值可为 `cli` / `sdk-cli` | `body.go:75` |
 
 关于 beta 列表还有两条容易踩的规则：
@@ -66,16 +66,40 @@
 - **1M 列表不会被自动选中。** 请求体里没有任何 1M 标记（`[1m]` 只出现在遥测的 `event_data.model`），所以 cc-core 无法推断上下文模式；导出 `ClaudeAnthropicBeta1M` 只是让 fork 在提供显式 "1M 模式" 时不必手搓（`fingerprint.go:88-93`）。
 - **`ClaudeReportedBetas` 与 `ClaudeAnthropicBetaFull` 语义分离**，即便某个版本上前者恰好是后者的前缀，也不要合并——请求 beta 与遥测 beta 沿不同轴变化（`fingerprint.go:113-115`）。
 
-### Codex 侧（`mimicry/codex.go`）
+### Codex 侧
+
+**Codex 有两个真实客户端，不是同一客户端的两个版本。** `CodexClientProfile`（`codex_identity.go:75`）把 `Originator` / `UserAgent` / `Version` / `BetaFeatures` / `ModelsClientVersion` / `SendsTurnMetadata` 绑成一个整体：后端会交叉校验 originator 与 UA 的首段，**跨 profile 混字段会 404**。
+
+| profile | 变量 | 出处 |
+|---|---|---|
+| **Codex Desktop（默认）** | `CodexDesktopClientProfile`（`codex_identity.go:95`），由 `DefaultCodexProfile()`（`codex_identity.go:118`）返回 | `crack/codexapp0.147.0/`（2026-08-14 实抓，293 HTTP session + 541 WS 帧，含完整登录） |
+| codex-tui（CLI） | `CodexTUIClientProfile`（`codex_identity.go:106`） | `crack/codexv0.135.0/`（2026-05-30 实抓）+ codex-rs 0.147.0 源码核对 |
+
+#### Desktop 常量（`mimicry/codex_identity.go`）
+
+| 常量 | 值 | 出处 / 陷阱 | 行号 |
+|---|---|---|---|
+| `CodexDesktopVersion` | `0.147.0-alpha.6.6` | `crack/codexapp0.147.0/SPEC.md` §1。**是 pre-release 串，不要"清理"成 `0.147.0`**：后端会解析该字段（低于版本下限直接 404），且 version 与 UA 不一致本身就是一个单头破绽 | `codex_identity.go:41` |
+| `CodexDesktopBuild` | `26.803.81509` | 只出现在 UA 末尾括号里与 analytics-events 的 `app_server_client.client_version`；**不是 semver，也不等于 `CodexDesktopVersion`**（后者是 codex-rs core 版本，同一 body 里报为 `runtime.codex_rs_version`） | `codex_identity.go:48` |
+| `CodexDesktopOriginator` | `Codex Desktop`（**中间有空格**，不是 `codex-desktop`） | SPEC §1 陷阱 1 | `codex_identity.go:50` |
+| `CodexDesktopUserAgent` | `Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)` | 模板同 codex-rs 的 `get_codex_user_agent()`；OS/终端段是我们的合成身份 | `codex_identity.go:56` |
+| `CodexDesktopBetaFeatures` | `remote_compaction_v2` | `x-codex-beta-features` 的值。**每个 release 都漂移且不可推导**（0.135.0 CLI 是 `terminal_resize_reflow`），bump 必须重抓 | `codex_identity.go:62` |
+| `CodexDesktopModelsClientVersion` | `0.147.0` | `GET /backend-api/codex/models?client_version=` 用的是**基础版本**，而同一请求的 `version` 头带完整 pre-release 串。这是真实客户端自己的不一致，SPEC §1 明确要求**复现而不是调和** | `codex_identity.go:69` |
+
+#### CLI / 共享常量（`mimicry/codex.go`）
 
 | 常量 | 值 | 出处 capture | 行号 |
 |---|---|---|---|
-| `CodexCLIVersion` | `0.147.0` | `crack/codex/SPEC.md`「2026-08-08」节：0.135.0 实抓模板 + 对 codex-rs 0.147.0 源码核对 | `codex.go:45` |
-| `CodexCLIUserAgent` | `codex-tui/0.147.0 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.147.0)` | 模板取自 0.135.0 实抓，并与 0.147.0 的 `get_codex_user_agent()` 逐段核对；OS/终端段是我们自己的合成身份 | `codex.go:46` |
-| `CodexOriginator` | `codex-tui` | `crack/codex/rows/01`（WS 握手头） | `codex.go:37` |
-| `CodexRoutingHintHeader` | `x-codex-routing-hint` | 真实 Codex 对 ChatGPT-OAuth 请求（HTTP 与 WS both）必发，值为 `model=<上游模型>[;tier=priority\|flex]`；缺失会导致部分模型解析失败（openai/codex#31967） | `codex.go:58` |
-| ~~`CodexOpenAIBeta`~~ | **已删除** | 0.147.0 源码中 `responses=experimental` 不存在；HTTP 路径不发 `OpenAI-Beta`，只有 WS 握手发 `responses_websockets=2026-02-06` | — |
-| `CodexUsageUserAgent` | `= CodexCLIUserAgent` | `crack/codex/SPEC.md`「GET /backend-api/wham/usage」：CLI 用自己的 UA，不是浏览器 UA | `codex.go:82` |
+| `CodexCLIVersion` | `0.147.0` | `crack/codexv0.135.0/SPEC.md`「2026-08-08」节：0.135.0 实抓模板 + codex-rs 0.147.0 源码核对 | `codex.go:57` |
+| `CodexCLIUserAgent` | `codex-tui/0.147.0 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.147.0)` | 同上 | `codex.go:58` |
+| `CodexOriginator` | `codex-tui` | `crack/codexv0.135.0/rows/01`（WS 握手头） | `codex.go:59` |
+| `CodexCLIBetaFeatures` | `terminal_resize_reflow` | 0.135.0 的 CLI 值，**0.147.0 未复核**；Desktop 在同版本发的是另一个值，所以它只对 CLI profile 成立 | `codex.go:66` |
+| `CodexSessionIDHeader` | `session-id` | **连字符、全小写**。cc-core 曾连续两代抓包都发 `Session_id`（Go 的 header canonicalization 不动下划线，于是原样上线）；`crack/codexv0.135.0/rows/01` 与 `crack/codexapp0.147.0/rows/10` 都显示真实值是 `session-id` | `codex.go:76` |
+| `CodexRoutingHintHeader` | `x-codex-routing-hint` | 值为 `model=<上游模型>[;tier=priority\|flex]`；缺失会导致部分模型解析失败（openai/codex#31967）。**仅 HTTP 路径**，见下 | `codex.go:95` |
+| ~~`CodexOpenAIBeta`~~ | **已删除** | 0.147.0 源码中 `responses=experimental` 不存在；HTTP 路径不发 `OpenAI-Beta`，只有 WS 握手发 `responses_websockets=2026-02-06`（`codexws.CodexOpenAIBetaWS`） | — |
+| `CodexUsageUserAgent` | `= CodexCLIUserAgent` | `crack/codexv0.135.0/SPEC.md`「GET /backend-api/wham/usage」：CLI 用自己的 UA，不是浏览器 UA。该探针是 CLI 自己调用的，所以保持 CLI UA | `codex.go:244` |
+
+> **被新抓包推翻的旧表述**：本页此前写"`x-codex-routing-hint` 真实 Codex 在 **HTTP 与 WS both** 必发"。那是对 codex-rs `build_websocket_headers` 的源码阅读，**两代抓包都不支持**：`crack/codexv0.135.0/rows/01` 与 `crack/codexapp0.147.0/rows/10` 的 upgrade 各发 18 个头，routing hint 不在其中，CLIProxyAPI 也从不发它。`codexws` 已停发；HTTP 路径保留（那边源码阅读没有被反证，而且两个被抓到的客户端都走 WebSocket，HTTP 路径根本没有抓包）。
 
 ---
 
@@ -125,11 +149,11 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 | 路径以 `/v1/messages/count_tokens` 结尾（`headers.go:49`） | `ClaudeAnthropicBetaCountTokens` |
 | 其余（OAuth 主请求） | `ClaudeAnthropicBetaFull` |
 
-> `count_tokens` 是独立请求类：短 beta 列表 **且** 无 `X-Stainless-Timeout`，两个差异必须同时复现（cc2220 SPEC §1b 称之为"最容易搞错的一处"）。判定统一走 `isCountTokensRequest`（`headers.go:22-26`），`forcePinnedClaudeCodeProfile` 也用它——否则 pin 阶段会把刚刚故意省略的 timeout 又加回来。apikey 路径不受此影响（没有 apikey 的 `count_tokens` capture）。
+> `count_tokens` 是独立请求类：短 beta 列表 **且** 无 `X-Stainless-Timeout`，两个差异必须同时复现（claudev2.1.220 SPEC §1b 称之为"最容易搞错的一处"）。判定统一走 `isCountTokensRequest`（`headers.go:22-26`），`forcePinnedClaudeCodeProfile` 也用它——否则 pin 阶段会把刚刚故意省略的 timeout 又加回来。apikey 路径不受此影响（没有 apikey 的 `count_tokens` capture）。
 
 ### beta 向量的加法修补（`mimicry/beta.go`）
 
-反代收到的是**自定义 base URL 形态**的请求（`crack/thirdparty/SPEC.md`），它的 beta 向量结构性地少了 5 项——客户端没有 Anthropic 账号，声明不了：
+反代收到的是**自定义 base URL 形态**的请求（`crack/claudev2.1.226-inbound/SPEC.md`），它的 beta 向量结构性地少了 5 项——客户端没有 Anthropic 账号，声明不了：
 
 ```
 oauth-2025-04-20 · advisor-tool-2026-03-01 · advanced-tool-use-2025-11-20
@@ -153,9 +177,9 @@ extended-cache-ttl-2025-04-11 · cache-diagnosis-2026-04-07
 
 | capture | blocks | 断点形态 |
 |---|---|---|
-| OAuth 主请求（`cc2224/rows/13`） | 4 | `[-, -, ephemeral+1h+global, ephemeral+1h]` |
-| 第三方主请求（`thirdparty/rows/01`） | 3 | `[-, ephemeral, ephemeral]` |
-| 第三方标题请求（`thirdparty/rows/02`） | 3 | 全无断点 |
+| OAuth 主请求（`claudev2.1.224/rows/13`） | 4 | `[-, -, ephemeral+1h+global, ephemeral+1h]` |
+| 第三方主请求（`claudev2.1.226-inbound/rows/01`） | 3 | `[-, ephemeral, ephemeral]` |
+| 第三方标题请求（`claudev2.1.226-inbound/rows/02`） | 3 | 全无断点 |
 
 两侧**断点位置规则相同**（最后两块），块数差异来自内容（OAuth 那次多一段追加的 system），不是模式差异。所以修补规则是：
 
@@ -212,18 +236,18 @@ func ApplyClaudeCodeBodyMimicry(body []byte, model string, id SimIdentity) []byt
 `computeClaudeCodeFingerprint`（`body.go:351`）复刻真实 CLI 的 `xtf`/`awo`：
 
 1. 取**第一条非 meta user 消息**的第一个 text（`extractFirstUserText`，`body.go:372`；以 `<system-reminder>` 开头的 block 被跳过，对应 CLI 的 `!isMeta`，`body.go:370`、`body.go:406-408`）。
-2. 按 **JavaScript UTF-16 code unit** 取下标 `[4, 7, 20]`，不足补 `'0'`（`body.go:353-362`）。emoji 场景下 rune 索引会算错，cc2220 SPEC 明确验证过这点。
+2. 按 **JavaScript UTF-16 code unit** 取下标 `[4, 7, 20]`，不足补 `'0'`（`body.go:353-362`）。emoji 场景下 rune 索引会算错，claudev2.1.220 SPEC 明确验证过这点。
 3. `sha256(fingerprintSalt + chars + version)`，取 hex 前 3 位。
 
 ### `cch` 的现状
 
-cc2220 对 2.1.220 bundle 做了穷尽静态搜索：JS 层只发字面占位 `cch=00000`，全 bundle 里 `cc_version=` 和 `cc_prev_req` 各出现 **1** 次（同一个 builder `k7n`），没有任何替换代码，也没有对应的 native 符号——真正的替换发生在 JS 之下的私有请求栈。
+claudev2.1.220 对 2.1.220 bundle 做了穷尽静态搜索：JS 层只发字面占位 `cch=00000`，全 bundle 里 `cc_version=` 和 `cc_prev_req` 各出现 **1** 次（同一个 builder `k7n`），没有任何替换代码，也没有对应的 native 符号——真正的替换发生在 JS 之下的私有请求栈。
 
 结论落到代码上（`body.go:36-45`）：
 
 - **不要**把实现"修正"成发 `00000`。43/43 真实样本全为非零且互不相同，占位值是真客户端永远不会上线的形态。`TestCCHIsNeverPlaceholder`（`body_test.go:375`）守着这条。
-- 现有 seeded-xxhash 是 **legacy best-effort**：算法错、形状对（5 hex、非零、每请求唯一）。cc2220 上 0/37 命中。
-- `cch` 与 `cc_prev_req` 只在 endpoint 解析为 `firstParty`/`vertex` 时出现——这正是 `crack/apikey/` 路径看不到 `cch` 的原因。
+- 现有 seeded-xxhash 是 **legacy best-effort**：算法错、形状对（5 hex、非零、每请求唯一）。claudev2.1.220 上 0/37 命中。
+- `cch` 与 `cc_prev_req` 只在 endpoint 解析为 `firstParty`/`vertex` 时出现——这正是 `crack/claudev2.1.126-apikey/` 路径看不到 `cch` 的原因。
 
 ---
 
@@ -440,28 +464,56 @@ body 装载走 `installPreparedBody`（`:457-464`）：`bytes.Clone` 后同时�
 
 Codex 侧和 Claude 侧结构相似但**没有 prepared 管线**，也没有计费块 / 身份派生这一套。
 
-### 头（`ApplyCodexCLIHeaders`，`codex.go:58`）
+### 头（HTTP 路径：`ApplyCodexCLIHeaders` / `ApplyCodexHeadersWithProfile`）
 
 ```go
-func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCompact bool)
+func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCompact bool, model, serviceTier string)   // codex.go:191
+func ApplyCodexHeadersWithProfile(req *http.Request, p CodexClientProfile, accessToken, accountID string,
+                                  isCompact bool, model, serviceTier string)                                             // codex.go:198
 ```
+
+`ApplyCodexCLIHeaders` 保留原名与原签名（两个 fork 按位置调用），现在只是**带着 `DefaultCodexProfile()`（Desktop）委托**给 `ApplyCodexHeadersWithProfile`。名字里的 "CLI" 已经是历史遗留。
 
 | Header | 值 | 备注 | 行号 |
 |---|---|---|---|
-| `Authorization` | `Bearer <accessToken>` | 强制 | `:59` |
-| `Content-Type` | `application/json` | | `:60` |
-| `Accept` | `application/json`（compact）/ `text/event-stream` | | `:61-65` |
+| `Authorization` | `Bearer <accessToken>` | 强制 | `codex.go:199` |
+| `Content-Type` | `application/json` | | `codex.go:200` |
+| `Accept` | `application/json`（compact）/ `text/event-stream` | | `codex.go:201-205` |
 | `OpenAI-Beta` | **不发送** | HTTP 路径不设；客户端自带的值原样保留。WS 用 `responses_websockets=2026-02-06` | — |
-| `x-codex-routing-hint` | `model=<模型>[;tier=…]` | 仅在有模型名时设置，设置前先 `Del` 以免重试残留上一次的模型 | `:145` |
-| `Accept-Encoding` | `identity` | **传输必要性，非 capture 指纹** —— 保证 SSE 与 4xx 错误体端到端可读 | `:67` |
-| `Connection` | `Keep-Alive` | | `:68` |
-| `Session_id` | 每请求新 UUID | | `:69` |
-| `Version` | `0.147.0` | | `:152` |
-| `Originator` | `codex-tui` | | `:71` |
-| `User-Agent` | `CodexCLIUserAgent` | **强制覆盖**——转发 `curl/8.x` 会被 Cloudflare 边缘 403 | `:72` |
-| `Chatgpt-Account-Id` | `accountID`（非空时） | | `:73-75` |
+| `x-codex-routing-hint` | `model=<模型>[;tier=…]` | 仅在有模型名时设置，设置前先 `Del` 以免重试残留上一次的模型 | `codex.go:208-211` |
+| `Accept-Encoding` | `identity` | **传输必要性，非 capture 指纹** —— 保证 SSE 与 4xx 错误体端到端可读 | `codex.go:212` |
+| `Connection` | `Keep-Alive` | | `codex.go:213` |
+| **`session-id`** | 每请求新 UUID | 先 `Del("Session_id")` 清掉历史拼写，再用**非规范 map 键**写入（`setCodexHeader`，`codex.go:236`）。`Header.Set` 会把它重新规范成 `Session-Id` | `codex.go:216-217` |
+| `Version` | `p.Version`（默认 `0.147.0-alpha.6.6`） | | `codex.go:218` |
+| `Originator` | `p.Originator`（默认 `Codex Desktop`） | | `codex.go:219` |
+| `User-Agent` | `p.UserAgent` | **强制覆盖**——转发 `curl/8.x` 会被 Cloudflare 边缘 403 | `codex.go:220` |
+| `Chatgpt-Account-Id` | `accountID`（非空时） | | `codex.go:221-223` |
 
-**刻意不复制**的 WS/TUI-only 头（`codex.go:24-29`）：`x-codex-turn-metadata`（含 workspace + git 状态）、`x-codex-window-id`、`x-codex-beta-features`、`thread-id`。代理没有真实 workspace/window，伪造比省略更像假的。
+> **`Session_id` → `session-id` 是本轮最便宜也最重要的修复。** Go 只在 `Header.Set` 时做规范化，而下划线不在规范化范围内，所以旧代码把一个**没有任何真实客户端会发的头名**原样送上了线。写要走 `setCodexHeader`（裸 map 赋值），**断言也必须用原始 map 键**（`req.Header["session-id"]`）而不是 `Header.Get`——后者会把两种拼写都命中，测试会假绿（回归测试 `TestApplyCodexCLIHeadersSessionIDHeaderName`，`codex_headers_test.go:46`）。
+
+> **被新抓包推翻的旧表述**：本页此前写"`x-codex-turn-metadata` / `x-codex-window-id` / `x-codex-beta-features` / `thread-id` 是 WS/TUI-only，代理没有真实 workspace/window，伪造比省略更像假的"。**在 0.135.0 上这句是对的**——那一代的 `x-codex-turn-metadata` 带一个 `workspaces` map，内含用户 cwd、git remote URL、commit hash 与 dirty 标志，代理确实伪造不了。`crack/codexapp0.147.0/rows/10` 显示 0.147.0 Desktop **已经删掉了那个 map**（workspace 状态搬到了 turn 变体上的一个 `workspace_kind` 字符串），握手变体里只剩代理本就合法拥有的 id。于是这五个头**在 WS 握手上改为发送**（HTTP 路径仍不发，那边没有任何抓包支持）。
+
+### Codex 身份派生（`mimicry/codex_identity.go`）
+
+与 Claude 侧一样是内容寻址的，但换了一套 ID 形态：
+
+| 函数 | 语义 | 行号 |
+|---|---|---|
+| `CodexInstallationIDFor(accountKey)` | `sha256("cc-core-codex-installation/" + accountKey)` → UUID。真实 Codex 装机时随机一次并终身复用；我们按**账号**派生，**绝不按 client token** —— 后者会把一个 ChatGPT 账号呈现成 N 台机器，正好是真实形态的反面 | `codex_identity.go:142` |
+| `NewCodexSessionUUID()` | 现铸一个 **UUIDv7** | `codex_identity.go:153` |
+| `CodexSessionUUIDFor(anchor, startedAt)` | 稳定的 UUIDv7：前 48 bit 是 `startedAt` 的 Unix 毫秒，随机尾部由 anchor 派生。`startedAt` 必须是调用方能对同一会话复现的时刻——传 `time.Now()` 会每请求换 id 而毁掉粘性 | `codex_identity.go:174` |
+| `CodexWindowID(sessionID)` | `"<session>:0"`，代理每会话只有一个逻辑窗口 | `codex_identity.go:268` |
+| `NewCodexHandshakeMetadata(installationID, sessionID, threadID)` | 握手（`prewarm`）变体的 `x-codex-turn-metadata` | `codex_identity.go:249` |
+| `CodexTurnMetadata.Encode()` | 按抓包顺序**逐字段**写 JSON（`installation_id, session_id, thread_id, turn_id, window_id, request_kind, thread_source, sandbox`），不 marshal map——map 会被 Go 按字母序重排，而 key 顺序是形状的一部分。`turn_id` **存在且为空串**，不是缺席 | `codex_identity.go:284` |
+
+两条必须记住的不变式（`crack/codexapp0.147.0/SPEC.md` §2.1）：
+
+- **全部是 UUIDv7，不是 v4。** 版本 nibble 在字符串里肉眼可见，铸 v4 是一个能穿透其余所有伪装层的破绽。
+- `x-client-request-id == session-id == thread-id`（全新 thread 上），`x-codex-window-id == "<session-id>:0"`。它们**不是四个独立值**。
+
+### WS 握手（见 [Transports](Transports) → codexws）
+
+握手头由 `codexws.BuildUpstreamHeadersWithOptions` 构造，本包只提供 profile 与 id 派生。要点：18 个头、固定顺序、`session-id` 连字符、无 `x-codex-routing-hint`、`openai-beta: responses_websockets=2026-02-06`。
 
 ### 体（`SanitizeCodexRequestBody`，`codex_body.go:97`）
 
@@ -473,7 +525,7 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 | 强制 `stream=true` | 后端只用 SSE 发 completed；非流式客户端在我们这侧聚合 | `:117` |
 | 强制 `store=false` | | `:120` |
 | 强制 `include=["reasoning.encrypted_content"]` | | `:127` |
-| **`parallel_tool_calls` 原样透传** | 曾硬编码 `true`，会打掉 gpt-5.6 需要的 `false` → Responses-Lite 报 invalid_request_error（`crack/codex/SPEC.md` §5） | `:121-126` |
+| **`parallel_tool_calls` 原样透传** | 曾硬编码 `true`，会打掉 gpt-5.6 需要的 `false` → Responses-Lite 报 invalid_request_error（`crack/codexv0.135.0/SPEC.md` §5） | `:121-126` |
 | 删字段 | `prompt_cache_retention`、`safety_identifier`、`stream_options`、`max_output_tokens`、`max_completion_tokens`、`temperature`、`top_p`、`truncation`、`user`、`context_management` | `:135-148` |
 | **保留 `previous_response_id`** | Codex CLI 靠它串多轮；剥掉会让每轮冷启动并可能触发 CF 限流突刺 | `:130-134` |
 | `service_tier` | 只留 `priority`，其余删 | `:151-153` |
@@ -492,9 +544,9 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 
 | 维度 | Claude | Codex |
 |---|---|---|
-| 身份锚 | `SimIdentity` → device/session 内容寻址 | 无；只有 `Chatgpt-Account-Id` + 每请求随机 `Session_id` |
+| 身份锚 | `SimIdentity` → device/session 内容寻址 | `Chatgpt-Account-Id` + `CodexInstallationIDFor`（按账号）+ UUIDv7 session/thread/window（HTTP 路径上 `session-id` 仍是每请求现铸） |
 | 计费块 | `system[0]` 的 `x-anthropic-billing-header` | 无 |
-| beta | `Anthropic-Beta`，随请求类/上下文模式变化 | `OpenAI-Beta` 单值常量 |
+| beta | `Anthropic-Beta`，随请求类/上下文模式变化 | HTTP 路径**不发** `OpenAI-Beta`；只有 WS 握手发单值常量，另有 `x-codex-beta-features` 随 release 漂移 |
 | `Accept-Encoding` | `gzip, br`（复刻 capture） | `identity`（传输需要，非指纹） |
 | body 策略 | **注入**（system、cache 断点、metadata） | **收窄**（删字段、白名单、归一） |
 | fail-closed 管线 | 有（prepared-request） | 无 |
@@ -505,33 +557,39 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 
 | capture 目录 | 锚定的常量 / 行为 |
 |---|---|
-| `crack/cc2220/SPEC.md` §「Client environment」+「Main /v1/messages request」 | `CLICurrentVersion`、`ClaudeCLIUserAgent`、`ClaudeStainless{Lang,Runtime,RuntimeV,PackageV,Arch,Timeout,RetryCnt}`、`ClaudeAnthropicVersion` |
-| `crack/cc2220/SPEC.md` §1a（2026-07-31 Linux，双模式同会话） | `ClaudeAnthropicBetaFull`（13 项非 1M）、`ClaudeAnthropicBeta1M`（15 项，单样本） |
-| `crack/cc2220/SPEC.md` §1b（4 个 count_tokens 样本） | `ClaudeAnthropicBetaCountTokens`、`headers.go:52` 的路径判定、`headers.go:89-92` 的 timeout 省略 |
-| `crack/cc2220/SPEC.md` §「Billing, fingerprint suffix, and cch」+「cch 穷尽静态分析」 | `fingerprintSalt`、`computeClaudeCodeFingerprint` 的 UTF-16 `[4,7,20]` 语义、`cchSeed` 被标注为 legacy、`cch`/`cc_prev_req` 仅 firstParty 出现（→ prepared 管线的拒收规则） |
-| `crack/cc2220/SPEC.md` §「Identity and session invariants」 | 头 `X-Claude-Code-Session-Id` 与 `metadata.user_id.session_id` 必须 37/37 一致 → `ApplyClaudeCodePreparedRequest` 用同一个 `result.sessionID` 同时写头与体 |
-| `crack/cc2220/SPEC.md` §「Multi-turn cc_prev_req」+ `chain-redacted.json` | 证明 `cc_prev_req` = 上一条 main 响应的 `request-id`（main 9/9、prompt-suggestion 6/6）→ 代理无状态、不合成 |
-| `crack/cc2220/SPEC.md` §「Title/Haiku request」 | Haiku/title 是独立请求类（9 项 beta、三块 system、`thinking:disabled`）→ `body.go:100` 对 haiku 整体跳过，代理不合成 title 调用 |
-| `crack/cc2220/ANALYSIS.md` | capture 的完整性、cch 验证（0/37）、指纹后缀验证（UTF-16 通过 / rune 在 emoji 上失败）、多轮链验证的原始结论 |
-| `crack/cc2214/SPEC.md` §3 | `ClaudeReportedBetas` 的 9 项 1M 变体（sidecar 遥测用） |
-| `crack/apikey/rows/*-POST-…v1_messages` | `ClaudeAnthropicBetaApikey` |
+| `crack/claudev2.1.220/SPEC.md` §「Client environment」+「Main /v1/messages request」 | `CLICurrentVersion`、`ClaudeCLIUserAgent`、`ClaudeStainless{Lang,Runtime,RuntimeV,PackageV,Arch,Timeout,RetryCnt}`、`ClaudeAnthropicVersion` |
+| `crack/claudev2.1.220/SPEC.md` §1a（2026-07-31 Linux，双模式同会话） | `ClaudeAnthropicBetaFull`（13 项非 1M）、`ClaudeAnthropicBeta1M`（15 项，单样本） |
+| `crack/claudev2.1.220/SPEC.md` §1b（4 个 count_tokens 样本） | `ClaudeAnthropicBetaCountTokens`、`headers.go:52` 的路径判定、`headers.go:89-92` 的 timeout 省略 |
+| `crack/claudev2.1.220/SPEC.md` §「Billing, fingerprint suffix, and cch」+「cch 穷尽静态分析」 | `fingerprintSalt`、`computeClaudeCodeFingerprint` 的 UTF-16 `[4,7,20]` 语义、`cchSeed` 被标注为 legacy、`cch`/`cc_prev_req` 仅 firstParty 出现（→ prepared 管线的拒收规则） |
+| `crack/claudev2.1.220/SPEC.md` §「Identity and session invariants」 | 头 `X-Claude-Code-Session-Id` 与 `metadata.user_id.session_id` 必须 37/37 一致 → `ApplyClaudeCodePreparedRequest` 用同一个 `result.sessionID` 同时写头与体 |
+| `crack/claudev2.1.220/SPEC.md` §「Multi-turn cc_prev_req」+ `chain-redacted.json` | 证明 `cc_prev_req` = 上一条 main 响应的 `request-id`（main 9/9、prompt-suggestion 6/6）→ 代理无状态、不合成 |
+| `crack/claudev2.1.220/SPEC.md` §「Title/Haiku request」 | Haiku/title 是独立请求类（9 项 beta、三块 system、`thinking:disabled`）→ `body.go:100` 对 haiku 整体跳过，代理不合成 title 调用 |
+| `crack/claudev2.1.220/ANALYSIS.md` | capture 的完整性、cch 验证（0/37）、指纹后缀验证（UTF-16 通过 / rune 在 emoji 上失败）、多轮链验证的原始结论 |
+| `crack/claudev2.1.214/SPEC.md` §3 | `ClaudeReportedBetas` 的 9 项 1M 变体（sidecar 遥测用） |
+| `crack/claudev2.1.126-apikey/rows/*-POST-…v1_messages` | `ClaudeAnthropicBetaApikey` |
 | `crack/COMPARE.md` §3.2–3.5 | OAuth vs apikey 的 beta 三项差集（`oauth-2025-04-20` / `advanced-tool-use-2025-11-20` / `cache-diagnosis-2026-04-07`）、system 块数差异（4 vs 3）、cache_control 分层差异 —— 解释了 `headers.go:63-68` 为什么必须分 kind 选表 |
-| `crack/codex/SPEC.md`「Original 0.135.0 capture」 | `CodexOriginator`、UA/Version 头格式、`CodexUsageUserAgent` |
-| `crack/codex/SPEC.md` 2026-08-08 节 | `CodexCLIVersion`/`CodexCLIUserAgent` 提升到 `0.147.0`，删除 HTTP 的 `OpenAI-Beta`，新增 `x-codex-routing-hint`（依据 codex-rs 0.147.0 源码） |
-| `crack/codex/SPEC.md` §5 | `parallel_tool_calls` 透传、`/compact` 白名单 4→8 字段、`codexResponsesLiteModel` 跳过 `image_generation` |
+| `crack/codexv0.135.0/SPEC.md`「Original 0.135.0 capture」 | `CodexOriginator`、`CodexCLIBetaFeatures`、UA/Version 头格式、`CodexUsageUserAgent` |
+| `crack/codexv0.135.0/SPEC.md` 2026-08-08 节 | `CodexCLIVersion`/`CodexCLIUserAgent` 提升到 `0.147.0`，删除 HTTP 的 `OpenAI-Beta`，新增 `x-codex-routing-hint`（依据 codex-rs 0.147.0 源码；WS 侧的那一半已被 codexapp0.147.0 推翻） |
+| `crack/codexv0.135.0/SPEC.md` §5 | `parallel_tool_calls` 透传、`/compact` 白名单 4→8 字段、`codexResponsesLiteModel` 跳过 `image_generation` |
+| `crack/codexapp0.147.0/SPEC.md` §1 | 全部 `CodexDesktop*` 常量、`DefaultCodexProfile()` 返回 Desktop、`ModelsClientVersion` 与 `version` 头的刻意不一致 |
+| `crack/codexapp0.147.0/SPEC.md` §2.1 + `rows/10` | `CodexSessionIDHeader = "session-id"`、握手 18 头与固定顺序、UUIDv7 三 id 相等、握手上**没有** `x-codex-routing-hint` |
+| `crack/codexapp0.147.0/SPEC.md` §2.2 + `rows/10` | `CodexTurnMetadata` 字段与顺序、`turn_id` 存在且为空、0.135.0 的 `workspaces` map 已消失（五个握手头得以放行的直接依据） |
+| `crack/codexapp0.147.0/SPEC.md` §5 | `auth.applyCodexTokenEndpointHeaders`（`accept: */*`、无 User-Agent）、access_token claims 回退 |
+| `crack/codexapp0.147.0/SPEC.md` §2.3 | **两条尚未对齐的 body 规则**：`codex_body.go` 仍删 `stream_options`、仍把 `instructions` 兜底成 `""`，而真实 lite 帧发前者、无后者。未改动，因为抓包丢失了 turn 首帧（README §2） |
+| `crack/codexapp0.147.0/SPEC.md` §4 | `use_responses_lite` 才是权威判据；`codex_body.go` 现在按 `gpt-5.6` 前缀推断，`codex-auto-review` 已是反例 |
 | （无 capture，来自 2.1.197 bundle 反编译） | `dateline.go` 的 `rdp`/`odp`/`qla` 三函数语义与四种撇号码点 |
 
 ---
 
 ## 版本升级 checklist
 
-以下步骤对应 `crack/README.md`「Bumping a fingerprint target」与 `crack/cc2220/SPEC.md`「cc-core edit checklist」，是**可直接执行**的顺序。
+以下步骤对应 `crack/README.md`「Bumping a fingerprint target」与 `crack/claudev2.1.220/SPEC.md`「cc-core edit checklist」，是**可直接执行**的顺序。
 
 ### A. Claude Code 版本升级（如 2.1.220 → 2.1.2xx）
 
 1. **抓包**：whistle 起代理，`NODE_EXTRA_CA_CERTS` 指向 whistle CA（**不要**关 TLS 校验），跑一次完整会话：全新登录 → bootstrap → ≥10 个独立首轮 → 一段 ≥10 轮的连续对话。导出 dump JSON。
-2. **抽取**：`python3 crack/scripts/extract_live.py <dump.json> crack/cc<ver>/rows`。原始 dump 永不入库。
-3. **写 SPEC**：`crack/cc<ver>/SPEC.md`，以"相对上一目标的 diff + cc-core 编辑清单"格式撰写。至少覆盖：client environment、main 请求头/beta/body、`count_tokens` 类、title/quota 类、billing/cch、identity 不变式、telemetry、startup 面。
+2. **抽取**：`python3 crack/scripts/extract_live.py <dump.json> crack/claudev<ver>/rows`。原始 dump 永不入库。
+3. **写 SPEC**：`crack/claudev<ver>/SPEC.md`，以"相对上一目标的 diff + cc-core 编辑清单"格式撰写。至少覆盖：client environment、main 请求头/beta/body、`count_tokens` 类、title/quota 类、billing/cch、identity 不变式、telemetry、startup 面。
 4. **改常量（一次性全改，不要分批）**——`mimicry/fingerprint.go`：
    - `CLICurrentVersion`（`:40`）与 `ClaudeCLIUserAgent`（`:41`）**必须同版本号**。
    - `ClaudeStainlessRuntimeV`（`:48`）/ `ClaudeStainlessPackageV`（`:49`）如 capture 有变则同步；注意 `RuntimeV` 同时喂 sidecar 遥测 `env.node_version`。
@@ -542,18 +600,22 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 5. **改 body/header 形状**（如 capture 显示布局变了）：`body.go:272` 的 system 断点分层、`body.go:485` 的 message 断点位置、`headers.go` 的请求类分支。
 6. **同步 sidecar**：`sidecar/sidecar.go` 的 `ccBuildTime`（capture 的 `build_time`）、各 endpoint 的 UA 族（`claude-cli/` vs `claude-code/` vs `axios/`）、bootstrap 步骤与鉴权标志。
 7. **补测试**：beta 列表逐字断言进 `mimicry/headers_test.go`；指纹算法变化补 `body_test.go` 的 UTF-16 向量。
-7b. **同时重抓自定义 base URL 侧**并刷新 `crack/thirdparty/SPEC.md`。入站形态是每个变换的另一半，且按自己的节奏移动：一个 CC 版本可以只给 custom-base-url 向量加 beta 而不动 OAuth 向量，那会悄悄扩大 §1a 的 OAuth-only 差集。
+7b. **同时重抓自定义 base URL 侧**并刷新 `crack/claudev2.1.226-inbound/SPEC.md`。入站形态是每个变换的另一半，且按自己的节奏移动：一个 CC 版本可以只给 custom-base-url 向量加 beta 而不动 OAuth 向量，那会悄悄扩大 §1a 的 OAuth-only 差集。
 8. `go build ./... && go test ./... && go vet ./...`（`sidecar` 套件约 23s 真实计时）。
 9. **打 tag**：`git tag v0.8.NN && git push origin main v0.8.NN`（tag 号被占就用下一个空号；打 tag 前 `git status` 确认只提交自己的文件）。
 10. **两个 fork 各自** `go get github.com/wjsoj/cc-core@v0.8.NN && go mod tidy`，重新构建部署。
 
 ### B. Codex 版本升级
 
-若只是版本号推进（无新 capture、wire 中立）：只改 `mimicry/codex.go:35-36` 两个常量，并在 `crack/codex/SPEC.md` 顶部追加一节说明"无新 capture + 为什么 wire 中立"。若有新 capture，再评估 `OpenAI-Beta`、body 白名单与 `auth/codex_models.go` 的模型目录 / `pricing` 目录（新模型不加会按 0 计费）。
+**先确认在升哪一个客户端**：Desktop 的常量在 `mimicry/codex_identity.go`，CLI 的在 `mimicry/codex.go`；两套常量**永远不能互相借用**。
+
+- **Desktop（默认身份）**：`CodexDesktopVersion` / `CodexDesktopBuild` / `CodexDesktopUserAgent` 必须同时改，且三者互相一致；`CodexDesktopBetaFeatures` 与 `CodexDesktopModelsClientVersion` **不可推导**，没有新抓包就不要动。抓包目录按 `crack/codexapp<ver>/` 新建，SPEC 用 `crack/codexapp0.147.0/SPEC.md` 的骨架。
+- **CLI**：若只是版本号推进（无新 capture、wire 中立），只改 `mimicry/codex.go:57-58` 两个常量，并在 `crack/codexv0.135.0/SPEC.md` 顶部追加一节说明"无新 capture + 为什么 wire 中立"。
+- 有新 capture 时再评估：WS 握手头集与顺序（`codexws/headers.go` 的 `handshakeHeaderOrder`）、body 白名单、`auth/codex_models.go` 的模型目录、`pricing` 目录（新模型不加会按 0 计费）。
 
 ### C. 硬性红线
 
-- 没有 capture 支撑，**不要手改**任何 UA / beta / body 形状；diff 必须落到 `crack/cc<ver>/SPEC.md`。
+- 没有 capture 支撑，**不要手改**任何 UA / beta / body 形状；diff 必须落到 `crack/claudev<ver>/SPEC.md`。
 - 不要把 `cch` "修正"成 `00000`（`TestCCHIsNeverPlaceholder` 会挂）。
 - 不要为了让 Genuine Rewrite "能跑"而放宽 `cch`/`cc_prev_req` 或 beta 向量的拒收条件。
 
@@ -621,6 +683,16 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 | `TestEnsureImageGenerationTool` | spark / gpt-5.6 跳过注入 | `codex_body_test.go:262` |
 | `TestJoinCodexAPIKeyUpstreamURL` | BaseURL 拼接两种形态 | `codex_body_test.go:383` |
 | `TestStripThinkingSuffix` / `TestCodexOAuthPath` | 模型名与路径映射 | `codex_body_test.go:8,32` |
+| `TestDefaultCodexProfileIsDesktop` | 默认身份是 Desktop（改默认会同时影响两个 fork 的生产流量） | `codex_identity_test.go:130` |
+| `TestCodexProfilesAreSelfConsistent` | 每个 profile 内 originator / UA 首段 / version 三者一致 | `codex_headers_test.go:35` |
+| `TestApplyCodexCLIHeadersSessionIDHeaderName` | 头名是 `session-id`（按**原始 map 键**断言）、且不再出现 `Session_id` | `codex_headers_test.go:46` |
+| `TestApplyCodexHeadersWithProfile` | 显式 profile 生效且不与默认混字段 | `codex_headers_test.go:64` |
+| `TestApplyCodexCLIHeadersSendsNoLegacyBeta` | HTTP 路径不发 `OpenAI-Beta` | `codex_headers_test.go:13` |
+| `TestApplyCodexCLIHeadersRoutingHint` / `…ClearsStaleHint` / `TestCodexRoutingHintRejectsUnsafeModel` | routing hint 的设置、重试清理与注入防护 | `codex_headers_test.go:91,117,134` |
+| `TestNewCodexSessionUUIDIsV7` / `TestCodexSessionUUIDEncodesTimestamp` / `…ForIsStable` | id 是 v7、时间戳位正确、同 anchor 稳定 | `codex_identity_test.go:13,38,56` |
+| `TestCodexInstallationIDForIsStablePerAccount` | installation id 按账号稳定 | `codex_identity_test.go:73` |
+| `TestCodexTurnMetadataEncodeOrder` / `…KeepsEmptyTurnID` / `…Escapes` | turn-metadata 的 key 顺序、空 `turn_id` 保留、转义 | `codex_identity_test.go:88,101,108` |
+| `TestCodexWindowID` | `"<session>:0"` | `codex_identity_test.go:119` |
 
 ---
 
@@ -628,24 +700,27 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `mimicry/fingerprint.go` | 184 | 全部 Claude 版本/UA/beta/cache 常量、`NewRequestUUID`、`UUIDFromBytes`、`ensureHeader` |
-| `mimicry/headers.go` | 128 | `ApplyClaudeCodeHeaders`、`KindOAuth`/`KindAPIKey`、`isCountTokensRequest` 请求类分支 |
-| `mimicry/beta.go` | 122 | `UpgradeClaudeBetaVectorForOAuth` —— 自定义 base URL 向量的加法修补、canonical 顺序 |
-| `mimicry/cachecontrol.go` | 213 | 裸 `ephemeral` 断点的 ttl/scope 修补；`setJSONObjectMember`/`deleteJSONObjectMember` 保序字节编辑 |
+| `mimicry/fingerprint.go` | 212 | 全部 Claude 版本/UA/beta/cache 常量、`NewRequestUUID`、`UUIDFromBytes`、`ensureHeader` |
+| `mimicry/headers.go` | 134 | `ApplyClaudeCodeHeaders`、`KindOAuth`/`KindAPIKey`、`isCountTokensRequest` 请求类分支 |
+| `mimicry/beta.go` | 159 | `UpgradeClaudeBetaVectorForOAuth` —— 自定义 base URL 向量的加法修补、canonical 顺序 |
+| `mimicry/cachecontrol.go` | 269 | 裸 `ephemeral` 断点的 ttl/scope 修补；`setJSONObjectMember`/`deleteJSONObjectMember` 保序字节编辑 |
 | `mimicry/model.go` | 49 | `RewriteModelFieldPreservingBytes` —— 不重排顶层 key 的 model 改写 |
-| `mimicry/body.go` | 616 | `ApplyClaudeCodeBodyMimicry` 与全部 body 变换、`computeClaudeCodeFingerprint`、`signBillingHeaderCCH`、`BuildJSONUserID` |
+| `mimicry/body.go` | 604 | `ApplyClaudeCodeBodyMimicry` 与全部 body 变换、`computeClaudeCodeFingerprint`、`signBillingHeaderCCH`、`BuildJSONUserID` |
 | `mimicry/identity.go` | 76 | `SimIdentity`、`DeviceIDFor`、`SessionIDFor`、`SessionIDForSource` |
-| `mimicry/request_policy.go` | 943 | prepared-request 全管线：分类、策略、准备、应用、JSON span 字节手术、billing 解析与校验 |
+| `mimicry/request_policy.go` | 974 | prepared-request 全管线：分类、策略、准备、应用、JSON span 字节手术、billing 解析与校验 |
 | `mimicry/dateline.go` | 91 | `NormalizeDateline` —— 抹除日期句 3 bit 隐写信标 |
-| `mimicry/codex.go` | 82 | Codex 常量 + `ApplyCodexCLIHeaders` |
+| `mimicry/codex_identity.go` | 308 | **新增**：`CodexClientProfile` 与 Desktop/TUI 两套 profile、`DefaultCodexProfile`、`CodexInstallationIDFor`、UUIDv7 session 派生、`CodexTurnMetadata` |
+| `mimicry/codex.go` | 244 | CLI/共享 Codex 常量（含 `CodexSessionIDHeader`、`CodexCLIBetaFeatures`）+ `ApplyCodexCLIHeaders` / `ApplyCodexHeadersWithProfile` / `setCodexHeader` |
 | `mimicry/codex_body.go` | 372 | `SanitizeCodexRequestBody`、compact 白名单、`CodexOAuthPath`、`JoinCodexAPIKeyUpstreamURL`、工具归一 |
-| `mimicry/headers_test.go` | 161 | beta 列表与请求类断言 |
+| `mimicry/headers_test.go` | 183 | beta 列表与请求类断言 |
 | `mimicry/body_test.go` | 402 | body 改写、跳过条件、指纹向量、cch |
-| `mimicry/request_policy_test.go` | 587 | 管线各条 fail-closed 路径 |
+| `mimicry/request_policy_test.go` | 602 | 管线各条 fail-closed 路径 |
 | `mimicry/dateline_test.go` | 71 | 信标变体与不误伤 |
+| `mimicry/codex_identity_test.go` | 135 | profile 一致性、UUIDv7、installation id、turn-metadata 形状 |
+| `mimicry/codex_headers_test.go` | 177 | Codex 头集、`session-id` 拼写、routing hint |
 | `mimicry/codex_body_test.go` | 407 | Codex body 各分支 |
 
-**包外消费者**（`mimicry.` 引用统计）：`sidecar/sidecar.go`（34 处，遥测/bootstrap 复用版本、UA、`ClaudeReportedBetas`、`BuildJSONUserID`、`DeviceIDFor`）、`codexws/headers.go`（7 处）、`auth/login_probes.go`（2 处）、`auth/codex_usage.go`（1 处）。改任何一个导出常量前先看这三处。
+**包外消费者**（`mimicry.` 引用统计）：`sidecar/sidecar.go`（遥测/bootstrap 复用版本、UA、`ClaudeReportedBetas`、`BuildJSONUserID`、`DeviceIDFor`）、`codexws/headers.go`（profile、`NewCodexSessionUUID`、`CodexInstallationIDFor`、`CodexWindowID`、`NewCodexHandshakeMetadata`）、`auth/login_probes.go`、`auth/codex_usage.go`。改任何一个导出常量前先看这几处。
 
 ---
 

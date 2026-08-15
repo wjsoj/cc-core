@@ -1,0 +1,40 @@
+{
+  "_note": "~312KB response. Twice per session (t=0 and t=+63.9s).",
+  "_capture_id": "045",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/ps/plugins/suggested?scope=GLOBAL",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "oai-product-sku": "codex",
+    "accept": "*/*",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:28:47 GMT",
+    "content-type": "application/json",
+    "content-length": "311989",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "8f56fe25-50f5-43af-bd87-8930200153d8",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<masked>",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=yVTOD3JRXSKvDDCxtmlYdVvqF7YBQp042rb7XvM2vwIagMVOTnvMU0PGYTYSe51w3c96wp%2Fz6IXVAL%2FIQdhS969dRRwhns3FUo2sT1OZUBjmloxsEH2V1pUfqUa3\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b155a28d23b8a2-AMS"
+  },
+  "res_body": "{\"enabled\": true, \"plugins\": [{\"id\": \"plugin_connector_1p_95d39881713c8191931482a62d6edff9\", \"name\": \"gmail\", \"created_at\": \"2026-05-26T19:35:07.653783Z\", \"scope\": \"GLOBAL\", \"workspace_id\": null, \"creator_account_user_id\": null, \"canonical_app_id\": \"connector_2128aebfecb84f64a069897515042a44\", \"discoverability\": \"LISTED\", \"status\": \"ENABLED\", \"installation_policy\": \"AVAILABLE\", \"disabled_reason\": null, \"eligible_plan_types\": [\"guest\", \"plus\", \"prolite\", \"pro\", \"free_workspace\", \"team\", \"self_serve_business_prolite\", \"self_serve_business_usage_based\", \"sci\", \"business\", \"enterprise_cbp_usage_based\", \"enterprise_cbp_automation\", \"ent26\", \"hc\", \"finserv\", \"education\", \"edu_plus\", \"edu_pro\", \"quorum\", \"k12\", \"enterprise\", \"edu\"], \"installation_policy_source\": null, \"authentication_policy\": \"ON_INSTALL\", \"must_show_installation_interstitial\": true, \"release\": {\"id\": \"pluginrel_6a7bd72f21ac81919c3b156613ca0997\", \"version\": \"0.1.8\", \"display_name\": \"Gmail\", \"description\": \"Work with Gmail using the configured Gmail app connector.\", \"keywords\": [\"gmail\", \"email\", \"google\", \"google workspace\", \"mail\", \"inbox\", \"threads\", \"drafts\"], \"bundle_download_url\": null, \"app_ids\": [\"connector_2128aebfecb84f64a069897515042a44\"], \"app_manifest\": {\"apps\": {\"gmail\": {\"id\": \"connector_2128aebfecb84f64a069897515042a44\", \"required\": true}}}, \"interface\": {\"short_description\": \"Read and manage Gmail\", \"long_description\": \"Use Gmail to summarize inbox activity, draft replies, and organize email threads through the connected Gmail app.\", \"developer_name\": \"OpenAI\", \"category\": \"Communication\", \"plugin_category_id\": \"communication\", \"capabilities\": [\"Interactive\", \"Write\"], \"website_url\": \"https://workspace.google.com/products/gmail/\", \"privacy_policy_url\": \"https://policies.google.com/privacy\", \"terms_of_service_url\": \"https://policies.google.com/terms\", \"brand_color\": \"#EA4335\", \"default_prompt\": \"Summarize inbox, draft replies, or process email threads\", \"default_prompts\": [\"Summarize inbox, draft replies, or process email threads\"], \"composer_icon_url\": \"https://files.openai.com/content?id=file_00000000bf8c81fd9891840d3bfc5952&cdn=1&cp=pi&ma=32227200&ts=0&p=pi&cid=8&sig=c2ba8f2ef05f3dfb82671df652606061213d0dfbd3344c71d12ff25e92d6779d&v=0\", \"logo_url\": \"https://files.openai.com/content?id=file_00000000990481fd9c316ee59df47fc5&cdn=1&cp=pi&ma=31104000&ts=0&p=pi&cid=8&sig=bd8ee8654d100eefe078aa49822119c307f7c6f39021603fafb3d083c1cb5cac&v=0\", \"logo_url_dark\": null, \"screenshot_urls\": []}, \"skills\": [{\"name\": \"gmail\", \"description\": \"Manage Gmail search, thread reading, summaries, reply or forward drafts, self-delivery, inbox triage, and label actions. Use for mailbox analysis, pasted Gmail links, email replies or forwards, inbox cleanup, or explicit Gmail writes.\", \"plugin_release_skill_id\": \"pluginrsk_6a7bd73016888191af6ec5e11e26a73b\", \"interface\": {\"display_name\": \"Gmail\", \"short_description\": \"Summarize threads and draft replies\", \"brand_color\": \"#EA4335\", \"default_prompt\": \"Use $gmail to summarize a thread, extract actions, or draft the reply.\", \"iconography\": null, \"icon_small_url\": \"https://files.openai.com/content?id=file_00000000891482309e7ccb8ee04c809d&cdn=1&cp=pi&ma=32486400&ts=0&p=pi&cid=8&sig=cc9b2de337a6c5c3c42296473f06a161cd69eb2ce304063766b284ea0281862e&v=0\", \"icon_large_url\": \"https://files.openai.com/content?id=file_000000003ea881f7a08970f7cd8ef566&cdn=1&cp=pi&ma=32745600&ts=0&p=pi&cid=8&sig=0bce094c3c18471e650830de29f777c5c5b7d05dbc166a4cece6d97de3ac58d7&v=0\"}}], \"app_templates\": []}}, {\"id\": \"plugin_connector_1p_1a69035c238881919c4190932b2df699\", \"name\": \"github\", \"created_at\": \"2026-05-26T19:35:15.995849Z\", \"scope\": \"GLOBAL\", \"workspace_id\": null, \"creator_account_user_id\": null, \"canonical_app_id\": \"connector_76869538009648d5b282a4bb21c3d157\", \"discoverability\": \"LISTED\", \"status\": \"ENABLED\", \"installation_policy\": \"AVAILABLE\", \"disabled_reason\": null, \"eligible_plan_types\": null, \"installation_policy_source\": null, \"authentication_poli …<truncated, structure continues>"
+}

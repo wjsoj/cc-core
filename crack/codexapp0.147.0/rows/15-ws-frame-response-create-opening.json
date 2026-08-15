@@ -1,0 +1,216 @@
+{
+  "_note": "Turn-OPENING client frames — the material missing from the 2026-08-14 capture. Two frames, in wire order, from one WS session (2026-08-15 re-capture). Neither carries previous_response_id. Key order is verbatim; client_metadata key order is a Rust HashMap and is NOT load-bearing. There is NO top-level `instructions` key and NO top-level `tools` key on any frame in this capture: the system prompt is input[] item of type `message`/role `developer`, and the tools are input[0] of type `additional_tools`.",
+  "_source": "WS session <SESSION_ID> (whistle 1786761697562-745), frames 257 and 264 of 461",
+  "frames": [
+    {
+      "_label": "prewarm / cache-priming frame (generate=false)",
+      "_note": "Sent immediately after the 101, before the user's first message. input is exactly [additional_tools, developer system prompt] — no user item. `generate` sits between `text` and `client_metadata` and there is NO `stream_options`. The server answers with a normal response.created/.in_progress/.completed sequence whose response object carries `output: []`, `output_tokens: 0`, completed_at == created_at, and an extra echoed `generate: false`. The next real frame on the same session then reports cached_tokens ~= this frame's input_tokens (11838 primed -> 11008 cached), i.e. this is a prompt-cache write, not a turn. x-codex-turn-metadata.request_kind is `prewarm` and turn_id is present-and-empty.",
+      "dir": "client->server",
+      "opcode": 1,
+      "frame": {
+        "type": "response.create",
+        "model": "gpt-5.6-sol",
+        "input": [
+          {
+            "type": "additional_tools",
+            "role": "developer",
+            "tools": "<elided: 4 tools, full structure in rows/16-ws-input-additional-tools.json>"
+          },
+          {
+            "type": "message",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<elided 17730 chars: full structure and the first 800 chars in rows/17-ws-input-developer-instructions.json>"
+              }
+            ]
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": {
+          "effort": "medium",
+          "context": "all_turns"
+        },
+        "store": false,
+        "stream": true,
+        "include": [
+          "reasoning.encrypted_content"
+        ],
+        "prompt_cache_key": "<SESSION_ID>",
+        "text": {
+          "verbosity": "low"
+        },
+        "generate": false,
+        "client_metadata": {
+          "turn_id": "",
+          "thread_id": "<SESSION_ID>",
+          "ws_request_header_x_openai_internal_codex_responses_lite": "true",
+          "session_id": "<SESSION_ID>",
+          "x-codex-installation-id": "<INSTALLATION_ID>",
+          "x-codex-window-id": "<SESSION_ID>:0",
+          "x-codex-turn-metadata": "{\"installation_id\":\"<INSTALLATION_ID>\",\"session_id\":\"<SESSION_ID>\",\"thread_id\":\"<SESSION_ID>\",\"turn_id\":\"\",\"window_id\":\"<SESSION_ID>:0\",\"request_kind\":\"prewarm\",\"thread_source\":\"user\",\"sandbox\":\"seccomp\",\"code_mode_tool_names\":\"<elided: 71 entries, verbatim copy in rows/11-ws-frame-response-create.json>\"}",
+          "x-codex-ws-stream-request-start-ms": "1786761699091"
+        }
+      }
+    },
+    {
+      "_label": "first real turn of the thread (user's first message)",
+      "_note": "Same session, 4 s later. Re-sends the identical additional_tools item and the identical developer system prompt (byte-identical to the prewarm frame's), then four per-turn developer context messages and two user messages, all carrying `id` + internal_chat_message_metadata_passthrough.turn_id. `stream_options` is present here and `generate` is absent; reasoning gains `summary: \"detailed\"`. request_kind is `turn` and the metadata gains turn_started_at_unix_ms + workspace_kind.",
+      "dir": "client->server",
+      "opcode": 1,
+      "frame": {
+        "type": "response.create",
+        "model": "gpt-5.6-sol",
+        "input": [
+          {
+            "type": "additional_tools",
+            "role": "developer",
+            "tools": "<elided: 4 tools, full structure in rows/16-ws-input-additional-tools.json>"
+          },
+          {
+            "type": "message",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<elided 17730 chars: full structure and the first 800 chars in rows/17-ws-input-developer-instructions.json>"
+              }
+            ]
+          },
+          {
+            "type": "message",
+            "id": "<ITEM_ID>",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 5027 chars>"
+              },
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 16556 chars>"
+              },
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 4757 chars>"
+              },
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 966 chars>"
+              },
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 646 chars>"
+              },
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 1014 chars>"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "<TURN_ID>"
+            }
+          },
+          {
+            "type": "message",
+            "id": "<ITEM_ID>",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 2183 chars>"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "<TURN_ID>"
+            }
+          },
+          {
+            "type": "message",
+            "id": "<ITEM_ID>",
+            "role": "developer",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 271 chars>"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "<TURN_ID>"
+            }
+          },
+          {
+            "type": "message",
+            "id": "<ITEM_ID>",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 1896 chars>"
+              },
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 1898 chars>"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "<TURN_ID>"
+            }
+          },
+          {
+            "type": "message",
+            "id": "<ITEM_ID>",
+            "role": "user",
+            "content": [
+              {
+                "type": "input_text",
+                "text": "<masked per-turn context / user prose: 3 chars>"
+              }
+            ],
+            "internal_chat_message_metadata_passthrough": {
+              "turn_id": "<TURN_ID>"
+            }
+          }
+        ],
+        "tool_choice": "auto",
+        "parallel_tool_calls": false,
+        "reasoning": {
+          "effort": "medium",
+          "summary": "detailed",
+          "context": "all_turns"
+        },
+        "store": false,
+        "stream": true,
+        "stream_options": {
+          "reasoning_summary_delivery": "sequential_cutoff"
+        },
+        "include": [
+          "reasoning.encrypted_content"
+        ],
+        "prompt_cache_key": "<SESSION_ID>",
+        "text": {
+          "verbosity": "low"
+        },
+        "client_metadata": {
+          "x-codex-installation-id": "<INSTALLATION_ID>",
+          "thread_id": "<SESSION_ID>",
+          "turn_id": "<TURN_ID>",
+          "session_id": "<SESSION_ID>",
+          "x-codex-ws-stream-request-start-ms": "1786761703075",
+          "ws_request_header_x_openai_internal_codex_responses_lite": "true",
+          "x-codex-window-id": "<SESSION_ID>:0",
+          "x-codex-turn-metadata": "{\"installation_id\":\"<INSTALLATION_ID>\",\"session_id\":\"<SESSION_ID>\",\"thread_id\":\"<SESSION_ID>\",\"turn_id\":\"<TURN_ID>\",\"window_id\":\"<SESSION_ID>:0\",\"request_kind\":\"turn\",\"thread_source\":\"user\",\"sandbox\":\"seccomp\",\"code_mode_tool_names\":\"<elided: 71 entries, verbatim copy in rows/11-ws-frame-response-create.json>\",\"turn_started_at_unix_ms\":1786761701759,\"workspace_kind\":\"projectless\"}"
+        }
+      }
+    }
+  ],
+  "observations": [
+    "Top-level key order, turn frame: type, model, [previous_response_id], input, tool_choice, parallel_tool_calls, reasoning, store, stream, [stream_options], include, prompt_cache_key, text, [generate], client_metadata.",
+    "`generate` was observed only on the two prewarm frames (one per WS session that had one), always `false`, always positioned after `text`. It is not the complement of `stream_options`: frames exist with neither key (every gpt-5.6-luna frame, and the gpt-5.6-terra ambient-suggestions frame).",
+    "`stream_options: {\"reasoning_summary_delivery\":\"sequential_cutoff\"}` co-occurs exactly with `reasoning.summary: \"detailed\"` (5/5 frames). Frames whose reasoning object is {effort, context} with no summary send no stream_options (4/4). The pairing, not the model, is the predicate.",
+    "prompt_cache_key == session_id == thread_id == x-client-request-id of the handshake, on every frame.",
+    "The opener re-sends the full tool list and system prompt even though the server also holds them; only continuation frames (rows/18) drop them."
+  ]
+}

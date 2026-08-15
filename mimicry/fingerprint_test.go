@@ -64,7 +64,7 @@ func TestNewRequestUUIDShapeAndFreshness(t *testing.T) {
 }
 
 // Real CC sends x-client-request-id on every first-party request and the
-// captured custom-base-url session sends it on none (crack/thirdparty/SPEC.md
+// captured custom-base-url session sends it on none (crack/claudev2.1.226-inbound/SPEC.md
 // §1). Both halves matter: generating it is what closes the gap, and gating it
 // on the first-party base is what keeps strict gateways from 4xx-ing us.
 func TestClientRequestIDGeneratedOnlyForAnthropicBase(t *testing.T) {

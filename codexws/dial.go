@@ -100,14 +100,30 @@ func Dial(ctx context.Context, cfg DialConfig) (Conn, *http.Response, error) {
 		HandshakeTimeout: timeout,
 		ReadBufferSize:   4096,
 		WriteBufferSize:  4096,
-		// Real codex-tui negotiates permessage-deflate; advertising it keeps the
-		// WS upgrade fingerprint close to the genuine client.
+		// Real Codex negotiates permessage-deflate, so we advertise it too.
+		//
+		// The VALUE differs from the capture and cannot currently be aligned.
+		// gorilla hardcodes
+		//   permessage-deflate; server_no_context_takeover; client_no_context_takeover
+		// whereas both captures show
+		//   permessage-deflate; client_max_window_bits
+		// Rewriting ours to match would be a correctness bug, not just a
+		// cosmetic fix: gorilla only implements the no-context-takeover mode,
+		// and a server that is not asked to disable context takeover may keep
+		// its compressor state across messages, which gorilla's inflater would
+		// then fail to decode. Aligning this needs a compression implementation
+		// change, not a string change. Header ORDER and NAMES are aligned by
+		// newHandshakeOrderConn below; this value is a known, documented delta.
 		EnableCompression: true,
 		// gorilla passes the URL host:port; we ignore it and dial our parsed
 		// host/addr so the uTLS ServerName (SNI) is set correctly. Returning an
 		// already-handshaked TLS conn tells gorilla to skip its own TLS.
 		NetDialTLSContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return auth.DialTLSConn(ctx, host, addr, cfg.ProxyURL, cfg.UseUTLS, []string{"http/1.1"})
+			c, err := auth.DialTLSConn(ctx, host, addr, cfg.ProxyURL, cfg.UseUTLS, []string{"http/1.1"})
+			if err != nil {
+				return nil, err
+			}
+			return newHandshakeOrderConn(c, handshakeHeaderOrder), nil
 		},
 	}
 

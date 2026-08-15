@@ -1,0 +1,311 @@
+{
+  "_note": "x-codex-turn-metadata embedded in client_metadata of a response.create frame, decoded. On the HANDSHAKE the same header carries only the first 8 keys with turn_id=\"\" and request_kind=\"prewarm\".",
+  "handshake_variant": {
+    "installation_id": "<INSTALLATION_ID>",
+    "session_id": "<SESSION_ID>",
+    "thread_id": "<SESSION_ID>",
+    "turn_id": "",
+    "window_id": "<SESSION_ID>:0",
+    "request_kind": "prewarm",
+    "thread_source": "user",
+    "sandbox": "seccomp"
+  },
+  "turn_variant": {
+    "installation_id": "<INSTALLATION_ID>",
+    "session_id": "<SESSION_ID>",
+    "thread_id": "<SESSION_ID>",
+    "turn_id": "<TURN_ID>",
+    "window_id": "<SESSION_ID>:0",
+    "request_kind": "turn",
+    "thread_source": "user",
+    "sandbox": "seccomp",
+    "code_mode_tool_names": {
+      "apply_patch": {
+        "name": "apply_patch",
+        "namespace": null
+      },
+      "codex_app__automation_update": {
+        "name": "automation_update",
+        "namespace": "codex_app"
+      },
+      "codex_app__create_thread": {
+        "name": "create_thread",
+        "namespace": "codex_app"
+      },
+      "codex_app__fork_thread": {
+        "name": "fork_thread",
+        "namespace": "codex_app"
+      },
+      "codex_app__get_handoff_status": {
+        "name": "get_handoff_status",
+        "namespace": "codex_app"
+      },
+      "codex_app__handoff_thread": {
+        "name": "handoff_thread",
+        "namespace": "codex_app"
+      },
+      "codex_app__list_projects": {
+        "name": "list_projects",
+        "namespace": "codex_app"
+      },
+      "codex_app__list_threads": {
+        "name": "list_threads",
+        "namespace": "codex_app"
+      },
+      "codex_app__load_workspace_dependencies": {
+        "name": "load_workspace_dependencies",
+        "namespace": "codex_app"
+      },
+      "codex_app__navigate_to_codex_page": {
+        "name": "navigate_to_codex_page",
+        "namespace": "codex_app"
+      },
+      "codex_app__open_in_codex": {
+        "name": "open_in_codex",
+        "namespace": "codex_app"
+      },
+      "codex_app__read_thread": {
+        "name": "read_thread",
+        "namespace": "codex_app"
+      },
+      "codex_app__read_thread_terminal": {
+        "name": "read_thread_terminal",
+        "namespace": "codex_app"
+      },
+      "codex_app__send_message_to_thread": {
+        "name": "send_message_to_thread",
+        "namespace": "codex_app"
+      },
+      "codex_app__set_thread_archived": {
+        "name": "set_thread_archived",
+        "namespace": "codex_app"
+      },
+      "codex_app__set_thread_pinned": {
+        "name": "set_thread_pinned",
+        "namespace": "codex_app"
+      },
+      "codex_app__set_thread_title": {
+        "name": "set_thread_title",
+        "namespace": "codex_app"
+      },
+      "codex_app__wait_threads": {
+        "name": "wait_threads",
+        "namespace": "codex_app"
+      },
+      "create_goal": {
+        "name": "create_goal",
+        "namespace": null
+      },
+      "exec_command": {
+        "name": "exec_command",
+        "namespace": null
+      },
+      "get_goal": {
+        "name": "get_goal",
+        "namespace": null
+      },
+      "image_gen__imagegen": {
+        "name": "imagegen",
+        "namespace": "image_gen"
+      },
+      "list_mcp_resource_templates": {
+        "name": "list_mcp_resource_templates",
+        "namespace": null
+      },
+      "list_mcp_resources": {
+        "name": "list_mcp_resources",
+        "namespace": null
+      },
+      "mcp__codex_apps__codex_document_control_execute_d_7437ad2e4ffa": {
+        "name": "_execute_d_7437ad2e4ffa",
+        "namespace": "mcp__codex_apps__codex_document_control"
+      },
+      "mcp__codex_apps__codex_document_control_get_docum_83c7f0565c0f": {
+        "name": "_get_docum_83c7f0565c0f",
+        "namespace": "mcp__codex_apps__codex_document_control"
+      },
+      "mcp__codex_apps__codex_document_control_list_document_sessions": {
+        "name": "_list_document_sessions",
+        "namespace": "mcp__codex_apps__codex_document_control"
+      },
+      "mcp__codex_apps__hotline_get_local_hotline": {
+        "name": "_get_local_hotline",
+        "namespace": "mcp__codex_apps__hotline"
+      },
+      "mcp__codex_apps__plugin_management_get_app_permissions": {
+        "name": "_get_app_permissions",
+        "namespace": "mcp__codex_apps__plugin_management"
+      },
+      "mcp__codex_apps__plugin_management_get_plugin_dependencies": {
+        "name": "_get_plugin_dependencies",
+        "namespace": "mcp__codex_apps__plugin_management"
+      },
+      "mcp__codex_apps__plugin_management_uninstall_app": {
+        "name": "_uninstall_app",
+        "namespace": "mcp__codex_apps__plugin_management"
+      },
+      "mcp__codex_apps__plugin_management_update_app_permissions": {
+        "name": "_update_app_permissions",
+        "namespace": "mcp__codex_apps__plugin_management"
+      },
+      "mcp__codex_apps__safety_settings_get_family_info": {
+        "name": "_get_family_info",
+        "namespace": "mcp__codex_apps__safety_settings"
+      },
+      "mcp__codex_apps__safety_settings_get_parental_controls": {
+        "name": "_get_parental_controls",
+        "namespace": "mcp__codex_apps__safety_settings"
+      },
+      "mcp__codex_apps__safety_settings_get_trusted_contact": {
+        "name": "_get_trusted_contact",
+        "namespace": "mcp__codex_apps__safety_settings"
+      },
+      "mcp__codex_apps__safety_settings_prepare_parental_02db6ffaefc6": {
+        "name": "_prepare_parental_02db6ffaefc6",
+        "namespace": "mcp__codex_apps__safety_settings"
+      },
+      "mcp__codex_apps__safety_settings_update_parental_control": {
+        "name": "_update_parental_control",
+        "namespace": "mcp__codex_apps__safety_settings"
+      },
+      "mcp__codex_apps__sites_add_custom_domain": {
+        "name": "_add_custom_domain",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_create_site": {
+        "name": "_create_site",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_create_source_repository_w_7e7b8ba6ef73": {
+        "name": "_create_source_repository_w_7e7b8ba6ef73",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_deploy_private_site_version": {
+        "name": "_deploy_private_site_version",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_deploy_site_version": {
+        "name": "_deploy_site_version",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_generate_siwc_bypass_token": {
+        "name": "_generate_siwc_bypass_token",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_get_deployment_status": {
+        "name": "_get_deployment_status",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_get_environment_variables": {
+        "name": "_get_environment_variables",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_get_site": {
+        "name": "_get_site",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_get_site_version": {
+        "name": "_get_site_version",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_get_site_worker_logs": {
+        "name": "_get_site_worker_logs",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_list_custom_domains": {
+        "name": "_list_custom_domains",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_list_site_versions": {
+        "name": "_list_site_versions",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_list_sites": {
+        "name": "_list_sites",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_read_database_overview": {
+        "name": "_read_database_overview",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_read_database_table_rows": {
+        "name": "_read_database_table_rows",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_refresh_custom_domain_status": {
+        "name": "_refresh_custom_domain_status",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_remove_custom_domain": {
+        "name": "_remove_custom_domain",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_save_site_version": {
+        "name": "_save_site_version",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_update_environment_variables": {
+        "name": "_update_environment_variables",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_update_site_access": {
+        "name": "_update_site_access",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__codex_apps__sites_update_site_metadata": {
+        "name": "_update_site_metadata",
+        "namespace": "mcp__codex_apps__sites"
+      },
+      "mcp__node_repl__js": {
+        "name": "js",
+        "namespace": "mcp__node_repl"
+      },
+      "mcp__node_repl__js_add_node_module_dir": {
+        "name": "js_add_node_module_dir",
+        "namespace": "mcp__node_repl"
+      },
+      "mcp__node_repl__js_reset": {
+        "name": "js_reset",
+        "namespace": "mcp__node_repl"
+      },
+      "plugin_management__uninstall_plugin": {
+        "name": "uninstall_plugin",
+        "namespace": "plugin_management"
+      },
+      "read_mcp_resource": {
+        "name": "read_mcp_resource",
+        "namespace": null
+      },
+      "request_permissions": {
+        "name": "request_permissions",
+        "namespace": null
+      },
+      "request_plugin_install": {
+        "name": "request_plugin_install",
+        "namespace": null
+      },
+      "update_goal": {
+        "name": "update_goal",
+        "namespace": null
+      },
+      "update_plan": {
+        "name": "update_plan",
+        "namespace": null
+      },
+      "view_image": {
+        "name": "view_image",
+        "namespace": null
+      },
+      "web__run": {
+        "name": "run",
+        "namespace": "web"
+      },
+      "write_stdin": {
+        "name": "write_stdin",
+        "namespace": null
+      }
+    },
+    "turn_started_at_unix_ms": 1786725007151,
+    "workspace_kind": "projectless"
+  }
+}

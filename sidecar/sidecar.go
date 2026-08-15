@@ -41,7 +41,7 @@ func maskClientToken(t string) string {
 //   - Phase B (bootstrap burst): the 8 other GET/POST sidecars CC fires
 //     at process start, each with the *exact* User-Agent / anthropic-beta /
 //     Connection header captured for that endpoint in
-//     crack/oauth/rows/01..10. Real CC mixes Bun fetch, axios 1.15.2,
+//     crack/claudev2.1.126/rows/01..10. Real CC mixes Bun fetch, axios 1.15.2,
 //     claude-code/<ver>, and claude-cli/<ver> across these endpoints —
 //     getting any of them wrong is itself a fingerprint, so each sidecar
 //     step pins its own client identity.
@@ -143,7 +143,7 @@ const (
 // on its startup quota probe — a 6-item list, shorter than any main-request
 // vector. Originally taken from a 2.1.170 capture whose archive dir has since
 // been pruned; re-captured verbatim at the current target and now anchored
-// there (crack/cc2224/rows/19-quota_probe.json).
+// there (crack/claudev2.1.224/rows/19-quota_probe.json).
 const (
 	quotaProbeBeta  = "oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05"
 	quotaProbeModel = "claude-haiku-4-5-20251001"
@@ -157,8 +157,8 @@ const (
 // oauth/account/settings, mcp-registry, code/triggers, hello. Mismatching is
 // detectable. NOTE: account/settings + grove + mcp-registry all use claude-cli,
 // NOT claude-code/axios — verified identical in BOTH the 2.1.191 and 2.1.214
-// captures (crack/cc2214/SPEC.md §2), and the 2.1.220 bootstrap re-confirmed
-// the endpoint families (crack/cc2220/SPEC.md). cc-core shipped the wrong UA
+// captures (crack/claudev2.1.214/SPEC.md §2), and the 2.1.220 bootstrap re-confirmed
+// the endpoint families (crack/claudev2.1.220/SPEC.md). cc-core shipped the wrong UA
 // on those three from 2.1.191 until this was caught at the 2.1.214 bump.
 const (
 	uaBun        = "Bun/1.4.0"
@@ -176,7 +176,7 @@ const (
 // stay fixed (one ground-truth capture; runtime bundle moves with the release).
 const (
 	// build_time moves with each CC release; read from the live 2.1.224
-	// telemetry env (crack/cc2224/SPEC.md). Was 2026-07-24T22:17:45Z
+	// telemetry env (crack/claudev2.1.224/SPEC.md). Was 2026-07-24T22:17:45Z
 	// @ 2.1.220, 2026-07-17T23:24:50Z @ 2.1.214 and 2026-07-15T16:34:37Z
 	// @ 2.1.211.
 	ccBuildTime = "2026-08-06T01:05:53Z"
@@ -270,8 +270,22 @@ func New(cfg Config) *Manager {
 //
 // Always returns "fast" in the sense that the channel itself is allocated
 // synchronously; every actual HTTP call still runs in its own goroutine.
+//
+// Two credential classes are refused outright. API keys never trigger
+// sidecars — a real Claude Code on an API key emits none of this traffic.
+// And every step in realBootstrapSteps() targets api.anthropic.com /
+// downloads.claude.ai with Anthropic betas and an Anthropic bearer, so a
+// non-Anthropic credential must not reach them: without the provider guard a
+// Codex OAuth credential would send the whole Anthropic bootstrap burst —
+// GrowthBook, /api/oauth/account/settings, the /v1/messages quota probe —
+// authenticated with a ChatGPT access token. Every Codex probe in auth/
+// already guards this way (codex_usage.go, codex_subscription.go,
+// codex_reset.go); this package had no provider check at all.
 func (m *Manager) Notify(a *auth.Auth, clientToken string) <-chan struct{} {
 	if m == nil || !m.enabled || a == nil || a.Kind != auth.KindOAuth {
+		return nil
+	}
+	if auth.NormalizeProvider(a.Provider) != auth.ProviderAnthropic {
 		return nil
 	}
 	now := time.Now().UnixNano()
@@ -373,7 +387,7 @@ func (a *accountAnchor) sessionID(accountKey string) string {
 
 // bootstrapStep describes one auxiliary HTTP call CC fires at startup.
 // Order, URLs, methods, UAs, and beta values are all from
-// crack/oauth/rows/01..10. delayFromStart is the timestamp captured in
+// crack/claudev2.1.126/rows/01..10. delayFromStart is the timestamp captured in
 // that row relative to row 1's startTime.
 type bootstrapStep struct {
 	name           string
@@ -399,7 +413,7 @@ type bootstrapStep struct {
 
 // realBootstrapSteps returns the 10-step sequence fired at session start.
 // Step 6 is the quota probe. Steps' delays are the relative timestamps
-// captured in crack/oauth/rows/01..10 (rounded to ms). They are NOT
+// captured in crack/claudev2.1.126/rows/01..10 (rounded to ms). They are NOT
 // jittered — real CC fires them deterministically because each step
 // depends on a different bootstrap subsystem coming online.
 func realBootstrapSteps(baseURL string) []bootstrapStep {
@@ -420,7 +434,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			method:         "GET",
 			url:            baseURL + "/api/oauth/account/settings",
 			delayFromStart: 160 * time.Millisecond,
-			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (2.1.191 + cc2214)
+			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (2.1.191 + claudev2.1.214)
 			beta:           "oauth-2025-04-20",
 			connection:     "close",
 		},
@@ -429,7 +443,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			method:         "GET",
 			url:            baseURL + "/api/claude_code_grove",
 			delayFromStart: 160 * time.Millisecond,
-			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (2.1.191 + cc2214 both)
+			userAgent:      uaClaudeCLI, // claude-cli, NOT claude-code (2.1.191 + claudev2.1.214 both)
 			beta:           "oauth-2025-04-20",
 			connection:     "close",
 		},
@@ -441,7 +455,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			// reports in its telemetry — see ccDatadogModel. Announcing
 			// opus-4-8 at bootstrap and opus-5 in event_logging is a
 			// self-contradiction no real client produces. Re-captured at
-			// 2.1.224 (crack/cc2224/SPEC.md §5).
+			// 2.1.224 (crack/claudev2.1.224/SPEC.md §5).
 			name:            "claude_cli_bootstrap",
 			method:          "GET",
 			url:             baseURL + "/api/claude_cli/bootstrap?entrypoint=cli&model=" + ccDatadogModel,
@@ -490,11 +504,11 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			method:         "GET",
 			url:            baseURL + "/mcp-registry/v0/servers?version=latest&limit=100&visibility=commercial%2Cgsuite%2Centerprise%2Chealth",
 			delayFromStart: 1950 * time.Millisecond,
-			userAgent:      uaClaudeCLI, // claude-cli, NOT axios (2.1.191 + cc2214 both, 8 samples)
+			userAgent:      uaClaudeCLI, // claude-cli, NOT axios (2.1.191 + claudev2.1.214 both, 8 samples)
 			connection:     "close",
 			// Real CC sends NO Authorization on the registry — it is a public
 			// catalog endpoint. A Bearer here is itself a tell. Verified on the
-			// 2026-07-31 capture, 4 samples (crack/cc2220/SPEC.md §3).
+			// 2026-07-31 capture, 4 samples (crack/claudev2.1.220/SPEC.md §3).
 			noAuth: true,
 		},
 		{
@@ -509,11 +523,11 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			connection:     "close",
 			// Real CC sends the MCP handshake pair alongside the beta on this
 			// probe — captured since 2.1.191 but never wired here
-			// (crack/cc2214/rows/12-mcp_servers.json has them too).
+			// (crack/claudev2.1.214/rows/12-mcp_servers.json has them too).
 			// anthropic-mcp-client-capabilities is the base64 of
 			// {"roots":{"listChanged":true},"elicitation":{}} — the CLI advertises
 			// roots.listChanged, so the older {"roots":{}} encoding decoded to a
-			// capability set real CC never sends (crack/cc2220/SPEC.md §3).
+			// capability set real CC never sends (crack/claudev2.1.220/SPEC.md §3).
 			extraHeaders: map[string]string{
 				"anthropic-mcp-client-capabilities": "eyJyb290cyI6eyJsaXN0Q2hhbmdlZCI6dHJ1ZX0sImVsaWNpdGF0aW9uIjp7fX0=",
 				"MCP-Protocol-Version":              "2025-11-25",
@@ -525,7 +539,7 @@ func realBootstrapSteps(baseURL string) []bootstrapStep {
 			// anthropic-client-platform and X-Organization-UUID;
 			// extraHeaders below sets the latter from the auth at dispatch.
 			// UA is the main claude-cli agent, NOT axios — verified since the
-			// 2.1.191 capture (crack/cc2214/rows/18-code_triggers.json).
+			// 2.1.191 capture (crack/claudev2.1.214/rows/18-code_triggers.json).
 			name:           "code_triggers",
 			method:         "GET",
 			url:            baseURL + "/v1/code/triggers",
@@ -822,7 +836,7 @@ func buildQuotaProbeBody(a *auth.Auth, sessionID string) ([]byte, error) {
 
 // runHeartbeat emits ClaudeCodeInternalEvent batches to
 // /api/event_logging/v2/batch. The very first batch is a "startup dump"
-// shaped like crack/oauth/rows/14 (~99 events covering skill loading,
+// shaped like crack/claudev2.1.126/rows/14 (~99 events covering skill loading,
 // plugin enabling, mcp connections, version lock, etc.). Subsequent
 // batches contain a single tengu_dir_search event matching the steady-
 // state cadence. Stops when:
@@ -890,7 +904,7 @@ func isHeartbeatIdle(sess *sidecarSession) bool {
 }
 
 // sendHeartbeat POSTs one ClaudeCodeInternalEvent batch. Body and headers
-// match crack/oauth/rows/14 (event_logging/v2/batch with
+// match crack/claudev2.1.126/rows/14 (event_logging/v2/batch with
 // User-Agent: claude-code/<ver>, beta: oauth-2025-04-20,
 // x-service-name: claude-code). When startup=true the batch is a fat
 // ~80-event dump covering CC's first-launch telemetry; otherwise it's a
@@ -955,7 +969,7 @@ func buildHeartbeatBody(a *auth.Auth, sessionID string) ([]byte, error) {
 }
 
 // startupEventNames is the event_name distribution captured in
-// crack/oauth/rows/14 (real CC's first event_logging batch). Total = 80;
+// crack/claudev2.1.126/rows/14 (real CC's first event_logging batch). Total = 80;
 // matching the captured 99-event volume to within ~20% so we don't
 // undershoot the "fat startup batch" signal Anthropic almost certainly
 // uses to distinguish real CC from third-party clients.

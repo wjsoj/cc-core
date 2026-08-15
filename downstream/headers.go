@@ -12,13 +12,13 @@
 // the serving account's subscription tier, its 5h and 7d utilisation, its
 // overage status, and the exact unix timestamps its windows reset — plus
 // `anthropic-organization-id`, `anthropic-workspace-id`, the upstream
-// `request-id`, and Cloudflare's `cf-ray` (see crack/cc2224/rows/13). None of
+// `request-id`, and Cloudflare's `cf-ray` (see crack/claudev2.1.224/rows/13). None of
 // that is the caller's, and together it is enough to fingerprint and probe the
 // pool.
 //
 // The captured third-party gateway returns none of it — only content-type,
 // cache-control, vary, content-encoding and its own correlators — and real
-// Claude Code works against it unchanged (crack/thirdparty/SPEC.md §4). So an
+// Claude Code works against it unchanged (crack/claudev2.1.226-inbound/SPEC.md §4). So an
 // allowlist is known-safe behaviour, not a guess.
 //
 // # Ordering

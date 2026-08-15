@@ -1,0 +1,39 @@
+{
+  "_note": "Fires pre-auth too: 12 of 23 calls in this session returned 401 because they were emitted before the OAuth token existed, and they carry NO authorization/chatgpt-account-id/oai-product-sku at all. This is the only /backend-api endpoint here that is retried unauthenticated.",
+  "_capture_id": "069",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/plugins/featured?platform=codex",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "accept": "*/*",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:28:50 GMT",
+    "content-type": "application/json",
+    "content-length": "972",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "8f50359d-2a88-4ee2-b588-c6d52c41d564",
+    "x-build": "47f4c4b01f9d",
+    "set-cookie": "<masked>",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=uzo29N9lk02Ytk4ZkZTwXp3XMRsNsq6kIoOFoN7IWvDjQnRvqwxoKb9yRtzmc%2FAW5fCY9aMmq2JFOP6J04BtekSYML5EB%2FFChuM1syK364gQETMzIh1pChveUc%2F2\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b155be59813c6d-AMS"
+  },
+  "res_body": "[\"gmail@openai-curated-remote\", \"google-drive@openai-curated-remote\", \"outlook-email@openai-curated-remote\", \"github@openai-curated-remote\", \"sharepoint@openai-curated-remote\", \"slack@openai-curated-remote\", \"teams@openai-curated-remote\", \"outlook-calendar@openai-curated-remote\", \"google-calendar@openai-curated-remote\", \"atlassian-rovo@openai-curated-remote\", \"notion@openai-curated-remote\", \"canva@openai-curated-remote\", \"figma@openai-curated-remote\", \"linear@openai-curated-remote\", \"data-analytics@openai-curated-remote\", \"superpowers@openai-curated-remote\", \"hubspot@openai-curated-remote\", \"asana@openai-curated-remote\", \"product-design@openai-curated-remote\", \"box@openai-curated-remote\", \"vercel@openai-curated-remote\", \"granola@openai-curated-remote\", \"supabase@openai-curated-remote\", \"monday-com@openai-curated-remote\", \"airtable@openai-curated-remote\", \"zoom@openai-curated-remote\", \"sales@openai-curated-remote\", \"codex-security@openai-curated-remote\", \"lovable@openai-curated-remote\"]"
+}

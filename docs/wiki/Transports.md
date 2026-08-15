@@ -98,80 +98,138 @@ flowchart LR
 
 ### 概览
 
-包注释 `codexws/dial.go:1-16`：真实 codex-tui（注释写 0.144.1，`mimicry.CodexCLIVersion` 现为 **0.144.4**）不再走 HTTP `POST /responses` 的 SSE，而是把一整个 turn 通过 WebSocket 传输：
+包注释 `codexws/dial.go:1-16`：真实 Codex 不走 HTTP `POST /responses` 的 SSE，而是把一整个 turn 通过 WebSocket 传输：
 
 - URL：`wss://chatgpt.com/backend-api/codex/responses`
 - `OpenAI-Beta: responses_websockets=2026-02-06`
 
+**这一点被 2026-08-14 的 Desktop 抓包彻底坐实**：`crack/codexapp0.147.0/` 的 293 个 HTTP session 里**一个 `POST /backend-api/codex/responses` 都没有**，全部 6 次 turn 都是 WS upgrade（其中 3 次是从不承载 turn 的 prewarm 连接）。cc-core 仍保留 HTTP 转发路径，因为后端依然接受它、而一个 HTTP API 代理需要它。
+
 选 WS 的理由是协议级 ping/pong 能撑过 reasoning→answer、工具思考之间数秒的静默间隙，而这些间隙会让空闲的 HTTP SSE 被中间层切断，向客户端表现为 "stream disconnected before completion"。
 
-握手复用 cc-core 的 Chrome uTLS 指纹：`auth.DialTLSConn(ctx, host, addr, proxyURL, useUTLS, []string{"http/1.1"})`（`codexws/dial.go:109-111`）——**ALPN 强制 http/1.1**，因为 WebSocket Upgrade 不能跑在 h2 上。选 `gorilla/websocket` 而非 `coder/websocket`，唯一原因是前者的 `Dialer.NetDialTLSContext` 是把"已完成握手的 uTLS conn"交给 WS 客户端的唯一干净途径。
+握手复用 cc-core 的 Chrome uTLS 指纹：`auth.DialTLSConn(..., []string{"http/1.1"})`——**ALPN 强制 http/1.1**，因为 WebSocket Upgrade 不能跑在 h2 上（这也与抓包一致：Desktop 对 `chatgpt.com` 全程 HTTP/1.1 + `Connection: close`，根本不协商 h2）。选 `gorilla/websocket` 而非 `coder/websocket`，唯一原因是前者的 `Dialer.NetDialTLSContext` 是把"已完成握手的 uTLS conn"交给 WS 客户端的唯一干净途径。
 
 ### 公开 API 表
 
 | 签名 | 位置 | 说明 |
 |---|---|---|
-| `const CodexOpenAIBetaWS = "responses_websockets=2026-02-06"` | `codexws/headers.go:15` | v2，默认 |
-| `const CodexOpenAIBetaWSV1 = "responses_websockets=2026-02-04"` | `codexws/headers.go:16` | v1 |
-| `const TextMessage / BinaryMessage / CloseMessage / PingMessage / PongMessage` | `codexws/dial.go:42-48` | 转出 gorilla 常量，调用方不必直接依赖 gorilla |
-| `func BuildUpstreamHeaders(accessToken, accountID, sessionID, betaValue string) http.Header` | `codexws/headers.go:30` | |
+| `const CodexOpenAIBetaWS = "responses_websockets=2026-02-06"` | `codexws/headers.go:17` | v2，默认。两代抓包同值 |
+| `const CodexOpenAIBetaWSV1 = "responses_websockets=2026-02-04"` | `codexws/headers.go:18` | v1 |
+| `const TextMessage / BinaryMessage / CloseMessage / PingMessage / PongMessage` | `codexws/dial.go:43-47` | 转出 gorilla 常量，调用方不必直接依赖 gorilla |
+| `func HandshakeHeaderOrder() []string` | `codexws/headers.go:52` | 抓包中的握手头顺序副本 |
+| `type UpstreamHeaderOptions struct { AccessToken, AccountID, SessionID, ThreadID, InstallationID, BetaValue string; Profile *mimicry.CodexClientProfile }` | `codexws/headers.go:66` | |
+| `func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header` | `codexws/headers.go:98` | **新入口** |
+| `func BuildUpstreamHeaders(accessToken, accountID, sessionID, betaValue, model, serviceTier string) http.Header` | `codexws/headers.go:175` | 位置参数签名**冻结**（两个 fork 按位置调用），委托给上面那个 |
+| `func SessionIDForAccount(anchor string, startedAt time.Time) string` | `codexws/headers.go:189` | 便捷包装 `mimicry.CodexSessionUUIDFor` |
 | `type DialConfig struct { URL string; Header http.Header; ProxyURL string; UseUTLS bool; Timeout time.Duration; ReadLimit int64 }` | `codexws/dial.go:51-58` | |
 | `type Conn interface` | `codexws/dial.go:64-76` | `WriteJSON` / `WriteMessage` / `ReadMessage` / `Ping(deadline)` / `SetReadDeadline` / `SetWriteDeadline` / `HandshakeResponse() *http.Response` / `Close()` |
 | `func Dial(ctx context.Context, cfg DialConfig) (Conn, *http.Response, error)` | `codexws/dial.go:82` | |
-| `func IsUnexpectedClose(err error) bool` | `codexws/dial.go:129` | |
+| `func IsUnexpectedClose(err error) bool` | `codexws/dial.go:145` | |
 
-默认值：`Timeout` 0 → 10s（`defaultHandshakeTimeout` `:37`）；`ReadLimit` 0 → **16 MiB**（`defaultReadLimit` `:35`，gorilla 默认 32KB 撑不住 rate_limits 快照与大 delta）。
+默认值：`Timeout` 0 → 10s（`defaultHandshakeTimeout` `dial.go:37`）；`ReadLimit` 0 → **16 MiB**（`defaultReadLimit` `dial.go:35`，gorilla 默认 32KB 撑不住 rate_limits 快照与大 delta）。
 
-### 关键机制
+### 握手头：18 个，顺序固定
 
-**握手头**（`BuildUpstreamHeaders`，`codexws/headers.go:30-48`）：
+`BuildUpstreamHeadersWithOptions`（`codexws/headers.go:98`）写出下表；`Host` / `Connection` / `Upgrade` / `Sec-WebSocket-Version` / `Sec-WebSocket-Key` 由 gorilla dialer 拥有，**不在这里设**。
 
-| Header | 值 |
-|---|---|
-| `Authorization` | `Bearer <accessToken>` |
-| `OpenAI-Beta` | `betaValue`，空则 `CodexOpenAIBetaWS` |
-| `Originator` | `mimicry.CodexOriginator`（`codex-tui`） |
-| `User-Agent` | `mimicry.CodexCLIUserAgent` |
-| `Version` | `mimicry.CodexCLIVersion`（`0.144.4`） |
-| `Session_id` | 传入值；空则 `mimicry.NewRequestUUID()` 现铸一个 |
-| `Chatgpt-Account-Id` | 仅当 `accountID != ""` 时设置 |
+| Header | 值 | 行号 |
+|---|---|---|
+| `chatgpt-account-id` | `opts.AccountID`（非空时） | `headers.go:126-128` |
+| `authorization` | `Bearer <AccessToken>` | `headers.go:129` |
+| `user-agent` | `profile.UserAgent`（默认 Desktop） | `headers.go:142-143` |
+| `originator` | `profile.Originator`（默认 `Codex Desktop`） | `headers.go:144` |
+| `openai-beta` | `BetaValue`，空则 `CodexOpenAIBetaWS` | `headers.go:145` |
+| `version` | `profile.Version` | `headers.go:146` |
+| `x-codex-beta-features` | `profile.BetaFeatures`（空则整头省略） | `headers.go:147-149` |
+| `x-client-request-id` | `= sessionID` | `headers.go:153` |
+| `session-id` | `opts.SessionID`，空则 `mimicry.NewCodexSessionUUID()`（UUIDv7） | `headers.go:154` |
+| `thread-id` | `opts.ThreadID`，空则 `= sessionID` | `headers.go:155` |
+| `x-codex-window-id` | `"<sessionID>:0"` | `headers.go:156` |
+| `x-codex-turn-metadata` | `NewCodexHandshakeMetadata(...).Encode()` | `headers.go:157-158` |
 
-**故意不设**：`Upgrade` / `Connection` / `Sec-WebSocket-*` 由 gorilla dialer 拥有；`x-codex-turn-metadata` / `x-codex-window-id` / `x-codex-beta-features` / thread-id 是 TUI 专属——代理没有真实的 workspace/window，伪造比省略更糟（与 `mimicry.ApplyCodexCLIHeaders` 同一理由，`codexws/headers.go:26-29`）。
+后五项由 `profile.SendsTurnMetadata` 门控（`headers.go:150`）。`InstallationID` 为空且有 `AccountID` 时按账号派生（`mimicry.CodexInstallationIDFor`，`headers.go:115-121`）——**绝不发 `"installation_id":""`**，真实客户端总是有一个。
 
-**拨号流程**（`Dial`，`codexws/dial.go:82-124`）：解析 URL → 取 host，端口空则 443 → 组 `addr` → 建 `gorillaws.Dialer{HandshakeTimeout, ReadBufferSize:4096, WriteBufferSize:4096, EnableCompression:true, NetDialTLSContext:…}` → `dialer.DialContext(ctx, cfg.URL, cfg.Header)` → `ws.SetReadLimit(limit)`。
+**头名是裸小写 map 键**（`set := func(name, value string) { h[name] = []string{value} }`，`headers.go:124`），不是 `Header.Set`：后者会把 `session-id` 规范成 `Session-Id`。**读回时也必须用同样的字面 key，不能用 `Header.Get`。**
 
-`EnableCompression: true` 是指纹考虑：真实 codex-tui 会协商 permessage-deflate。
+#### 两处被新抓包改写的行为
+
+1. **五个握手头从"刻意不发"改为"发"**（`x-codex-turn-metadata` / `x-codex-window-id` / `x-codex-beta-features` / `thread-id` / `x-client-request-id`）。
+   旧理由在 0.135.0 上是**成立**的：那一代的 `x-codex-turn-metadata` 带 `workspaces` map，含用户 cwd、git remote URL、commit hash 与 dirty 标志，代理伪造不了。
+   `crack/codexapp0.147.0/rows/10` 显示 0.147.0 Desktop 已删掉该 map，握手变体里只剩代理合法拥有的 id；此时**少发五个每个真实客户端都发的头**才是更大的破绽。
+   注意 **turn 变体**（在 WS 帧体内、不是头）另加了 `code_mode_tool_names`——用户装的 71 个工具与 MCP server 名单，那仍然是代理没资格发明的用户侧指纹。
+2. **`x-codex-routing-hint` 从握手上移除。** 它曾依据对 codex-rs `build_websocket_headers` 的源码阅读被设置在这里；`crack/codexv0.135.0/rows/01` 与 `crack/codexapp0.147.0/rows/10` 的 upgrade **各 18 个头都不含它**，CLIProxyAPI 也不发。因此 `BuildUpstreamHeaders` 的 `model` / `serviceTier` 两个位置参数**现在被接受但忽略**（`headers.go:175-176`）——签名不能改，两个 fork 按位置调用。HTTP 路径仍发（`mimicry.ApplyCodexCLIHeaders`），那里的源码阅读没有被反证。
+
+### 头顺序重排（`codexws/handshake_order.go`）
+
+Go 的 `req.Write` 先写 request line、Host、User-Agent，其余头**按字母序**输出——没有任何真实客户端是这个顺序，而 HTTP/1.1 的头顺序是成熟的客户端指纹信号。既然本包已经为此钉了 uTLS ClientHello，再发一个字母序头块等于两半自相矛盾。
+
+`handshakeOrderConn`（`handshake_order.go:31`，由 `dial.go:126` 包在 TLS conn 外）只做一件事：缓冲**第一个**请求的头块，用 `reorderHeaderBlock`（`handshake_order.go:103`）按 `handshakeHeaderOrder`（`headers.go:30`）重排并**改写大小写**，然后把 `done` 置真、彻底让路。握手之后的每一帧零开销。
+
+顺序（`crack/codexapp0.147.0/rows/10`，与 `crack/codexv0.135.0/rows/01` 完全一致，已经跨过一个 release 周期）：
+
+```
+Host / Connection / Upgrade / Sec-WebSocket-Version / Sec-WebSocket-Key
+chatgpt-account-id / authorization / user-agent / originator / openai-beta
+version / x-codex-beta-features / x-client-request-id / session-id / thread-id
+x-codex-window-id / x-codex-turn-metadata / sec-websocket-extensions
+```
+
+前 5 个协议头首字母大写，13 个应用头**全小写**（Rust `reqwest` HeaderMap 的特征）；`sec-websocket-extensions` 既小写又排在**最后**，说明真实客户端是自己追加它、而不是让 WS 库输出。
+
+三条实现约束：
+- 不在 `order` 里的头**保持相对顺序、排在后面**——放错位置也好过丢掉一个未知的头。
+- 重复同名头保持相对顺序。
+- 畸形头块（无 request line、有行无冒号）**原样返回**；缓冲超过 `maxHandshakeBuffer`（64 KiB，`handshake_order.go:14`）就直接放行并退出干预——退化回旧行为好过损坏流。
+
+### 拨号流程
+
+`Dial`（`codexws/dial.go:82`）：解析 URL → 取 host，端口空则 443 → 组 `addr` → 建 `gorillaws.Dialer{HandshakeTimeout, ReadBufferSize:4096, WriteBufferSize:4096, EnableCompression:true, NetDialTLSContext:…}` → `dialer.DialContext(ctx, cfg.URL, cfg.Header)` → `ws.SetReadLimit(limit)`。`NetDialTLSContext` 里先做 uTLS 握手，再用 `newHandshakeOrderConn` 包一层（`dial.go:126`）。
 
 `NetDialTLSContext` 忽略 gorilla 传入的 host:port，改用自己解析的值，确保 uTLS 的 SNI 正确；返回一个**已握手的 TLS conn**，等于告诉 gorilla 跳过它自己的 TLS。
 
-**非 101 响应**：`Dial` 在出错时也把 `*http.Response` 一并返回（`codexws/dial.go:114-117`），调用方可以读错误 body 并做凭据分类（401/403/429 → `Pool.ReportUpstreamError`）。`Conn.HandshakeResponse()` 保留这份响应，用于日志与 `cf-ray`/`x-request-id`/`x-codex-*` 限额头。
+**非 101 响应**：`Dial` 在出错时也把 `*http.Response` 一并返回，调用方可以读错误 body 并做凭据分类（401/403/429 → `Pool.ReportUpstreamError`）。`Conn.HandshakeResponse()` 保留这份响应，用于日志与 `cf-ray`/`x-request-id`/`x-codex-*` 限额头。
+**但这份响应绝不能原样转发给下游**——101 的响应头要先过 `downstream.ScrubWSHandshakeHeaders` / `CopyWSHandshakeHeaders`（见 [Downstream](Downstream)）。
 
-**并发契约**（`codexws/dial.go:62-63`）：沿用 gorilla —— 至多一个并发 reader、一个并发 writer；`ReadMessage` 之间、写方法之间都必须由调用方串行化。`Ping` 与 `Close` 可以与读写并发。`Ping` 用 `WriteControl`（`codexws/dial.go:152-154`），这正是它能绕开写串行化要求的原因。
+**并发契约**（`codexws/dial.go:60-63`）：沿用 gorilla —— 至多一个并发 reader、一个并发 writer；`ReadMessage` 之间、写方法之间都必须由调用方串行化。`Ping` 与 `Close` 可以与读写并发。`Ping` 用 `WriteControl`（`codexws/dial.go:169`），这正是它能绕开写串行化要求的原因。
 
 ### 陷阱
 
-- `CodexOpenAIBetaWS` 与 `mimicry.CodexOpenAIBeta`（`"responses=experimental"`，HTTP POST 用）是**两个不同的标记**，别混用。Codex 目标版本上移时两者要一起 bump（`codexws/headers.go:12-13`）。
+- **`Sec-WebSocket-Extensions` 的取值是一处已知且刻意保留的不匹配。** `EnableCompression: true` 让 gorilla 宣告 `permessage-deflate; server_no_context_takeover; client_no_context_takeover`，而真实 Codex 发的是 `permessage-deflate; client_max_window_bits`。**不要去改这个字符串**：gorilla 只实现了 no-context-takeover 模式，一个没有被要求关闭 context takeover 的服务端可能保留 gorilla 的 inflater 解不了的压缩器状态——那是正确性 bug，不是指纹修复。要对齐得先换压缩实现（`crack/codexapp0.147.0/SPEC.md` §7）。
+- **`session-id`（连字符）** 才是真实头名；cc-core 曾连续两代抓包都发 `Session_id`。断言必须读原始 map 键。
+- **User-Agent 必须同时占两个键，那个 `nil` 不是冗余**（`headers.go:142-143`）。`Request.Write` 从一个专用槽位写 User-Agent，而它按**精确字符串** `"User-Agent"` 查表——小写键匹配不上，于是 Go 回落到默认值写出 `User-Agent: Go-http-client/1.1`；随后 `writeSubset` 只排除规范拼写，又把我们的小写键写了第二遍。结果是握手带**两个** User-Agent，其中一个自报是 Go 程序。把规范键赋成 `nil` 让那个槽位解析为空串（net/http 便不写），同时 `writeSubset` 仍然排除它，小写键成为线上唯一的值。`TestHandshakeOrderConnAgainstRealRequestWrite` 直接断言线上字节里没有 `Go-http-client` 且 `user-agent:` 恰好出现一次。
+  同样的陷阱在 `auth` 侧以镜像形式出现：`/oauth/token` 要求**完全不发** User-Agent，而 `Header.Del` 与 `Set("User-Agent", "")` 都做不到，只有赋 `nil` 可以（见 [Auth-Login-Codex](Auth-Login-Codex)）。
+- `CodexOpenAIBetaWS` 是 **WS 握手独有**的。HTTP 路径**不发任何 `OpenAI-Beta`**——旧的 `mimicry.CodexOpenAIBeta`（`"responses=experimental"`）已删除，0.147.0 的 codex-rs 里根本不存在这个字符串。
 - ALPN 必须是 `http/1.1`；给 h2 会让 Upgrade 失败。
-- 包注释里的 "codex-tui 0.144.1" 与 `mimicry.CodexCLIVersion = "0.144.4"` 不一致——注释未随版本 bump 更新（**待确认**是否要修正注释）。
-- `Dial` 的 `resp` 在 URL 解析失败时是 nil（`codexws/dial.go:85`），调用方要判空。
+- `Dial` 的 `resp` 在 URL 解析失败时是 nil，调用方要判空。
 - 32KB 的 gorilla 默认 read limit 会直接砍断 rate_limits 快照；显式传 `ReadLimit` 或依赖默认 16 MiB，不要自己传一个小值。
+- **每个账号目前都宣告同一台合成机器**（Arch/Konsole）。这正是 `auth.HostProfile` 在 Anthropic 侧要消除的"很多用户共用一台稀有机器"信号，Codex 侧尚未做——因为按发行版/终端编造 `os_type`/`terminal_ua` 没有任何抓包背书，猜比统一更糟（SPEC §7）。
 
 ### 测试索引
 
 | 测试 | 断言 | 位置 |
 |---|---|---|
-| `TestBuildUpstreamHeaders` | 七个头的精确值 + 五个 forbidden 头（`Upgrade`/`Connection`/`Sec-WebSocket-Key`/`Content-Type`/`Accept`）必须为空 | `codexws/codexws_test.go:13-44` |
-| `TestBuildUpstreamHeadersDefaults` | 空 sessionID 现铸 UUID；空 accountID 省略头；显式 v1 生效 | `:46-58` |
-| `TestIsUnexpectedClose` | 1000 正常关闭 → false；abnormal → true | `:60-69` |
-| `TestDialURLParseError` | 畸形 URL 返回错误 | `:71-77` |
+| `TestBuildUpstreamHeaders` | 全部头的精确值（含 `session-id` 拼写、三 id 相等、window id 形状）+ forbidden 头必须为空 | `codexws/codexws_test.go:25` |
+| `TestBuildUpstreamHeadersDefaults` | 空 sessionID 现铸 UUIDv7；空 accountID 省略头；显式 v1 生效 | `:97` |
+| `TestBuildUpstreamHeadersMatchesCapturedOrder` | 产出的头集与 `handshakeHeaderOrder` 对得上 | `:126` |
+| `TestIsUnexpectedClose` | 1000 正常关闭 → false；abnormal → true | `:144` |
+| `TestDialURLParseError` | 畸形 URL 返回错误 | `:155` |
+| `TestHandshakeOrderConnReordersHeaders` | 重排到抓包顺序 + 大小写改写 | `codexws/handshake_order_test.go:28` |
+| `TestHandshakeOrderConnAgainstRealRequestWrite` | 直接拿 `http.Request.Write` 的真实输出做输入 | `:84` |
+| `TestHandshakeOrderConnPassesThroughAfterHandshake` | 握手后零干预 | `:149` |
+| `TestHandshakeOrderConnHandlesSplitWrites` | 头块被拆成多次 `Write` 时仍正确 | `:169` |
+| `TestHandshakeOrderConnGivesUpOnOversizedInput` | 超过 64 KiB 放弃干预、原样放行 | `:200` |
+| `TestReorderHeaderBlockKeepsUnknownHeaders` / `…LeavesMalformedInputAlone` | 未知头不丢；畸形输入不改 | `:214,227` |
+| `TestHandshakeOrderConnPropagatesWriteError` | 写错误向上传播 | `:250` |
 
-无真实网络测试：拨号路径本身未被覆盖（**待确认**是否有 fork 侧的集成测试）。
+无真实网络测试：拨号路径本身未被覆盖。
 
 ### 文件清单
 
-- `/home/wjs/Documents/project/Go/cc-core/codexws/dial.go`（154 行）
-- `/home/wjs/Documents/project/Go/cc-core/codexws/headers.go`（48 行）
-- `/home/wjs/Documents/project/Go/cc-core/codexws/codexws_test.go`（77 行）
+- `/home/wjs/Documents/project/Go/cc-core/codexws/dial.go`（170 行）
+- `/home/wjs/Documents/project/Go/cc-core/codexws/headers.go`（191 行）
+- `/home/wjs/Documents/project/Go/cc-core/codexws/handshake_order.go`（153 行）
+- `/home/wjs/Documents/project/Go/cc-core/codexws/codexws_test.go`（161 行）
+- `/home/wjs/Documents/project/Go/cc-core/codexws/handshake_order_test.go`（272 行）
 
 ---
 

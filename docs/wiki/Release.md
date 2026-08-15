@@ -80,7 +80,7 @@ git push origin main v0.8.NN
 **annotated tag**，附了一句主题（如 `v0.8.62  requestlog SQLite index; Kiro bridge removed`）。
 两种都能被 `go get` 正常解析，跟随现状即可；用 annotated 时给一句能读的主题。
 
-**发布本身不属于抓包档案。** `crack/cc2220/SPEC.md` 结尾明确写着：
+**发布本身不属于抓包档案。** `crack/claudev2.1.220/SPEC.md` 结尾明确写着：
 "No tag, downstream dependency bump, commit, or push is part of the capture
 archive itself." —— 抓包和发版是两件事，分开做。
 
@@ -248,7 +248,7 @@ A: 不是每个 tag 都要。纯 bug 修复、纯版本 bump 可以只靠 commit
 新包、行为变化、需要 fork 接线、或带有"别再踩这个坑"信息的发布必须写。
 
 **Q: 抓包升级指纹要走同一套发布流程吗？**
-A: 是。抓包 → 写 `crack/cc<ver>/SPEC.md` → 改 `mimicry`/`sidecar` 常量 →
+A: 是。抓包 → 写 `crack/claudev<ver>/SPEC.md` → 改 `mimicry`/`sidecar` 常量 →
 `go test ./...` → tag → 两个 fork bump。但抓包档案本身不含 tag/bump 动作，
 详见《crack/ —— 抓包档案与指纹事实来源》。
 

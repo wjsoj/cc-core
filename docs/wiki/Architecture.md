@@ -64,26 +64,26 @@ flowchart TD
 
 ## 包一览
 
-行数统计（非测试 / 测试，`wc -l`，2026-08-13）：
+行数统计（非测试 / 测试，`wc -l`，2026-08-15）：
 
 | 包 | 源码 | 测试 | 职责 | 页面 |
 |---|---:|---:|---|---|
-| `auth` | 7199 | 3382 | 凭据调度、健康状态机、OAuth 登录与刷新、uTLS 传输、上游探针 | [调度与健康](Auth-Pool) · [登录与探针](Auth-Login-Codex) |
-| `mimicry` | 3121 | 2502 | Claude Code / Codex 客户端指纹（头 + 体 + 身份派生） | [Mimicry](Mimicry) |
+| `auth` | 7367 | 3702 | 凭据调度、健康状态机、OAuth 登录与刷新、uTLS 传输、上游探针 | [调度与健康](Auth-Pool) · [登录与探针](Auth-Login-Codex) |
+| `mimicry` | 3492 | 2685 | Claude Code / Codex 客户端指纹（头 + 体 + 身份派生；Codex 默认身份为 Codex Desktop） | [Mimicry](Mimicry) |
 | `requestlog` | 3045 | 2017 | 每请求一行 JSONL + 派生 SQLite 索引与预汇总立方体 | [Requestlog](Requestlog) |
-| `sidecar` | 1389 | 761 | 真实客户端启动时的 bootstrap burst 与心跳复刻 | [Sidecar](Sidecar) |
+| `sidecar` | 1403 | 795 | 真实客户端启动时的 bootstrap burst 与心跳复刻 | [Sidecar](Sidecar) |
 | `usage` | 1084 | 616 | 每凭据 / 每 client token 的用量台账、计费幂等 | [Billing](Billing) |
 | `backup` | 615 | 291 | 关键 SQLite / 状态的异地 NaCl 加密快照 | [Transports](Transports) |
 | `pricing` | 465 | 347 | `(provider, model) → USD`，四级 fallback | [Billing](Billing) |
 | `thinkingsig` | 463 | 359 | 中途切号检测 + `thinking` 签名清洗与恢复 | [Transports](Transports) |
 | `clienttoken` | 453 | 299 | 下游客户端 token 与其策略（并发、RPM、周额度、组） | [Billing](Billing) |
-| `downstream` | 356 | 488 | 返回客户端的响应清洗：头白名单、`Retry-After` 保全、错误体与 SSE error 帧脱敏 | [Downstream](Downstream) |
+| `downstream` | 690 | 812 | 返回客户端的响应清洗：HTTP 头白名单、`Retry-After` 保全、错误体与 SSE error 帧脱敏，**以及 Codex 的 WS 101 头白名单与流内帧脱敏** | [Downstream](Downstream) |
 | `stream` | 297 | 306 | 与框架无关的 SSE 中继（keepalive / 懒提交 / 终止检测） | [Transports](Transports) |
-| `codexws` | 211 | 77 | Codex over WebSocket 上游传输 | [Transports](Transports) |
+| `codexws` | 514 | 433 | Codex over WebSocket 上游传输（握手头集 + 抓包顺序重排） | [Transports](Transports) |
 | `clientguard` | 144 | 90 | 入口 User-Agent 黑名单 | [Billing](Billing) |
 | `ratelimit` | 135 | 101 | 按 key 的 RPM + 并发计数器（策略留给调用方） | [Billing](Billing) |
 | `advisor` | 126 | 94 | 解析 `message_delta.usage.iterations[]`（advisor 子调用计费） | [Billing](Billing) |
-| `crack/` | — | — | 抓包档案：所有指纹常量的事实来源（非 Go 包） | [Crack](Crack) |
+| `crack/` | — | — | 抓包档案：所有指纹常量的事实来源（非 Go 包）。Codex 侧有**两个不同客户端**的档案：`codexapp0.147.0/`（Desktop，默认身份）与 `codexv0.135.0/`（CLI） | [Crack](Crack) |
 
 外部依赖（直接）：
 
@@ -136,7 +136,7 @@ sequenceDiagram
 - **第 4 步的 `sessionID`** 决定粘性槽位的粒度：同一用户多开窗口会被分散到不同凭据上。见 [Auth-Pool](Auth-Pool)。
 - **第 4 步返回的 `AcquireResult.LastResort`** 表示池里已经没有完全可用的凭据，这一把是从冷却中提前放行的。它**不是错误**（替代方案是 503），但状态页/日志应当把它区分出来。判断"整池是否可用"用 `Pool.Health(provider).Available()`，不要用 `HealthSnapshot` 的 `healthy` 布尔——一个 `half_open` 渠道正在服务流量，但它并不健康。见 [Auth-Pool](Auth-Pool) → 七态健康枚举。
 - **第 7 步（prepare/apply）失败绝不能触发凭据 failover** —— 那是本地准备错误，跟凭据无关。见 [Mimicry](Mimicry)。
-- **第 8 步只对 OAuth 触发**，API-key 凭据永远不发 sidecar 流量。见 [Sidecar](Sidecar)。
+- **第 8 步只对 Anthropic OAuth 触发**：API-key 凭据、以及**任何非 Anthropic provider**（Codex/ChatGPT）都不发 sidecar 流量——整张 bootstrap 表都是 Anthropic 端点。Codex 侧**刻意不做** sidecar。见 [Sidecar](Sidecar)。
 - **第 12 步的错误分类**是整个系统最脆的一环：把 h2 连接死亡误判成凭据失败，会在一秒内把整个池打黑。见 [Auth-Pool](Auth-Pool) → 瞬时错误 vs 凭据错误。
 - **第 13 步的模型名如果不在 `pricing` 目录里，会按 0 美元计费**，而且不会报错。见 [Billing](Billing)。
 
@@ -156,7 +156,8 @@ sequenceDiagram
 | `advisor` | **stable** | 只做解析，计费决策留在分叉 |
 | `stream` | **stable** | `net/http` + `bufio` 的薄封装 |
 | `downstream` | **stable** | 纯 `net/http` + `encoding/json`，无内部依赖 |
-| `mimicry` | **可能演进** | CC 版本目标 bump 会成套改动固定常量；函数签名稳定 |
+| `codexws` | **stable** | `BuildUpstreamHeaders` 的位置参数签名**冻结**（两个 fork 按位置调用）；能力扩展走 `BuildUpstreamHeadersWithOptions`。握手头集与顺序随 Codex 客户端版本演进 |
+| `mimicry` | **可能演进** | CC 版本目标 bump 会成套改动固定常量；函数签名稳定。Codex 侧默认身份为 Codex Desktop（pin 在一个 pre-release 版本串上，漂移较快） |
 | `sidecar` | **可能演进** | 同上，bump 版本可能新增 bootstrap 步骤 |
 
 Semver。v1.0.0 将在两个分叉都端到端消费 mimicry + sidecar 之后打出。

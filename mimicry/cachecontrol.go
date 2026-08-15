@@ -12,7 +12,7 @@ import (
 // Real Claude Code puts breakpoints on the same two system blocks either way —
 // the last two — but the values differ, because ttl and scope each require a
 // beta the custom-base-url client could not declare
-// (crack/thirdparty/SPEC.md §2c):
+// (crack/claudev2.1.226-inbound/SPEC.md §2c):
 //
 //	OAuth main   [-, -, {ephemeral,1h,global}, {ephemeral,1h}]
 //	custom main  [-,    {ephemeral},           {ephemeral}   ]

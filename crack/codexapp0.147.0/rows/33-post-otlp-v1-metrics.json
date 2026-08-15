@@ -1,0 +1,598 @@
+{
+  "_note": "Statsig/OTel metrics exporter, service.name=codex-app-server. NO authorization and NO chatgpt-account-id at all - authenticated by a publishable statsig-api-key only, and it is the only endpoint here on host ab.chatgpt.com. DELTA temporality (aggregationTemporality: 1), so a post only happens when something was recorded: first export at process_start+60s, next 600s later. Payload is 40-66KB, almost all of it histogram bucket boundaries. No user/account/path identifiers in any attribute - verified across both captured payloads.",
+  "_capture_id": "025",
+  "_all_metric_names": [
+    "codex.process.start",
+    "codex.sqlite.init.count",
+    "codex.sqlite.init.duration_ms",
+    "codex.plugins.startup_sync",
+    "codex.plugins.startup_sync.final",
+    "codex.remote_models.load_cache.duration_ms",
+    "codex.mcp.tools.fetch_uncached.duration_ms",
+    "codex.mcp.tools.list.duration_ms"
+  ],
+  "_req_body_original_bytes": 66372,
+  "method": "POST",
+  "url": "https://ab.chatgpt.com/otlp/v1/metrics",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "content-type": "application/json",
+    "user-agent": "OTel-OTLP-Exporter-Rust/0.31.0",
+    "statsig-api-key": "client-MkRuleRQBd6qakfnDYqJVR9JuXcY57Ljly3vi5JVUIO",
+    "content-length": "66372",
+    "accept": "*/*",
+    "host": "ab.chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body_structure": {
+    "resourceMetrics": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "rust"
+              }
+            },
+            {
+              "key": "os_version",
+              "value": {
+                "stringValue": "Rolling_Release"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "0.31.0"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "opentelemetry"
+              }
+            },
+            {
+              "key": "env",
+              "value": {
+                "stringValue": "dev"
+              }
+            },
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "codex-app-server"
+              }
+            },
+            {
+              "key": "os",
+              "value": {
+                "stringValue": "Arch_Linux"
+              }
+            },
+            {
+              "key": "service.version",
+              "value": {
+                "stringValue": "0.147.0-alpha.6.6"
+              }
+            }
+          ],
+          "droppedAttributesCount": 0,
+          "entityRefs": []
+        },
+        "scopeMetrics": [
+          {
+            "scope": {
+              "name": "codex",
+              "version": "",
+              "attributes": [],
+              "droppedAttributesCount": 0
+            },
+            "metrics": [
+              {
+                "name": "codex.process.start",
+                "description": "",
+                "unit": "",
+                "metadata": [],
+                "sum": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277218661327",
+                      "timeUnixNano": "1786724337218652683",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    }
+                  ],
+                  "aggregationTemporality": 1,
+                  "isMonotonic": true
+                }
+              },
+              {
+                "name": "codex.sqlite.init.count",
+                "description": "",
+                "unit": "",
+                "metadata": [],
+                "sum": {
+                  "dataPoints": [
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "goals"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "migrate_goals"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "memories"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "migrate_memories"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "state"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "ensure_backfill_state"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "memories"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "open_memories"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "logs"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "open_logs"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "state"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "post_init_query"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "logs"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "migrate_logs"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "goals"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "open_goals"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "state"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "backfill_gate"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "state"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "migrate_state"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    },
+                    {
+                      "attributes": [
+                        {
+                          "key": "db",
+                          "value": {
+                            "stringValue": "state"
+                          }
+                        },
+                        {
+                          "key": "error",
+                          "value": {
+                            "stringValue": "none"
+                          }
+                        },
+                        {
+                          "key": "originator",
+                          "value": {
+                            "stringValue": "codex-app-server"
+                          }
+                        },
+                        {
+                          "key": "phase",
+                          "value": {
+                            "stringValue": "open_state"
+                          }
+                        },
+                        {
+                          "key": "status",
+                          "value": {
+                            "stringValue": "success"
+                          }
+                        }
+                      ],
+                      "startTimeUnixNano": "1786724277231301105",
+                      "timeUnixNano": "1786724337218679483",
+                      "exemplars": [],
+                      "flags": 0,
+                      "asInt": 1
+                    }
+                  ],
+                  "aggregationTemporality": 1,
+                  "isMonotonic": true
+                }
+              },
+              {
+                "_elided": "metrics[2:] omitted for size; full name list in _all_metric_names"
+              }
+            ],
+            "schemaUrl": ""
+          }
+        ],
+        "schemaUrl": ""
+      }
+    ]
+  },
+  "status": 202,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:18:57 GMT",
+    "content-type": "application/json",
+    "content-length": "16",
+    "connection": "close",
+    "server": "cloudflare",
+    "permissions-policy": "interest-cohort=()",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "SAMEORIGIN",
+    "x-response-time": "0 ms",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-origin": "*",
+    "x-envoy-decorator-operation": "rust-log-event-canary.default.svc.cluster.local:3005/*",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "via": "1.1 google",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "set-cookie": "<masked>",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=hcqx%2BIDILIgebbdArcnpOt%2B8evl5Q3rbNF2atULybQz%2F1a9GUfNwibLyuac6WSiOMNnEeHvasqWXz2WfwY%2BS09KquBMihAGsFKAXHU8E4cSAQHGPqRCRt5nP%2BkRpfyof\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b1474589a6feb0-AMS"
+  },
+  "res_body": "{\"success\":true}"
+}

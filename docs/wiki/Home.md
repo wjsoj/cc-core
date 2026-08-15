@@ -21,13 +21,13 @@
 | 页面 | 内容 |
 |---|---|
 | [auth —— 凭据调度与健康状态机](Auth-Pool) | `Pool.Acquire` 的两轮调度与 last-resort 放行、七态 `HealthState`、API-key 三计数器熔断器、瞬时错误分类（**最重、改动最频繁**） |
-| [auth —— 登录、OAuth 与上游探针](Auth-Login-Codex) | Anthropic PKCE / session-cookie 登录、凭据文件格式、Codex JWT、两类 ChatGPT 探针、uTLS 与 HostProfile |
+| [auth —— 登录、OAuth 与上游探针](Auth-Login-Codex) | Anthropic PKCE / session-cookie 登录、凭据文件格式、Codex JWT（id_token + access_token）、三类 ChatGPT 探针、uTLS 与 HostProfile |
 
 ### 指纹仿真
 | 页面 | 内容 |
 |---|---|
-| [mimicry —— 客户端指纹](Mimicry) | 版本常量、请求头/体构造、prepared-request 管线与 fail-closed 条件 |
-| [sidecar —— 辅助流量仿真](Sidecar) | 真实 CC 启动时的 bootstrap burst 与心跳复刻 |
+| [mimicry —— 客户端指纹](Mimicry) | 版本常量、请求头/体构造、prepared-request 管线与 fail-closed 条件；Codex 的双 profile（默认 Codex Desktop）与身份派生 |
+| [sidecar —— 辅助流量仿真](Sidecar) | 真实 CC 启动时的 bootstrap burst 与心跳复刻；provider 守卫，以及为什么刻意不做 Codex sidecar |
 | [crack/ —— 抓包档案](Crack) | 指纹的事实来源；版本升级操作手册 |
 
 ### 账本与闸门
@@ -39,8 +39,8 @@
 ### 传输层
 | 页面 | 内容 |
 |---|---|
-| [downstream —— 返回客户端的响应清洗](Downstream) | 上游身份/配额头的白名单剥离、`Retry-After` 保全、错误体与 SSE error 帧脱敏 |
-| [传输层与辅助工具](Transports) | `stream` SSE 中继、`codexws` WebSocket 上游、`thinkingsig` 切号清洗、`backup` 加密快照 |
+| [downstream —— 返回客户端的响应清洗](Downstream) | 上游身份/配额头的白名单剥离、`Retry-After` 保全、错误体与 SSE error 帧脱敏；Codex 的 WS 101 头白名单与 `codex.rate_limits` 等流内帧脱敏 |
+| [传输层与辅助工具](Transports) | `stream` SSE 中继、`codexws` WebSocket 上游（握手 18 头 + 抓包顺序重排）、`thinkingsig` 切号清洗、`backup` 加密快照 |
 
 ---
 
@@ -53,6 +53,9 @@
 | 状态页要判断"整池还能不能服务" | [auth 调度与健康](Auth-Pool) → 七态健康枚举（用 `Pool.Health().Available()`，**不要**用 `healthy` 布尔） |
 | 中转 API key 一直不轮转 / 一直在冷却里空转 | [auth 调度与健康](Auth-Pool) → 三计数器熔断器、API-key 的两级排序 |
 | 升级 Claude Code 指纹版本 | [crack/](Crack) → 版本升级操作手册 → [mimicry](Mimicry) → 升级 checklist |
+| 升级 Codex 指纹版本 / 搞清"Desktop 还是 CLI" | [crack/](Crack) → 两个 Codex 档案的区别 → [mimicry](Mimicry) → Codex 常量表 |
+| Codex 的 WS 握手头 / 头顺序 / `session-id` 拼写 | [传输层](Transports) → codexws |
+| 别把凭据池状态回给客户端（含 Codex 的 101 与流内帧） | [downstream](Downstream) |
 | 改健康阈值 / 定价权重 | [约定与维护指南](Conventions) → 行为常量纪律（**必须配测试**） |
 | 排查管理面板统计慢 / 数字不对 | [requestlog](Requestlog) → `agg_cube` 与三大陷阱 |
 | 发一个新版本给两个 fork | [发布流程](Release) |

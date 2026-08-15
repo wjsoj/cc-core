@@ -1,0 +1,39 @@
+{
+  "method": "POST",
+  "url": "https://auth.openai.com/oauth/token",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "content-type": "application/x-www-form-urlencoded",
+    "accept": "*/*",
+    "host": "auth.openai.com",
+    "content-length": "2018",
+    "Connection": "close"
+  },
+  "req_body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&client_id=app_EMoamEEZ73f0CkXaXp7hrann&requested_token=openai-api-key&subject_token=<masked>   (the id_token from row 01)&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token",
+  "status": 401,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:28:45 GMT",
+    "content-type": "application/json",
+    "content-length": "172",
+    "connection": "close",
+    "server": "cloudflare",
+    "openai-version": "2020-10-01",
+    "x-request-id": "<masked>",
+    "openai-processing-ms": "167",
+    "x-content-type-options": "nosniff",
+    "cache-control": "no-store",
+    "pragma": "no-cache",
+    "x-openai-proxy-wasm": "v0.1",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": [
+      "<masked>"
+    ],
+    "timing-allow-origin": "*",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.1,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=fmr4W%2BWXbefEgsK40YJIC6ULrHb9dduvMj7vQrEQHxe7zIjq5uI3RhazPDoathd0O9h6TTV2FCBdQVBFtIAzS5rh9kJpCTGdiF7DVqOKXi8Z0KOfyk7VXspo69KVrqXE77RTgT5bFZdwfAKOWA%3D%3D\"}]}",
+    "cf-ray": "<masked>",
+    "alt-svc": "h3=\":443\"; ma=86400"
+  },
+  "res_body": "{\n  \"error\": {\n    \"message\": \"Invalid ID token: missing organization_id\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"invalid_subject_token\"\n  }\n}"
+}

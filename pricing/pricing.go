@@ -151,7 +151,7 @@ func NewCatalog(c Config) *Catalog {
 // "claude-opus-5". Names without the suffix are returned unchanged.
 //
 // Real Claude Code tags a 1M-context request as "claude-opus-5[1m]" in its
-// TELEMETRY only — the request body carries the plain name (crack/cc2220/SPEC.md
+// TELEMETRY only — the request body carries the plain name (crack/claudev2.1.220/SPEC.md
 // §1a). The suffix is therefore a pure label: it selects no price tier (Anthropic
 // bills the full 1M window at standard rates) and identifies no distinct upstream
 // model. Left in place it is actively harmful — it misses every price card AND

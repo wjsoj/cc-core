@@ -110,7 +110,7 @@
 | | OAuth | ApiKey |
 |---|---|---|
 | 数量 | **8** | **34** |
-| 工具名 | Agent / Bash / Edit / Read / ScheduleWakeup / Skill / **ToolSearch** / Write | 全部展开（详见 [apikey docs/14](apikey/docs/14-POST-www.fucheers.top_v1_messages.md)） |
+| 工具名 | Agent / Bash / Edit / Read / ScheduleWakeup / Skill / **ToolSearch** / Write | 全部展开（详见 [apikey docs/14](claudev2.1.126-apikey/docs/14-POST-www.fucheers.top_v1_messages.md)） |
 | 包含的 MCP 工具 | **0**（全部走 ToolSearch 延迟加载） | **5 个**（`mcp__context7__*`, `mcp__figma__*`, `mcp__plugin_context7_context7__*`） |
 | 包含的内置 deferred 工具 | **0**（全部走 ToolSearch） | **20+**（CronCreate/CronDelete/CronList/EnterPlanMode/ExitPlanMode/EnterWorktree/ExitWorktree/LSP/Monitor/NotebookEdit/PushNotification/RemoteTrigger/TaskCreate/TaskGet/TaskList/TaskOutput/TaskStop/TaskUpdate/WebFetch/WebSearch/AskUserQuestion …） |
 

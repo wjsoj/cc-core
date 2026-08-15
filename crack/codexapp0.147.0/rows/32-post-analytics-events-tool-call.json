@@ -1,0 +1,41 @@
+{
+  "_note": "Two events batched in one POST: codex_command_execution_event + codex_dynamic_tool_call_event always travel together.",
+  "_capture_id": "561",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "content-type": "application/json",
+    "accept": "*/*",
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "content-length": "2868",
+    "Connection": "close"
+  },
+  "req_body": "{\"events\": [{\"event_type\": \"codex_command_execution_event\", \"event_params\": {\"thread_id\": \"<masked>\", \"session_id\": \"<masked>\", \"turn_id\": \"<masked>\", \"item_id\": \"<masked>\", \"cell_id\": \"<masked>\", \"parent_call_id\": \"<masked>\", \"originating_response_id\": \"<masked>\", \"subsequent_response_id\": \"<masked>\", \"app_server_client\": {\"product_client_id\": \"Codex Desktop\", \"client_name\": \"Codex Desktop\", \"client_version\": \"26.803.81509\", \"rpc_transport\": \"stdio\", \"experimental_api_enabled\": true}, \"runtime\": {\"codex_rs_version\": \"0.147.0-alpha.6.6\", \"runtime_os\": \"linux\", \"runtime_os_version\": \"Rolling Release\", \"runtime_arch\": \"x86_64\"}, \"thread_source\": \"user\", \"subagent_source\": null, \"parent_thread_id\": null, \"tool_name\": \"unified_exec\", \"started_at_ms\": 1786725014701, \"completed_at_ms\": 1786725014701, \"duration_ms\": 0, \"execution_duration_ms\": 0, \"review_count\": 0, \"guardian_review_count\": 0, \"user_review_count\": 0, \"final_approval_outcome\": \"unknown\", \"terminal_status\": \"completed\", \"failure_kind\": null, \"requested_additional_permissions\": false, \"requested_network_access\": false, \"plugin_id\": null, \"script_path\": null, \"command_execution_source\": \"unifiedExecStartup\", \"exit_code\": 0, \"command_total_action_count\": 1, \"command_read_action_count\": 0, \"command_list_files_action_count\": 0, \"command_search_action_count\": 0, \"command_unknown_action_count\": 1}}, {\"event_type\": \"codex_dynamic_tool_call_event\", \"event_params\": {\"thread_id\": \"<masked>\", \"session_id\": \"<masked>\", \"turn_id\": \"<masked>\", \"item_id\": \"<masked>\", \"cell_id\": \"<masked>\", \"parent_call_id\": null, \"originating_response_id\": \"<masked>\", \"subsequent_response_id\": \"<masked>\", \"app_server_client\": {\"product_client_id\": \"Codex Desktop\", \"client_name\": \"Codex Desktop\", \"client_version\": \"26.803.81509\", \"rpc_transport\": \"stdio\", \"experimental_api_enabled\": true}, \"runtime\": {\"codex_rs_version\": \"0.147.0-alpha.6.6\", \"runtime_os\": \"linux\", \"runtime_os_version\": \"Rolling Release\", \"runtime_arch\": \"x86_64\"}, \"thread_source\": \"user\", \"subagent_source\": null, \"parent_thread_id\": null, \"tool_name\": \"exec\", \"started_at_ms\": 1786725014463, \"completed_at_ms\": 1786725014703, \"duration_ms\": 240, \"execution_duration_ms\": 240, \"review_count\": 0, \"guardian_review_count\": 0, \"user_review_count\": 0, \"final_approval_outcome\": \"unknown\", \"terminal_status\": \"completed\", \"failure_kind\": null, \"requested_additional_permissions\": false, \"requested_network_access\": false, \"dynamic_tool_name\": \"exec\", \"success\": true, \"output_content_item_count\": null, \"output_text_item_count\": null, \"output_image_item_count\": null, \"output_audio_item_count\": null}}]}",
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:30:20 GMT",
+    "content-type": "application/json",
+    "content-length": "88",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "req_1b655d8b717c447d8d73fc526e13f5ab",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<masked>",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=GgYyWXmcZuWng8%2BGvKvJh1qkzy9NW8iZkhsD9tFpIV31QZWYouF4XJYzRw1gpgvsHI%2BcTJ7tbEnMiJtNPxdxWhGphlqTNiorubhCHKNSx6KdYjT9fTOF%2BaGTtZbd\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b157f29825df76-AMS"
+  },
+  "res_body": "{\"status\": \"ok\", \"total_events\": 2, \"accepted_events\": 2, \"skipped_events\": 0}"
+}

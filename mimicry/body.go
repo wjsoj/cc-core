@@ -28,7 +28,7 @@ import (
 // on OAuth credentials. The version suffix is extracted from the real CLI.
 // The cch implementation remains a legacy best-effort reconstruction: the
 // genuine 2.1.220 client emits a dynamic value, but its signer did not match
-// the seeded-xxhash guess on any of 37 captured requests (cc2220/SPEC.md).
+// the seeded-xxhash guess on any of 37 captured requests (claudev2.1.220/SPEC.md).
 //
 // An exhaustive static search of the 2.1.220 bundle (2026-07-31) proved WHY
 // that reconstruction can't be finished from the binary: the JS emits the
@@ -36,7 +36,7 @@ import (
 // `cc_version=` and `cc_prev_req` each appear exactly once (the one builder),
 // the only other references to the billing block merely EXCLUDE it from the
 // local cache-diagnosis hashes, and there is no native symbol for it either.
-// The real substitution happens below the JS layer. See cc2220/SPEC.md,
+// The real substitution happens below the JS layer. See claudev2.1.220/SPEC.md,
 // "`cch` — exhaustive static analysis".
 //
 // Therefore: keep signing. Do NOT "correct" this to emit 00000 just because
@@ -199,7 +199,7 @@ func systemHasBillingBlock(raw json.RawMessage) bool {
 }
 
 // rewriteSystemForOAuth rebuilds the system field to match the real CC system
-// layout captured in crack/cc2220/SPEC.md:
+// layout captured in crack/claudev2.1.220/SPEC.md:
 //
 //	system[0] = billing block (no cache_control)
 //	system[1] = "You are Claude Code, Anthropic's official CLI for Claude."
@@ -317,7 +317,7 @@ func buildBillingBlock(body []byte, cliVersion string) json.RawMessage {
 // Verified byte-for-byte against the CC 2.1.198 bundle (functions xtf/awo,
 // extracted from the standalone binary at 2.1.197/2.1.198; that per-version
 // archive dir was pruned, see git history. UTF-16 semantics re-verified against
-// the live capture in crack/cc2220/SPEC.md "Billing, fingerprint suffix, and
+// the live capture in crack/claudev2.1.220/SPEC.md "Billing, fingerprint suffix, and
 // `cch`"):
 //
 //	function xtf(e){let t=e.find(r=>r.type==="user"&&!r.isMeta); ... first text block}
@@ -470,7 +470,7 @@ func stripMessageCacheControl(body []byte) []byte {
 
 // addMessageCacheBreakpoints injects an ephemeral 1h cache_control on the
 // last block of the last message — exactly what real CC does
-// (verified in crack/cc2220/SPEC.md).
+// (verified in crack/claudev2.1.220/SPEC.md).
 func addMessageCacheBreakpoints(body []byte) []byte {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(body, &obj); err != nil {

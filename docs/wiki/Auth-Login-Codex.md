@@ -131,7 +131,7 @@ sequenceDiagram
 `Connection: close`（`auth/login_probes.go:40-43`）。
 
 > **陷阱**：profile 和 roles **不是**同一套头。给两者发统一头集本身就是一个 tell
-> （`crack/cc2220/SPEC.md §2`，回归测试 `TestLoginProbeHeadersPerEndpoint`）。
+> （`crack/claudev2.1.220/SPEC.md §2`，回归测试 `TestLoginProbeHeadersPerEndpoint`）。
 
 全部 best-effort：失败只 `log.Debugf`，绝不中断登录（`auth/login_probes.go:69,98`）。
 所有探针复用同一个 `ClientFor(sess.ProxyURL, useUTLS)` 客户端，保证它们和后续流量从同一出口 IP 出去。
@@ -335,6 +335,32 @@ Anthropic 刷新（`refreshAnthropicLocked`，`auth/oauth.go:776`）复用同一
 `buildCodexAuthURL`（`auth/codex_login.go:32`）用的是 `url.Values.Encode()`（字母序），
 额外带三个厂商标志：`prompt=login`、`id_token_add_organizations=true`、`codex_cli_simplified_flow=true`。
 
+> `/oauth/authorize` 那一腿**没有被抓到**（同意页在系统浏览器里打开，不走代理，`crack/codexapp0.147.0/README.md` §1）。
+> 唯一的证据是 token 响应里的 granted scope，而它**比 cc-core 请求的更宽**：多出 `api.connectors.read api.connectors.invoke`。
+> Desktop 是否在 authorize 时就申请了这两个 scope，目前无法验证。
+
+### token 端点的头集（`applyCodexTokenEndpointHeaders`）
+
+`auth/codex_refresh.go:49`。**授权码交换与刷新走同一个函数**（`auth/codex_login.go:72`、`auth/codex_refresh.go:82`），因为
+`crack/codexapp0.147.0/rows/01` 显示 `POST auth.openai.com/oauth/token` 恰好只有 4 个头，
+顺序为 `content-type: application/x-www-form-urlencoded` · `accept: */*` · `host` · `content-length`。
+
+两条都是承重的：
+
+- **没有 User-Agent，而"不设"不等于"没有"。** net/http 会替补 `Go-http-client/1.1` —— 整个登录流程里最响的第三方标志。
+  `Header.Del("User-Agent")` 和 `Set("User-Agent", "")` **都无效**：http1 的 `Request.write` 与 http2 的 `encodeHeaders`
+  都在 key **缺席**时回落到默认值。唯一有效的写法是把 key 设成 nil slice：
+
+  ```go
+  req.Header["User-Agent"] = nil    // auth/codex_refresh.go:50
+  req.Header.Set("Accept", "*/*")   // auth/codex_refresh.go:51
+  ```
+
+  CLIProxyAPI 有同样的缺陷。
+- **`Accept` 是 `*/*` 而不是 `application/json`。** token 端点无论如何都返 JSON，所以这一项**只有指纹意义**。
+
+CLI 在这个端点上发的是同一套形状，所以它**不需要按身份分版本**（这是 Codex 少数几个 CLI 与 Desktop 头集一致的端点之一）。
+
 ### 与 Anthropic 侧的关键差异
 
 | | Anthropic | Codex |
@@ -342,7 +368,7 @@ Anthropic 刷新（`refreshAnthropicLocked`，`auth/oauth.go:776`）复用同一
 | PKCE verifier / state 长度 | 32 / 32 字节 | 96 / 24 字节 |
 | 授权 URL query 序 | 手工拼接，保留插入序 | `url.Values.Encode()`，字母序 |
 | token 交换 body | 有序 JSON | `application/x-www-form-urlencoded` |
-| 交换请求头 | axios 全套 | 仅 `Content-Type` + `Accept: application/json` |
+| 交换请求头 | axios 全套 | 仅 4 个：`Content-Type` + **`Accept: */*`** + `Host` + `Content-Length`，**且没有 User-Agent** |
 | 交换响应 | `account` / `organization` 对象 | `id_token`（JWT）|
 | 登录期辅助探针 | 有（5 条）| 无 |
 | 落盘并发保护 | `writeAnthropicLoginCredential`：`saveMu` + 账号比对 + temp/rename | `writeCodexLoginCredential`：同一套（account_id 优先、email 兜底）|
@@ -354,7 +380,7 @@ Anthropic 刷新（`refreshAnthropicLocked`，`auth/oauth.go:776`）复用同一
 
 ### 凭据文件名约定
 
-`buildCodexCredentialFilename`（`auth/codex_login.go:163`）：
+`buildCodexCredentialFilename`（`auth/codex_login.go:219`）：
 
 ```
 codex-{email}.json                    # 无 plan
@@ -367,22 +393,39 @@ email 为空时 `claude-{sessionID}.json`。
 
 ### ID Token claims
 
-`ParseCodexIDToken(token string) (*CodexIDTokenClaims, error)`（`auth/codex_jwt.go:37`）
+`ParseCodexIDToken(token string) (*CodexIDTokenClaims, error)`（`auth/codex_jwt.go:133`）
 **不验签**：token 刚从 `auth.openai.com` 经 TLS 取回，签名已由签发方保证——与 Codex CLI 自身行为一致。
-按 `.` 切三段、取 payload、补齐 base64 padding（`auth/codex_jwt.go:53`）后解 JSON。
+按 `.` 切三段、取 payload、补齐 base64 padding（`codexJWTPayload`，`auth/codex_jwt.go:147`）后解 JSON。
 
-解析出的字段（`CodexIDTokenClaims`，`auth/codex_jwt.go:13`）：
+解析出的字段（`CodexIDTokenClaims`，`auth/codex_jwt.go:14`）：
 
 | claim | Go 字段 | 用途 |
 |---|---|---|
 | `email` | `Email` | 凭据 email / label / 文件名 |
 | `email_verified` | `EmailVerified` | 仅解析，当前无消费点 |
 | `sub` | `Sub` | 仅解析，当前无消费点 |
-| `https://api.openai.com/auth` → `chatgpt_account_id` | `CodexAuthInfo.ChatgptAccountID`，访问器 `AccountID()`（`auth/codex_jwt.go:26`）| `Chatgpt-Account-Id` 请求头、`/subscriptions?account_id=` |
-| `https://api.openai.com/auth` → `chatgpt_plan_type` | `CodexAuthInfo.ChatgptPlanType`，访问器 `PlanType()`（`auth/codex_jwt.go:31`）| 模型可见性 |
-| `https://api.openai.com/auth` → `chatgpt_user_id` | `CodexAuthInfo.ChatgptUserID` | 仅解析，当前无消费点 |
+| `https://api.openai.com/auth` → `chatgpt_account_id` | `CodexAuthInfo.ChatgptAccountID`，访问器 `AccountID()`（`auth/codex_jwt.go:122`）| `Chatgpt-Account-Id` 请求头、`/subscriptions?account_id=` |
+| `https://api.openai.com/auth` → `chatgpt_plan_type` | `CodexAuthInfo.ChatgptPlanType`，访问器 `PlanType()`（`auth/codex_jwt.go:127`）| 模型可见性 |
+| `https://api.openai.com/auth` → `chatgpt_user_id` | `CodexAuthInfo.ChatgptUserID`（`auth/codex_jwt.go:30`）| 仅解析，当前无消费点 |
+| → `chatgpt_subscription_active_start` / `_until` / `_last_checked`（RFC3339） | `auth/codex_jwt.go:33-35`，访问器 `SubscriptionActiveUntil()`（`:55`）| **计费探针的免费兜底**：见下 |
+| → `organizations[{id, is_default, role, title}]` | `auth/codex_jwt.go:37`，类型 `CodexOrganization`（`:42`），访问器 `DefaultOrganization()`（`:65`）| 组织归属；`is_default` 优先，否则取第一个 |
 
-`NormalizeCodexPlan`（`auth/codex_jwt.go:76`）把上游标签收敛成四档：
+> 订阅相关的三个 claim 是 `FetchCodexSubscription` 的**零风险兜底**——那是 cc-core 跑的最暴露的一个探针，而这些值是登录时白送的。
+> 但它们**冻结在签发时刻**，所以只能**补充**而不能**取代**计费探针（`crack/codexapp0.147.0/SPEC.md` §5）。
+
+### Access Token claims
+
+`ParseCodexAccessToken(token string) (*CodexAccessTokenClaims, error)`（`auth/codex_jwt.go:109`），
+类型 `CodexAccessTokenClaims`（`auth/codex_jwt.go:86`）：同一个 `https://api.openai.com/auth` 命名空间下带
+`chatgpt_account_id` / `chatgpt_plan_type` / `chatgpt_user_id`，另在 `…/profile` 下带 `email`
+（访问器 `AccountID()` `:98` / `PlanType()` `:101` / `Email()` `:104`）。
+
+**它存在的理由是一个真实缺陷**：一次刷新**只保证返回 access_token**，`id_token` 是可选的。
+旧代码只从 id_token 读账号信息，于是"刷新没带 id_token"的那一路会让 `AccountID` / `PlanType` / `Email`
+**永远停留在凭据创建时的值**——套餐升级或账号迁移一律看不见。现在从 access token 回填
+（`auth/codex_refresh.go:178-195`），依据是 `crack/codexapp0.147.0/rows/02`。
+
+`NormalizeCodexPlan`（`auth/codex_jwt.go:182`）把上游标签收敛成四档：
 `free` / `plus` / `pro` / `team`（`team`、`business`、`go` 都归 `team`；**空串和未知值都归 `pro`**，
 即宁可放开也不误限制）。模型清单 `CodexModelCatalog`（`auth/codex_models.go:22`）+
 `CodexModelsForPlan(planType string) []string`（`auth/codex_models.go:67`）。
@@ -390,25 +433,37 @@ email 为空时 `claude-{sessionID}.json`。
 
 ### Codex 刷新
 
-`refreshCodexLocked`（`auth/codex_refresh.go:27`）：form body
+`refreshCodexLocked`（`auth/codex_refresh.go:58`）：form body
 `client_id, grant_type=refresh_token, refresh_token, scope="openid profile email"`。
 
-- **每次重试重建 request**（`buildReq` 工厂，`auth/codex_refresh.go:45`）——`strings.Reader` 消费后不可重放。
+- **每次重试重建 request**（`buildReq` 工厂，`auth/codex_refresh.go:76`）——`strings.Reader` 消费后不可重放；
+  工厂里同时调 `applyCodexTokenEndpointHeaders`（`:82`），所以刷新与授权码交换的头形状永远一致。
 - 3 次尝试，退避 `attempt × 300ms`，只在 `IsTransientNetErr` 时重试。
-- **传输层瞬时错误即使耗尽重试也不 `MarkFailure`**（`auth/codex_refresh.go:87-92`）。
+- **传输层瞬时错误即使耗尽重试也不 `MarkFailure`**（`auth/codex_refresh.go:88-124`）。
   历史教训：后台刷新器每分钟一跳，几分钟的代理天气就能累积到 `hardFailureThreshold`，
   把一个完好的 Codex 凭据永久打成 "session expired"。
-- 状态码映射（`auth/codex_refresh.go:98-118`）：
+- 状态码映射（`auth/codex_refresh.go:132-160`）：
 
 | 上游响应 | 处置 |
 |---|---|
-| body 含 `refresh_token_reused` / `refresh_token_invalidated` | `MarkHardFailure`（终局，需重登）|
-| `401`，或 `400` 且含 `invalid_grant` | `MarkHardFailure` |
+| body 含 `refresh_token_reused` / `refresh_token_invalidated` | `MarkHardFailure`（终局，需重登，`:138`）|
+| `401`，或 `400` 且含 `invalid_grant` | `MarkHardFailure`（`:140`）|
 | `429` 或 `>=500` | **不做任何标记**，只 `log.Warnf` |
-| 其他非 200 | `MarkFailure` |
+| 其他非 200 | `MarkFailure`（`:146`）|
 
 成功后会**重新解析 id_token**，把 `plan_type` / `account_id` / `email` 同步过来
-——订阅档位可能在两次刷新之间变化（`auth/codex_refresh.go:130-158`）。
+——订阅档位可能在两次刷新之间变化（`auth/codex_refresh.go:166-174`）；
+**id_token 缺席或字段为空时再从 access_token 回填**（`auth/codex_refresh.go:178-195`，见上节）。
+
+抓包侧的一条注意事项：`expires_in` 是 **864000 秒（10 天）**，所以单次会话根本触发不了刷新
+——`crack/codexapp0.147.0/README.md` §4 明确说明这次**没有抓到刷新的请求/响应形状**，
+该形状仍然是源码推导的。响应里还有 `earliest_refresh_at`（= 签发 + 9 天）与不透明的 `oai_is`，cc-core 目前都不消费。
+
+### 登录后的 token-exchange 探针
+
+登录一秒后，Desktop 会发一个 RFC 8693 交换（`requested_token=openai-api-key`），
+在个人 Plus 账号上稳定拿到 **401 `invalid_subject_token: missing organization_id`**，然后流量照常继续
+（`crack/codexapp0.147.0/rows/03`）。**这是探针，不是凭据失败**——任何将来要建模它的代码都不得触碰凭据健康。
 
 ---
 
@@ -422,7 +477,7 @@ reset-credit 说"手上还有几张立即重置配额的卡"。
 | 入口 | `FetchCodexUsage`（`auth/codex_usage.go:135`）| `FetchCodexSubscription`（`auth/codex_subscription.go:201`）| `FetchCodexResetCredits`（`auth/codex_reset.go:89`）/ `ResetCodexCredit`（`auth/codex_reset.go:126`）|
 | 用途 | 滚动窗口配额、余额、spend control、plan | 计费视图：term 起止、续订、折扣、拖欠 | 一次性配额重置卡余量 / 兑换 |
 | 端点 | `GET https://chatgpt.com/backend-api/wham/usage` | `GET .../backend-api/subscriptions?account_id=<id>`<br>`GET .../backend-api/accounts/check/v4-2023-04-27` | `GET .../backend-api/wham/rate-limit-reset-credits`<br>`POST .../consume` |
-| 冒充的客户端 | **codex-tui CLI**（CLI 自己会调它）| **浏览器 XHR**（只有网页门户会调）| **Codex Desktop**（真正兑换重置卡的客户端）|
+| 冒充的客户端 | **codex-tui CLI**（CLI 自己会调它）| **浏览器 XHR**（只有网页门户会调）| 自称 **Codex Desktop**，但**与 2026-08-14 的 Desktop 抓包矛盾**（见下）|
 | User-Agent | `mimicry.CodexUsageUserAgent`（== `CodexCLIUserAgent`，`codex-tui/0.147.0 …`）| `browserUA`（Chrome 131 on Linux）| `browserUA` |
 | 头集构造 | 内联于 `FetchCodexUsage`（`auth/codex_usage.go:170-183`）| `codexBillingGET`（`auth/codex_subscription.go:387`）| `applyCodexWhamHeaders`（`auth/codex_reset.go:197`）|
 | 失败语义 | 返回 error，**不动健康**；`limit_reached` 时 `MarkUsageLimitReached` | 返回 error，**不动健康**；两个端点**都**失败才算失败 | 返回 error，**不动健康** |
@@ -454,9 +509,24 @@ reset-credit 说"手上还有几张立即重置配额的卡"。
 看正是同源。发了反而是"没有任何真实客户端会产生的组合"。
 （`auth/codex_subscription.go:382-386`；回归测试 `TestCodexBillingRequestIdentity` 显式断言 `Origin` 为空。）
 
-**为什么不能"统一"这三套**：wham/usage 有 codex-tui 的真实抓包（`crack/codex/SPEC.md` rows/02），
+**为什么不能"统一"这三套**：wham/usage 有 codex-tui 的真实抓包（`crack/codexv0.135.0/SPEC.md` rows/02），
 billing 两个端点**只有响应抓包、没有请求头抓包**，现有头集是按浏览器行为推演的；
 reset-credits 沿用 sub2api 已验证的 Desktop 头集。没有新抓包就不要合并。
+
+`crack/codexapp0.147.0/SPEC.md` §6 进一步把这条纪律推到极致：仅在 Desktop 一侧，8 个端点上就存在
+**六套互不兼容的头集**——`oai-product-sku` 与 `x-openai-product-sku` 同值不同名且**按客户端（Desktop HTTP client vs MCP client）分裂而不是按端点族**、
+`originator` 在 plugins 端点排第 1 而在 `analytics-events`/`apps/batch` 排第 6、在 `wham/settings/user` 干脆缺席、
+`connectors/directory/list` 在一个 GET 上发 `content-type: application/json`、`ps/mcp` 用完全不同的 UA
+（`codex-mcp-client/0.147.0-alpha.6.6`）且是唯一头顺序不稳定的端点。
+
+> **⚠️ `auth/codex_reset.go` 的"Desktop"头集存疑，代码未改。**
+> 它发 `browserUA`（Chrome 131）加整套 `Sec-Fetch-*` 与 `Priority`，
+> 而**真实 Codex Desktop 0.147.0 在任何 `/backend-api/*` 调用上都不发这些**——
+> 它发自己的 UA、`originator` 与 `oai-product-sku`，一个 `Sec-Fetch-*` 都没有。
+> 这套头集**可能**对 `wham/rate-limit-reset-credits` 这一个端点仍然成立
+> （它来自另一次抓包、可能是更早的构建，且本次 12 分钟的运行里没有触发该端点），
+> 所以在拿到针对性抓包之前**不动代码**；但在那之前，**不要把这个文件当作 Desktop 的参考实现**。
+> 这条不影响 `codex_usage.go` 与 `codex_subscription.go`。
 
 ### 共同的传输纪律
 
@@ -627,9 +697,13 @@ Go 的 `sync.RWMutex` 不可重入，在写锁内调用会死锁并冻结所有�
    拖欠（delinquent）也只上报给人看，不自动停用——宽限期内账号仍能正常服务。
 2. **User-Agent 不设会暴露 `Go-http-client/1.1`。** 而且它和浏览器 `Referer`/`Sec-Fetch-*`
    同时出现，比单独任一个都更反常。`TestCodexBillingRequestIdentity` 钉死这条。
+   - **`/oauth/token` 是唯一一处"必须一个 UA 都不发"的端点**，而在 Go 里"不发"要写成
+     `req.Header["User-Agent"] = nil`。`Del` 与 `Set("")` **都不管用**——两条路径都在 key 缺席时替补默认值
+     （`auth/codex_refresh.go:49`，依据 `crack/codexapp0.147.0/rows/01`）。
 3. **`Origin` 在同源 GET 上刻意不发**，发了才是异常组合。
-4. **三套 ChatGPT 探针头集不可合并**：一套是 CLI 抓包、一套是浏览器推演、一套是 Desktop 头集。
-   没有新抓包就不要"统一"。
+4. **三套 ChatGPT 探针头集不可合并**：一套是 CLI 抓包、一套是浏览器推演、一套是**存疑的** Desktop 头集
+   （`codex_reset.go`，见上文告示）。没有新抓包就不要"统一"。Desktop 抓包显示，仅在它一侧
+   8 个端点上就有六套互不兼容的头集。
 5. **authorize query 与 token body 的字段顺序是指纹**。用 `map` 或 `url.Values.Encode()`
    会字母序化，与真实 CC 不符（Anthropic 侧；Codex 侧本来就是 `Encode()`）。
 6. **PKCE verifier/state 长度也是指纹**：Anthropic 32/32，Codex 96/24，别"统一成一个常量"。
@@ -642,6 +716,8 @@ Go 的 `sync.RWMutex` 不可重入，在写锁内调用会死锁并冻结所有�
 10. **`proxy_url` 非法会让整个凭据文件解析失败**（`validatedProxyValue`），这是有意的 fail-closed。
 11. **Codex 刷新的瞬时传输错误绝不能 `MarkFailure`**：后台刷新器每分钟一跳，
     几分钟代理天气就能累积过 `hardFailureThreshold`，把好凭据永久打死。
+    - **一次刷新不保证返回 `id_token`。** 只从 id_token 读账号信息会让 `AccountID` / `PlanType` / `Email`
+      永久停在创建时的值；必须用 `ParseCodexAccessToken` 回填（`auth/codex_refresh.go:178-195`）。
 12. **`refresh_token` 会轮换**，并发刷新会互相烧号——靠 `refreshMu` + double-check 去重。
     Codex 侧 `refresh_token_reused` 是终局错误。
 13. **重试请求必须用工厂重建**，`strings.Reader` / `bytes.Reader` body 消费后无法重放。
@@ -770,22 +846,29 @@ go test ./auth/ -run TestCodexBillingRequestIdentity -v
 | `auth/codex_login.go:23` | OpenAI authorize URL / redirect / scopes |
 | `auth/codex_login.go:32` | `buildCodexAuthURL` |
 | `auth/codex_login.go:52` | `finishCodexLogin` |
-| `auth/codex_login.go:163` | `buildCodexCredentialFilename` |
-| `auth/codex_jwt.go:13` | `CodexIDTokenClaims` |
-| `auth/codex_jwt.go:26` | `AccountID()` |
-| `auth/codex_jwt.go:31` | `PlanType()` |
-| `auth/codex_jwt.go:37` | `ParseCodexIDToken`（不验签）|
-| `auth/codex_jwt.go:53` | `base64URLDecode`（补 padding）|
-| `auth/codex_jwt.go:65` | `CodexPlanFree/Plus/Pro/Team` |
-| `auth/codex_jwt.go:76` | `NormalizeCodexPlan`（未知 → pro）|
-| `auth/codex_refresh.go:18` | `openaiTokenURL` / `openaiClientID` |
-| `auth/codex_refresh.go:27` | `refreshCodexLocked`（重试 + 状态码映射）|
+| `auth/codex_login.go:219` | `buildCodexCredentialFilename` |
+| `auth/codex_jwt.go:14` | `CodexIDTokenClaims`（含 `chatgpt_subscription_active_*` 与 `organizations[]`）|
+| `auth/codex_jwt.go:42` | `CodexOrganization` |
+| `auth/codex_jwt.go:55` | `SubscriptionActiveUntil()` |
+| `auth/codex_jwt.go:65` | `DefaultOrganization()` |
+| `auth/codex_jwt.go:86` | `CodexAccessTokenClaims` |
+| `auth/codex_jwt.go:109` | `ParseCodexAccessToken`（刷新无 id_token 时的回退）|
+| `auth/codex_jwt.go:122` | `AccountID()` |
+| `auth/codex_jwt.go:127` | `PlanType()` |
+| `auth/codex_jwt.go:133` | `ParseCodexIDToken`（不验签）|
+| `auth/codex_jwt.go:147` | `codexJWTPayload`（切三段取 payload）|
+| `auth/codex_jwt.go:159` | `base64URLDecode`（补 padding）|
+| `auth/codex_jwt.go:171-176` | `CodexPlanFree/Plus/Pro/Team` |
+| `auth/codex_jwt.go:182` | `NormalizeCodexPlan`（未知 → pro）|
+| `auth/codex_refresh.go:18-21` | `openaiTokenURL` / `openaiClientID` |
+| `auth/codex_refresh.go:49` | `applyCodexTokenEndpointHeaders`（`accept: */*` + 抹掉 User-Agent）|
+| `auth/codex_refresh.go:58` | `refreshCodexLocked`（重试 + 状态码映射 + access_token 回填）|
 | `auth/codex_models.go:22` | `CodexModelCatalog` |
 | `auth/codex_models.go:67` | `CodexModelsForPlan` |
 | `auth/codex_usage.go:35` | `CodexUsageInfo` |
-| `auth/codex_usage.go:112` | `codexWhamUsageURL` |
+| `auth/codex_usage.go:113` | `codexWhamUsageURL` |
 | `auth/codex_usage.go:135` | `FetchCodexUsage` |
-| `auth/codex_usage.go:170` | wham/usage 的 CLI 头集 |
+| `auth/codex_usage.go:171` | wham/usage 的 CLI 头集 |
 | `auth/codex_usage.go:295` | `isRetryableCodexUsageErr` |
 | `auth/codex_subscription.go:38` | `CodexSubscriptionInfo` |
 | `auth/codex_subscription.go:60` | `CodexSubscriptionPortal` |
@@ -793,22 +876,24 @@ go test ./auth/ -run TestCodexBillingRequestIdentity -v
 | `auth/codex_subscription.go:128` | `CodexDiscount` |
 | `auth/codex_subscription.go:142` | `CodexBillingAccount` |
 | `auth/codex_subscription.go:162` | `CodexLastActiveSubscription` |
-| `auth/codex_subscription.go:175` | 两个 billing 端点 URL |
+| `auth/codex_subscription.go:173` | 两个 billing 端点 URL |
 | `auth/codex_subscription.go:201` | `FetchCodexSubscription` |
 | `auth/codex_subscription.go:273` | `fetchCodexPortal` |
 | `auth/codex_subscription.go:308` | `parseCodexAccountsCheck`（账号选择顺序）|
 | `auth/codex_subscription.go:387` | `codexBillingGET`（浏览器 XHR 头集）|
 | `auth/codex_subscription.go:471` | `PurchasedAt` / `ExpiresAt` / `Plan` / `IsFree` / `AtRisk` |
-| `auth/codex_reset.go:31` | reset-credit 端点 + Desktop 标识常量 |
+| `auth/codex_reset.go:31` | reset-credit 端点 + "Desktop" 标识常量（**头集与 2026-08-14 Desktop 抓包矛盾，存疑**）|
 | `auth/codex_reset.go:89` | `FetchCodexResetCredits` |
 | `auth/codex_reset.go:126` | `ResetCodexCredit` |
 | `auth/codex_reset.go:165` | `prepareCodexWhamCall` |
-| `auth/codex_reset.go:197` | `applyCodexWhamHeaders`（Codex Desktop 头集）|
+| `auth/codex_reset.go:197` | `applyCodexWhamHeaders`（自称 Desktop 头集；未经新抓包确认）|
 | `auth/codex_reset.go:219` | `doCodexWhamRequest` |
 | `auth/codex_reset.go:261` | `generateRedeemRequestID` |
-| `mimicry/codex.go:35` | `CodexCLIVersion` = `0.144.4`、`CodexCLIUserAgent` |
-| `mimicry/codex.go:82` | `CodexUsageUserAgent`（== `CodexCLIUserAgent`）|
-| `mimicry/fingerprint.go:41` | `ClaudeCLIUserAgent` = `claude-cli/2.1.220 (external, cli)` |
+| `mimicry/codex_identity.go:41-69` | `CodexDesktop*` 常量（**默认身份**）|
+| `mimicry/codex_identity.go:118` | `DefaultCodexProfile()` → Desktop |
+| `mimicry/codex.go:57-59` | `CodexCLIVersion` = `0.147.0`、`CodexCLIUserAgent`、`CodexOriginator` |
+| `mimicry/codex.go:244` | `CodexUsageUserAgent`（== `CodexCLIUserAgent`；wham/usage 是 CLI 自己调的探针）|
+| `mimicry/fingerprint.go:49` | `ClaudeCLIUserAgent` = `claude-cli/2.1.224 (external, cli)` |
 
 ### 传输 / 指纹
 
@@ -837,8 +922,8 @@ go test ./auth/ -run TestCodexBillingRequestIdentity -v
 | 路径 | 内容 |
 |---|---|
 | `docs/codex-subscription.md` | 计费探针专题（抓包 payload、helper 语义、fork 侧 admin 端点样例、陷阱）|
-| `crack/codex/SPEC.md` | codex-tui 抓包 ground truth（wham/usage 头集来源）|
-| `crack/cc2220/SPEC.md` | Claude Code 2.1.220 抓包（§2 覆盖 login 探针头集差异）|
+| `crack/codexv0.135.0/SPEC.md` | codex-tui 抓包 ground truth（wham/usage 头集来源）|
+| `crack/claudev2.1.220/SPEC.md` | Claude Code 2.1.220 抓包（§2 覆盖 login 探针头集差异）|
 
 ---
 

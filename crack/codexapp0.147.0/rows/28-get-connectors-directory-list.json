@@ -1,0 +1,41 @@
+{
+  "_note": "GET that nevertheless sends content-type: application/json. Response body was not recorded by whistle (streamed/compressed).",
+  "_capture_id": "415",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/connectors/directory/list?external_logos=true",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "oai-product-sku": "codex",
+    "content-type": "application/json",
+    "accept": "*/*",
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:30:08 GMT",
+    "content-type": "application/json",
+    "content-length": "4874490",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "9550cd09-aeeb-4fbf-bd08-aff40e1bd524",
+    "x-build": "47f4c4b01f9d",
+    "x-content-type-options": "nosniff",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "set-cookie": "<masked>",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=0cyMaaOOybhh1SngnZsOJpDcNCF2X7otS1BUufsfs5oiCLsard3iL1Wo6UEbtAXZSDN3qv3nWWQqKJzsmJbNMWCmZh1r6Qsp8Sa6MuUT7ILc%2FHTE0i8V6CtV6ucA\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b1575b6b0ad94b-AMS"
+  },
+  "res_body": ""
+}

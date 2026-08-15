@@ -1,0 +1,41 @@
+{
+  "_note": "Event-driven, one POST per event batch, no fixed period. app_server_client.product_client_id/client_name = Codex Desktop and client_version = the DESKTOP build (26.803.81509), while runtime.codex_rs_version is the codex-rs version (0.147.0-alpha.6.6) - the two versions in the UA string, split into two body fields. rpc_transport is stdio here vs in_process for the standalone codex-tui (see crack/codexv0.135.0/rows/03).",
+  "_capture_id": "176",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "content-type": "application/json",
+    "accept": "*/*",
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "content-length": "676",
+    "Connection": "close"
+  },
+  "req_body": "{\"events\": [{\"event_type\": \"codex_thread_initialized\", \"event_params\": {\"thread_id\": \"<masked>\", \"session_id\": \"<masked>\", \"app_server_client\": {\"product_client_id\": \"Codex Desktop\", \"client_name\": \"Codex Desktop\", \"client_version\": \"26.803.81509\", \"rpc_transport\": \"stdio\", \"experimental_api_enabled\": true}, \"runtime\": {\"codex_rs_version\": \"0.147.0-alpha.6.6\", \"runtime_os\": \"linux\", \"runtime_os_version\": \"Rolling Release\", \"runtime_arch\": \"x86_64\"}, \"model\": \"gpt-5.6-sol\", \"ephemeral\": false, \"thread_source\": \"user\", \"initialization_mode\": \"new\", \"subagent_source\": null, \"parent_thread_id\": null, \"forked_from_thread_id\": null, \"created_at\": 1786724942}}]}",
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:29:02 GMT",
+    "content-type": "application/json",
+    "content-length": "88",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "req_72b4b53f67ac4ad7b24b37418dd447b6",
+    "x-openai-proxy-wasm": "v0.1",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<masked>",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=yD7PSE8yExd%2B9JyYHTkErwNMEwkGQ9TBP8%2FtlOGT3xb4z9u%2FBHN7%2FXPk5QeREfb2ECkRPjgu%2FvISaYTmQ3L7ryJZZJJT9Z3xW3p0cAYWbEPz5wpF0KtIuuEITPk5MDSmiolRWTSUygRr\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b1560b4c1a7757-AMS"
+  },
+  "res_body": "{\"status\": \"ok\", \"total_events\": 1, \"accepted_events\": 1, \"skipped_events\": 0}"
+}

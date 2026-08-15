@@ -22,7 +22,7 @@ import (
 // traffic is flowing.
 //
 // Rate-limit windows: historically primary=5h (limit_window_seconds 18000) and
-// secondary=weekly (604800) — see crack/codex/SPEC.md §rate_limit. As of the
+// secondary=weekly (604800) — see crack/codexv0.135.0/SPEC.md §rate_limit. As of the
 // 2026-07 ChatGPT quota-policy change the 5h window was retired, so the backend
 // now typically returns ONLY the weekly window (the 5h slot decodes as a nil
 // *CodexUsageRateWindow). The limit-reached gating below is window-agnostic —
@@ -49,7 +49,7 @@ type CodexUsageInfo struct {
 	// through unchanged instead of aborting the decode.
 	RateLimitReachedType json.RawMessage `json:"rate_limit_reached_type,omitempty"`
 
-	// Fields added with the codex-tui/0.135.0 capture (crack/codex/SPEC.md).
+	// Fields added with the codex-tui/0.135.0 capture (crack/codexv0.135.0/SPEC.md).
 	// CodeReviewRateLimit is a top-level sibling of rate_limit (typically null);
 	// kept as raw JSON since its non-null shape isn't yet captured.
 	CodeReviewRateLimit json.RawMessage `json:"code_review_rate_limit,omitempty"`
@@ -160,7 +160,7 @@ func (a *Auth) FetchCodexUsage(ctx context.Context, useUTLS bool) (*CodexUsageIn
 	// Keep-alive sidesteps both issues by reusing the existing connection.
 	client := ClientFor(a.ProxyURL, useUTLS)
 
-	// The Codex CLI's own wham/usage probe (crack/codex/SPEC.md, rows/02)
+	// The Codex CLI's own wham/usage probe (crack/codexv0.135.0/SPEC.md, rows/02)
 	// carries only Authorization + Chatgpt-Account-Id + the codex-tui UA — NOT
 	// the web portal's oai-client-version / x-openai-target-* / sec-fetch-*
 	// headers (those belong to the browser settings page, a different client).

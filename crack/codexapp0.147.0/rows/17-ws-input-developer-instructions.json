@@ -1,0 +1,62 @@
+{
+  "_note": "The Codex system prompt. It is NOT the `instructions` field — that key does not exist on any client frame in this capture, and the server echoes `instructions: null` back on response.completed. It is an input[] item of type `message`, role `developer`, immediately after the additional_tools item. First 800 chars verbatim; the rest elided (it is model-authored prose, not identity, but it is long and version-bound).",
+  "_source": "WS session <SESSION_ID> (whistle 1786761697562-745) frames 257 and 264, model gpt-5.6-sol",
+  "item": {
+    "type": "message",
+    "role": "developer",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n# Personality\n\nAs Codex, you are an excellent communicator with a curious, rich personality. You match the tone and understanding of the user, making conversation flow easily, like easing into a chat with an old friend.\n\nYou have tastes, preferences, and your own way of seeing the world. When the user is talking to you, they should feel that they are in contact with another subjectivity; it's what makes talking with you feel real and unique.\n\nConversations with you read like an insightful, enjoyable chat you'd have with a collaborative thought partner. You guide users through unfamiliar tasks without expecting them to already know wh",
+        "_text_elided": "<elided 16930 chars> (true length 17730)"
+      }
+    ]
+  },
+  "message_item_forms": {
+    "_note": "`message` items come in exactly two shapes and the difference is turn-scope, not role.",
+    "base_form": {
+      "keys": [
+        "type",
+        "role",
+        "content"
+      ],
+      "meaning": "The turn-independent system prompt. No `id`, no internal_chat_message_metadata_passthrough. Byte-identical across the prewarm frame and the turn frame of a session, and identical across the gpt-5.6-sol and gpt-5.6-luna sessions (same sha256, 17730 chars) — it is the cacheable prefix.",
+      "observed_roles": [
+        "developer"
+      ]
+    },
+    "turn_scoped_form": {
+      "keys": [
+        "type",
+        "id",
+        "role",
+        "content",
+        "internal_chat_message_metadata_passthrough"
+      ],
+      "meaning": "Everything produced by or for a specific turn: the per-turn developer context blocks (<app-context>, the /root multi-agent brief, <multi_agent_mode>), the <recommended_plugins> block, and the user`s own message. `id` is `msg_<uuid v7>` and the passthrough is {\"turn_id\": \"<uuid v7>\"} — all items of one turn share that turn_id.",
+      "observed_roles": [
+        "developer",
+        "user"
+      ],
+      "example": {
+        "type": "message",
+        "id": "<ITEM_ID>",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "<masked user prose: 3 chars>"
+          }
+        ],
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "<TURN_ID>"
+        }
+      }
+    }
+  },
+  "observations": [
+    "The developer system prompt begins `You are Codex, an agent based on GPT-5.` — the model family in that sentence is `GPT-5`, not the wire model name `gpt-5.6-sol`.",
+    "A turn opener carries 6 content parts on its first turn-scoped developer item (5027/16556/4757/966/646/1014 chars); the count is user-state dependent and is not a fingerprint.",
+    "Because the base form has no id, a proxy that regenerates ids per item must leave this one alone or it stops matching the cached prefix."
+  ]
+}

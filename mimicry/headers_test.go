@@ -8,7 +8,7 @@ import (
 
 // The three OAuth-path beta lists are captured constants — a silent edit to
 // any of them changes what Anthropic's edge sees on every request that arrives
-// without its own list. Assert the exact wire values from crack/cc2220/SPEC.md
+// without its own list. Assert the exact wire values from crack/claudev2.1.220/SPEC.md
 // (§1a non-1M / 1M, §1b count_tokens) so a typo or reorder fails loudly.
 func TestClaudeBetaListsMatchCapture(t *testing.T) {
 	cases := []struct {
@@ -132,7 +132,7 @@ func TestMainMessagesKeepsTimeoutAndFullBetas(t *testing.T) {
 // downstream client opts into 1M, exactly as the real CLI does — and the
 // count_tokens branch must not substitute its own list over the top. On the
 // first-party OAuth path the declared vector is additively repaired with the
-// betas a custom-base-url client cannot declare (crack/thirdparty/SPEC.md §1a).
+// betas a custom-base-url client cannot declare (crack/claudev2.1.226-inbound/SPEC.md §1a).
 func TestClientSuppliedBetasWinOnCountTokens(t *testing.T) {
 	id := SimIdentity{AccountKey: "acct", AccountUUID: "uuid", ClientToken: "tok"}
 

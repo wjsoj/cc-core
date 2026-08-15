@@ -337,7 +337,7 @@ for the API-key beta selection added here.
 - `ClaudeAnthropicBetaApikey` — the shorter Anthropic-Beta request header real
   CC sends on the **API-key** path (3rd-party gateways with `x-api-key`). Drops
   the OAuth-only / strict-gateway-rejected tokens (`oauth-2025-04-20`,
-  `advanced-tool-use-*`, `cache-diagnosis-*`). Verbatim from `crack/apikey/`.
+  `advanced-tool-use-*`, `cache-diagnosis-*`). Verbatim from `crack/claudev2.1.126-apikey/`.
 
 ### Changed — `mimicry/headers.go`
 
@@ -760,7 +760,7 @@ without re-implementing the body/header dance.
   - Constants `CLICurrentVersion`, `ClaudeCLIUserAgent`,
     `ClaudeAnthropicBetaFull`, ... pinned to CC 2.1.146.
   - 8 golden tests verifying the structural invariants captured in
-    `crack/oauth/rows/17`.
+    `crack/claudev2.1.126/rows/17`.
 
 - **`sidecar`** — full sidecar Manager pulled wholesale from
   `internal/server/sidecar.go` (1278 LOC).

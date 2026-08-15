@@ -5,7 +5,7 @@
 ## 目录
 
 ```
-crack/login/
+crack/claudev2.1.126-login/
 ├── README.md                ← 本文件（PKCE 流程总览 + 与 CPA-Claude 现状对比）
 ├── raw/
 │   ├── login-dump-full.json     ← whistle 后端最新 100 行 dump（包含历史噪声）

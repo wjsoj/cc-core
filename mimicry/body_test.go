@@ -368,7 +368,7 @@ func TestClaudeCodeFingerprintUTF16Vectors(t *testing.T) {
 }
 
 // The 2.1.220 bundle literally contains `cch=00000` and no code that replaces
-// it (crack/cc2220/SPEC.md, "`cch` — exhaustive static analysis"). That is a
+// it (crack/claudev2.1.220/SPEC.md, "`cch` — exhaustive static analysis"). That is a
 // standing temptation to "align" cc-core by shipping the placeholder — but no
 // genuine request ever carries it: 43/43 captured values are non-zero and
 // unique. This test fails loudly if the signer is ever removed or neutered.

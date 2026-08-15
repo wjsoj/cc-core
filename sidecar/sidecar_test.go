@@ -151,13 +151,13 @@ func TestBootstrapFiresAllStepsWithCorrectUA(t *testing.T) {
 	}{
 		"/api/eval/sdk-zAZezfDKGoZuXXKe": {"Bun/", "oauth-2025-04-20"},
 		// account/settings + grove use claude-cli (NOT claude-code) — verified in
-		// both the 2.1.191 and 2.1.214 live captures (crack/cc2214/SPEC.md §2).
+		// both the 2.1.191 and 2.1.214 live captures (crack/claudev2.1.214/SPEC.md §2).
 		"/api/oauth/account/settings":   {"claude-cli/", "oauth-2025-04-20"},
 		"/api/claude_code_grove":        {"claude-cli/", "oauth-2025-04-20"},
 		"/api/claude_cli/bootstrap":     {"claude-code/", "oauth-2025-04-20"},
 		"/api/claude_code_penguin_mode": {"axios/", "oauth-2025-04-20"},
 		"/v1/messages":                  {"claude-cli/", quotaProbeBeta},
-		// mcp-registry uses claude-cli (NOT axios) — 2.1.191 + cc2214, 8 samples.
+		// mcp-registry uses claude-cli (NOT axios) — 2.1.191 + claudev2.1.214, 8 samples.
 		"/mcp-registry/v0/servers": {"claude-cli/", ""},
 		"/v1/mcp_servers":          {"axios/", "mcp-servers-2025-12-04"},
 		"/v1/code/triggers":        {"claude-cli/", "ccr-triggers-2026-01-30"},
@@ -190,7 +190,7 @@ func TestBootstrapFiresAllStepsWithCorrectUA(t *testing.T) {
 // /mcp-registry is a PUBLIC catalog and real CC sends no Authorization on it
 // (a Bearer there is a tell), while /v1/mcp_servers advertises
 // roots.listChanged in its base64 capability header.
-// (crack/cc2220/SPEC.md §3.)
+// (crack/claudev2.1.220/SPEC.md §3.)
 func TestMCPProbeAuthAndCapabilities(t *testing.T) {
 	rec := &recorder{}
 	srv := httptest.NewServer(rec.handler())
@@ -321,6 +321,40 @@ func TestSidecarSkipsAPIKey(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if rec.count() != 0 {
 		t.Errorf("apikey credentials must not trigger sidecars, got %d", rec.count())
+	}
+}
+
+// TestSidecarSkipsNonAnthropicProvider asserts a Codex/OpenAI OAuth credential
+// never triggers the Anthropic bootstrap burst. Every step in
+// realBootstrapSteps() targets api.anthropic.com with Anthropic betas; firing
+// them for a ChatGPT credential would send that account's access token to
+// Anthropic endpoints. Legacy credentials with an empty Provider still count
+// as Anthropic (NormalizeProvider), so this must not regress them.
+func TestSidecarSkipsNonAnthropicProvider(t *testing.T) {
+	for _, provider := range []string{auth.ProviderOpenAI, "codex", "chatgpt"} {
+		t.Run(provider, func(t *testing.T) {
+			rec := &recorder{}
+			srv := httptest.NewServer(rec.handler())
+			defer srv.Close()
+
+			mgr := New(Config{Enabled: true, BaseURL: srv.URL})
+			defer mgr.Stop()
+			mgr.httpClient = srv.Client()
+
+			a := &auth.Auth{
+				ID:          "codex:foo",
+				Kind:        auth.KindOAuth,
+				Provider:    provider,
+				AccessToken: "chatgpt-access-token",
+			}
+			if ch := mgr.Notify(a, "client-A"); ch != nil {
+				t.Errorf("Notify must return nil for provider %q", provider)
+			}
+			time.Sleep(500 * time.Millisecond)
+			if rec.count() != 0 {
+				t.Errorf("provider %q must not trigger sidecars, got %d requests", provider, rec.count())
+			}
+		})
 	}
 }
 
@@ -747,7 +781,7 @@ func TestBootstrapModelMatchesReportedModel(t *testing.T) {
 	}
 }
 
-// The quota probe constants are now anchored to crack/cc2224/rows/19; assert
+// The quota probe constants are now anchored to crack/claudev2.1.224/rows/19; assert
 // the captured values so a silent edit fails loudly, as with the mimicry lists.
 func TestQuotaProbeMatchesCapture(t *testing.T) {
 	const captured = "oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12," +

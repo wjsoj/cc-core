@@ -15,8 +15,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CRACK_ROOT = os.path.dirname(HERE)
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else 'oauth'
-ROWS_DIR = os.path.join(CRACK_ROOT, MODE, 'rows')
-DOCS_DIR = os.path.join(CRACK_ROOT, MODE, 'docs')
+
+# mode 名是逻辑链路名（NOTES_BY_MODE 的键），目录名是 <客户端>v<版本>[-<链路>]。
+# 三个 mode 都抓自同一个 claude-cli/2.1.126 会话，只是走了不同的鉴权链路。
+DIR_BY_MODE = {
+    'oauth':  'claudev2.1.126',
+    'apikey': 'claudev2.1.126-apikey',
+    'login':  'claudev2.1.126-login',
+}
+CAPTURE_DIR = DIR_BY_MODE.get(MODE, MODE)
+ROWS_DIR = os.path.join(CRACK_ROOT, CAPTURE_DIR, 'rows')
+DOCS_DIR = os.path.join(CRACK_ROOT, CAPTURE_DIR, 'docs')
 os.makedirs(DOCS_DIR, exist_ok=True)
 
 # ---------- 每条 row 的人写注释（按 mode 切分） ----------

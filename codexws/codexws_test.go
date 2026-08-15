@@ -2,6 +2,7 @@ package codexws
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,29 +11,79 @@ import (
 	"github.com/wjsoj/cc-core/mimicry"
 )
 
+// header names are asserted as LITERAL map keys, never via Header.Get, because
+// Get canonicalizes and would happily pass a header we spelled "Session-Id"
+// while the wire needs "session-id". These assertions are the regression guard
+// for that class of bug.
+func hdr(h map[string][]string, name string) string {
+	if v, ok := h[name]; ok && len(v) > 0 {
+		return v[0]
+	}
+	return ""
+}
+
 func TestBuildUpstreamHeaders(t *testing.T) {
 	h := BuildUpstreamHeaders("tok-abc", "acct-123", "sess-xyz", "", "gpt-5.6-sol", "priority")
 
-	if got := h.Get("Authorization"); got != "Bearer tok-abc" {
-		t.Errorf("Authorization = %q, want Bearer tok-abc", got)
+	want := map[string]string{
+		"chatgpt-account-id":    "acct-123",
+		"authorization":         "Bearer tok-abc",
+		"user-agent":            mimicry.CodexDesktopUserAgent,
+		"originator":            mimicry.CodexDesktopOriginator,
+		"openai-beta":           CodexOpenAIBetaWS,
+		"version":               mimicry.CodexDesktopVersion,
+		"x-codex-beta-features": mimicry.CodexDesktopBetaFeatures,
+		"x-client-request-id":   "sess-xyz",
+		"session-id":            "sess-xyz",
+		"thread-id":             "sess-xyz",
+		"x-codex-window-id":     "sess-xyz:0",
 	}
-	if got := h.Get("Chatgpt-Account-Id"); got != "acct-123" {
-		t.Errorf("Chatgpt-Account-Id = %q, want acct-123", got)
+	for name, exp := range want {
+		if got := hdr(h, name); got != exp {
+			t.Errorf("header %q = %q, want %q", name, got, exp)
+		}
 	}
-	if got := h.Get("Session_id"); got != "sess-xyz" {
-		t.Errorf("Session_id = %q, want sess-xyz", got)
+
+	// Exactly the captured spelling — the underscore form was the old bug.
+	if _, ok := h["Session_id"]; ok {
+		t.Error(`"Session_id" (underscore) must not be sent; real Codex sends "session-id"`)
 	}
-	if got := h.Get("OpenAI-Beta"); got != CodexOpenAIBetaWS {
-		t.Errorf("OpenAI-Beta = %q, want %q (v2 default)", got, CodexOpenAIBetaWS)
+	if _, ok := h["Session-Id"]; ok {
+		t.Error(`"Session-Id" (canonicalized) must not be sent; the wire name is all-lowercase`)
 	}
-	if got := h.Get("Originator"); got != mimicry.CodexOriginator {
-		t.Errorf("Originator = %q, want %q", got, mimicry.CodexOriginator)
+
+	// x-codex-turn-metadata: key order is part of the captured shape.
+	md := hdr(h, "x-codex-turn-metadata")
+	if md == "" {
+		t.Fatal("x-codex-turn-metadata must be sent")
 	}
-	if got := h.Get("User-Agent"); got != mimicry.CodexCLIUserAgent {
-		t.Errorf("User-Agent = %q, want %q", got, mimicry.CodexCLIUserAgent)
+	if !strings.HasPrefix(md, `{"installation_id":"`) {
+		t.Errorf("turn metadata must start with installation_id, got %q", md)
 	}
-	if got := h.Get("Version"); got != mimicry.CodexCLIVersion {
-		t.Errorf("Version = %q, want %q", got, mimicry.CodexCLIVersion)
+	for _, frag := range []string{
+		`"session_id":"sess-xyz"`,
+		`"thread_id":"sess-xyz"`,
+		`"turn_id":""`,
+		`"window_id":"sess-xyz:0"`,
+		`"request_kind":"prewarm"`,
+		`"thread_source":"user"`,
+		`"sandbox":"seccomp"`,
+	} {
+		if !strings.Contains(md, frag) {
+			t.Errorf("turn metadata missing %s: %s", frag, md)
+		}
+	}
+	if strings.Contains(md, `"installation_id":""`) {
+		t.Error("installation_id must be derived from the account, never empty")
+	}
+	// The handshake variant must NOT carry the turn-only workspace field.
+	if strings.Contains(md, "workspace") {
+		t.Errorf("handshake metadata must not carry workspace state: %s", md)
+	}
+
+	// Contradicted by both captures: no routing hint on the upgrade.
+	if _, ok := h[mimicry.CodexRoutingHintHeader]; ok {
+		t.Error("x-codex-routing-hint must not be sent on the WS handshake")
 	}
 
 	// The gorilla dialer owns these; setting them here breaks the handshake.
@@ -46,14 +97,47 @@ func TestBuildUpstreamHeaders(t *testing.T) {
 func TestBuildUpstreamHeadersDefaults(t *testing.T) {
 	// Empty sessionID mints a UUID; empty accountID omits the header; explicit v1.
 	h := BuildUpstreamHeaders("tok", "", "", CodexOpenAIBetaWSV1, "", "")
-	if h.Get("Session_id") == "" {
-		t.Error("empty sessionID should mint a fresh UUID, got empty")
+	sid := hdr(h, "session-id")
+	if sid == "" {
+		t.Fatal("empty sessionID should mint a fresh UUID, got empty")
 	}
-	if _, ok := h["Chatgpt-Account-Id"]; ok {
-		t.Error("empty accountID should omit Chatgpt-Account-Id")
+	// Real Codex session ids are UUIDv7 (time-ordered). The version nibble is
+	// the 15th hex digit; a v4 there is visible to anyone who looks.
+	if len(sid) != 36 || sid[14] != '7' {
+		t.Errorf("session id must be a UUIDv7, got %q", sid)
 	}
-	if got := h.Get("OpenAI-Beta"); got != CodexOpenAIBetaWSV1 {
-		t.Errorf("OpenAI-Beta = %q, want v1 %q", got, CodexOpenAIBetaWSV1)
+	if got := hdr(h, "x-client-request-id"); got != sid {
+		t.Errorf("x-client-request-id = %q, want it to equal session-id %q", got, sid)
+	}
+	if got := hdr(h, "x-codex-window-id"); got != sid+":0" {
+		t.Errorf("x-codex-window-id = %q, want %q", got, sid+":0")
+	}
+	if _, ok := h["chatgpt-account-id"]; ok {
+		t.Error("empty accountID should omit chatgpt-account-id")
+	}
+	if got := hdr(h, "openai-beta"); got != CodexOpenAIBetaWSV1 {
+		t.Errorf("openai-beta = %q, want v1 %q", got, CodexOpenAIBetaWSV1)
+	}
+}
+
+// TestBuildUpstreamHeadersMatchesCapturedOrder asserts every header we send is
+// accounted for in the captured handshake order, so a newly added header can
+// never silently fall into the unordered tail.
+func TestBuildUpstreamHeadersMatchesCapturedOrder(t *testing.T) {
+	h := BuildUpstreamHeadersWithOptions(UpstreamHeaderOptions{
+		AccessToken:    "tok",
+		AccountID:      "acct",
+		SessionID:      "sess",
+		InstallationID: "inst",
+	})
+	known := map[string]bool{}
+	for _, n := range HandshakeHeaderOrder() {
+		known[strings.ToLower(n)] = true
+	}
+	for name := range h {
+		if !known[strings.ToLower(name)] {
+			t.Errorf("header %q is sent but missing from handshakeHeaderOrder", name)
+		}
 	}
 }
 

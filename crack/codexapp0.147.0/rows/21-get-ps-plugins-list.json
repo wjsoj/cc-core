@@ -1,0 +1,40 @@
+{
+  "_note": "Marketplace catalogue paging. 64 calls; ~1.0-1.9s apart while paging (pageToken is a base64 continuation cursor), then idle. Response is ~430-580KB per page.",
+  "_capture_id": "078",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/ps/plugins/list?scope=GLOBAL&limit=200&pageToken=eyJzY29wZSI6IkdMT0JBTCIsIndvcmtzcGFjZV9pZCI6bnVsbCwiY3JlYXRvcl9hY2NvdW50X3VzZXJfaWQiOm51bGwsImNvbGxlY3Rpb24iOm51bGwsImluY2x1ZGVfcmVzdHJpY3RlZF9wbHVnaW5zIjp0cnVlLCJpbmNsdWRlX3VubGlzdGVkX2dsb2JhbF9wbHVnaW5zIjp0cnVlLCJlbGlnaWJsZV9wbGFuX3R5cGUiOiJwbHVzIiwiZW5mb3JjZV9wbGFuX2VsaWdpYmlsaXR5IjpmYWxzZSwicmFua19ieV9wb3B1bGFyaXR5Ijp0cnVlLCJwdWJsaXNoZWRfc2NvcmVzX3YxX2dlbmVyYXRpb25faWQiOiJtYW51YWw6MjAyNi0wNy0yNzoyMDI2MDcyN1QwNDM3NTQyNDgxMDRaOjhiNmYzYjcyLTQ0ZTQtNGRiZS05MDFiLWQ0ODZmNmQzN2UxNiIsImNvbnRpbnVhdGlvbiI6eyJkZXBsb3ltZW50X3R5cGUiOiJwcmltYXJ5IiwicXVlcnlfaWQiOiJyczQ6MDM1YWFlMzAtOGU3Zi00NGE5LWIzMDItZmNhNmI5ZjE5YWU2OjFzT3l1b2Y6MDpsZWFmLTM1YTI3NDI0LWZlMjItNDYxNi1iZjgwLTc2YTA0N2IyZGM5YiIsImN1cnNvciI6IlpINjlkWEM0Z0x2dmVITHBoSlVLNmZqaTJOR2pQTlMwR3NWQ3BKVlpnX3ZVTmVFRmNaNWNkalM0Q0pncFJaWmdWREFwSUFweEdCR0FZb01qVlYxODhCUnJEZ2tFaGFpcGJ3ZkVIdEZaS2dMM2EzOG1nNkpFX2VxN0JnOGZmRGJ6LTJsZGNQN055d0pBU25fdkFYQTNwYVQtdWdjcGxKbnpjTHJnbmZUaXBvZkRwS0RmSm02X2x6Q0U0MVp6anVhRjFYY1JDRm9Tb2RjPSJ9fQ",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "oai-product-sku": "codex",
+    "accept": "*/*",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:28:50 GMT",
+    "content-type": "application/json",
+    "content-length": "580329",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "8d34f1ee-8823-4453-89b9-e01a19abab4b",
+    "x-openai-proxy-wasm": "v0.1",
+    "x-content-type-options": "nosniff",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<masked>",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=AFNCwR9NWDe%2FMQo3kb3eY6iEa7JgKvdSdkV1BraFlBEiORm62uGbyR5SMXYFVaZK4Otf7rrciuWjRGz64NJdZNGgCJDlWrFjD7x%2BzbOzJ1WKROVvYVV%2BmeLs%2BIFXrQm6FkUjz1VfijwZ\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b155bd0d789fdc-AMS"
+  },
+  "res_body": "{\"plugins\": [{\"id\": \"plugin_connector_6923e677f37c8191845e4e0b658dd718\", \"name\": \"jam\", \"created_at\": \"2026-05-26T19:35:13.483413Z\", \"scope\": \"GLOBAL\", \"workspace_id\": null, \"creator_account_user_id\": null, \"canonical_app_id\": \"connector_6923e677f37c8191845e4e0b658dd718\", \"discoverability\": \"LISTED\", \"status\": \"ENABLED\", \"installation_policy\": \"AVAILABLE\", \"disabled_reason\": null, \"eligible_plan_types\": null, \"installation_policy_source\": null, \"authentication_policy\": \"ON_INSTALL\", \"must_show_installation_interstitial\": true, \"release\": {\"id\": \"pluginrel_514db4e32b348191885f00b6892242f6\", \"version\": \"1.0.0\", \"display_name\": \"Jam\", \"description\": \"Jam for ChatGPT connects your Jam screen recordings to ChatGPT. When you paste a Jam link, the app pulls in rich debugging context from that recording, including video, user events, console logs, errors, and network requests. ChatGPT can then use this data to help you understand, fix, and organize product issues.\\n\\nUse Jam for ChatGPT to:\\n• Explain what went wrong in a recording and why\\n• Turn a Jam into an engineering ready bug ticket\\n• Write test cases based on the exact user steps\\n• Summarize a customer’s experience and impact\\n• Group similar Jams into themes or issue clusters\\n• Plan code changes based on real traces, not guesses\\n\\nHow it works:\\n1. Record an issue or user session with Jam.\\n2. Copy the Jam link, for example https://jam.dev/c/UUID.\\n3. In ChatGPT, paste the Jam URL and ask what you want to do, such as:\\n        •        “Find the root cause of this bug.”\\n        •        “Write a Jira ticket from this Jam.”\\n        •        “List clean reproduction steps from this recording.”\\n        •        “Group these Jam links into related issues.”\\n\\nBehind the scenes, the Jam app turns your Jam into structured, machine readable data that ChatGPT can work with. You get deep technical context and clear next steps, without retyping steps or relying on users to copy and paste logs.\\n\\nIf you work in engineering, product, QA, or support, Jam for ChatGPT helps you move from “What happened here?” to “Here is exactly what we need to do next.”\", \"keywords\": [], \"bundle_download_url\": null, \"app_ids\": [\"connector_6923e677f37c8191845e4e0b658dd718\"], \"app_manifest\": {\"apps\": {\"jam\": {\"id\": \"connector_6923e677f37c8191845e4e0b658dd718\", \"required\": true}}}, \"interface\": {\"short_description\": \"Screen record with context\", \"long_description\": \"Jam for ChatGPT connects your Jam screen recordings to ChatGPT. When you paste a Jam link, the app pulls in rich debugging context from that recording, including video, user events, console logs, errors, and network requests. ChatGPT can then use this data to help you understand, fix, and organize product issues.\\n\\nUse Jam for ChatGPT to:\\n• Explain what went wrong in a recording and why\\n• Turn a Jam into an engineering ready bug ticket\\n• Write test cases based on the exact user steps\\n• Summarize a customer’s experience and impact\\n• Group similar Jams into themes or issue clusters\\n• Plan code changes based on real traces, not guesses\\n\\nHow it works:\\n1. Record an issue or user session with Jam.\\n2. Copy the Jam link, for example https://jam.dev/c/UUID.\\n3. In ChatGPT, paste the Jam URL and ask what you want to do, such as:\\n        •        “Find the root cause of this bug.”\\n        •        “Write a Jira ticket from this Jam.”\\n        •        “List clean reproduction steps from this recording.”\\n        •        “Group these Jam links into related issues.”\\n\\nBehind the scenes, the Jam app turns your Jam into structured, machine readable data that ChatGPT can work with. You get deep technical context and clear next steps, without retyping steps or relying on users to copy and paste logs.\\n\\nIf you work in engineering, product, QA, or support, Jam for ChatGPT helps you move from “What happened here?” to “Here is exactly what we need to do next.”\", \"developer_name\": \"Jam\", \"category\": \"Productivity\", \"plugin_category_id\": \"product …<truncated, structure continues>"
+}

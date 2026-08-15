@@ -57,7 +57,7 @@ _ = raw["new_field"].(string)   // 缺字段 → 零值，老文件照样加载
 
 `mimicry` / `sidecar` / `auth/codex_*` 里的 User-Agent、beta 列表、body 结构、bootstrap 步骤，**不允许凭直觉手改**。流程是：
 
-抓一份真实客户端流量 → `crack/scripts/extract_live.py` 脱敏 → 写 `crack/cc<ver>/SPEC.md` 记录 diff → 再改常量。
+抓一份真实客户端流量 → `crack/scripts/extract_live.py` 脱敏 → 写 `crack/claudev<ver>/SPEC.md` 记录 diff → 再改常量。
 
 版本相关的常量是**一套**，必须一起动：`CLICurrentVersion`、`ClaudeCLIUserAgent`、`ClaudeAnthropicBetaFull`、`ClaudeAnthropicBeta1M`、`ClaudeAnthropicBetaCountTokens`、`ClaudeReportedBetas`、以及 sidecar 各步骤的 UA。任何一个落下，User-Agent 就会和 body 里的 `cc_version=` 计费块自相矛盾。
 
@@ -106,7 +106,7 @@ go test ./sidecar/ -timeout 60s             # sidecar 用真实时序，跑约 2
 
 建立这份 Wiki 时的调研发现**已全部处理完毕**，留在这里作为记录。
 
-**注释漂移**（仅改注释）：`requestlog` 的 `agg_day` 残留、`sidecar` 的去重键描述、`codexws` 写死的 codex-tui 版本号、`backup` 的 `.tar.gz.age` 后缀、`mimicry/body.go` 三处指向已不存在的 `crack/claude` 路径。
+**注释漂移**（仅改注释）：`requestlog` 的 `agg_day` 残留、`sidecar` 的去重键描述、`backup` 的 `.tar.gz.age` 后缀、`mimicry/body.go` 三处指向已不存在的 `crack/claude` 路径。
 
 **死代码**：`requestlog` 的 `scanAggregateRow` 已删除。
 

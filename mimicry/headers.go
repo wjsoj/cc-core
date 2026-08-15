@@ -16,7 +16,7 @@ const (
 // isCountTokensRequest reports whether req targets POST
 // /v1/messages/count_tokens, which real CC treats as a request class of its own:
 // its own (much shorter) beta list and no X-Stainless-Timeout at all
-// (crack/cc2220/SPEC.md §1b). Both the plain header layer and the prepared
+// (crack/claudev2.1.220/SPEC.md §1b). Both the plain header layer and the prepared
 // pipeline have to agree on this, so it lives in one place.
 func isCountTokensRequest(req *http.Request) bool {
 	return req != nil && req.URL != nil &&
@@ -65,7 +65,7 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 		// class (main / title / count_tokens) that no single constant can — but
 		// on the first-party OAuth path add back the betas a client on a custom
 		// base URL structurally cannot declare. See beta.go and
-		// crack/thirdparty/SPEC.md §1a; the transform is additive and idempotent.
+		// crack/claudev2.1.226-inbound/SPEC.md §1a; the transform is additive and idempotent.
 		switch {
 		case kind == KindOAuth && isAnthropicBase && countTokens:
 			// count_tokens carries a different, much shorter OAuth vector, so

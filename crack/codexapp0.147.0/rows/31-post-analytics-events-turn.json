@@ -1,0 +1,40 @@
+{
+  "_capture_id": "286",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "content-type": "application/json",
+    "accept": "*/*",
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "content-length": "1830",
+    "Connection": "close"
+  },
+  "req_body": "{\"events\": [{\"event_type\": \"codex_turn_event\", \"event_params\": {\"thread_id\": \"<masked>\", \"session_id\": \"<masked>\", \"turn_id\": \"<masked>\", \"submission_type\": null, \"app_server_client\": {\"product_client_id\": \"Codex Desktop\", \"client_name\": \"Codex Desktop\", \"client_version\": \"26.803.81509\", \"rpc_transport\": \"stdio\", \"experimental_api_enabled\": true}, \"runtime\": {\"codex_rs_version\": \"0.147.0-alpha.6.6\", \"runtime_os\": \"linux\", \"runtime_os_version\": \"Rolling Release\", \"runtime_arch\": \"x86_64\"}, \"ephemeral\": true, \"thread_source\": \"system\", \"initialization_mode\": \"new\", \"subagent_source\": null, \"parent_thread_id\": null, \"model\": \"gpt-5.6-luna\", \"model_provider\": \"openai\", \"sandbox_policy\": \"read_only\", \"reasoning_effort\": \"low\", \"reasoning_summary\": null, \"service_tier\": \"default\", \"approval_policy\": \"never\", \"approvals_reviewer\": \"user\", \"sandbox_network_access\": false, \"collaboration_mode\": \"default\", \"personality\": \"pragmatic\", \"workspace_kind\": null, \"num_input_images\": 0, \"image_preparations\": [], \"is_first_turn\": true, \"status\": \"completed\", \"explicit_client_interrupt_requested_at_ms\": null, \"turn_error\": null, \"codex_error_kind\": null, \"codex_error_http_status_code\": null, \"steer_count\": 0, \"total_tool_call_count\": 0, \"shell_command_count\": 0, \"file_change_count\": 0, \"mcp_tool_call_count\": 0, \"dynamic_tool_call_count\": 0, \"subagent_tool_call_count\": 0, \"web_search_count\": 0, \"image_generation_count\": 0, \"input_tokens\": 13885, \"cached_input_tokens\": 6912, \"cache_write_input_tokens\": 0, \"output_tokens\": 28, \"reasoning_output_tokens\": 0, \"total_tokens\": 13913, \"before_first_sampling_ms\": 3724, \"sampling_ms\": 1907, \"compaction_ms\": 0, \"between_sampling_overhead_ms\": 0, \"tool_blocking_ms\": 0, \"after_last_sampling_ms\": 1, \"sampling_request_count\": 1, \"sampling_retry_count\": 0, \"duration_ms\": 5632, \"started_at\": 1786724953, \"completed_at\": 1786724958}}]}",
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:29:19 GMT",
+    "content-type": "application/json",
+    "content-length": "88",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "req_8c801210a2e44665b279d964eb157523",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<masked>",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=h%2BtxSO8b6iUX1CcN7wXCl8%2FLooj8qu7to2WwnxQaoH7uPUfoJZYGO0X8bH3Rfrt6BIp73ltdmWGpae2FeEo9sswdgA8wCzSYf95RiGm8jG2VIKBqElARk97%2FUybK\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b15672cc9dfea4-AMS"
+  },
+  "res_body": "{\"status\": \"ok\", \"total_events\": 1, \"accepted_events\": 1, \"skipped_events\": 0}"
+}

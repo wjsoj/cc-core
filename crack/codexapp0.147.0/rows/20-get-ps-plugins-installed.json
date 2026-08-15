@@ -1,0 +1,40 @@
+{
+  "_note": "Fired as a 3-request fan-out (scope=WORKSPACE, USER, GLOBAL) on every plugin-state refresh; the &includeDownloadUrls=true variant is a 4th..6th call in the same burst. 102 calls in a 12-min session, event-driven, not a fixed heartbeat.",
+  "_capture_id": "061",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/ps/plugins/installed?scope=GLOBAL&includeDownloadUrls=true",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.147.0-alpha.6.6 (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; 26.803.81509)",
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "oai-product-sku": "codex",
+    "accept": "*/*",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:28:49 GMT",
+    "content-type": "application/json",
+    "content-length": "23271",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "1cad2f81-310f-4308-8be4-c63b6781f951",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<masked>",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=0G0jC2lEwA4Kky8b%2FcNvR1yZPguK3nrkKirkd4XPxfaUjUukXUWfbtJFk22ZTo9wgIYIcmPmZCMOrwQVadMAKLQ3aLLan%2BK1kFGDEfJLnzSraMntEHctgFSPUumx\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b155b8cf14dfd3-AMS"
+  },
+  "res_body": "{\"plugins\": [{\"id\": \"plugin_connector_1p_2330815c823c8191941e5dc465bb899f\", \"name\": \"openai-templates\", \"created_at\": \"2026-07-09T04:55:46.563534Z\", \"scope\": \"GLOBAL\", \"workspace_id\": null, \"creator_account_user_id\": null, \"canonical_app_id\": \"connector_openai_default_templates\", \"discoverability\": \"LISTED\", \"status\": \"ENABLED\", \"installation_policy\": \"INSTALLED_BY_DEFAULT\", \"disabled_reason\": null, \"eligible_plan_types\": null, \"installation_policy_source\": \"IMPLICIT_CANONICAL_APP\", \"authentication_policy\": \"ON_USE\", \"must_show_installation_interstitial\": true, \"release\": {\"id\": \"pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c\", \"version\": \"0.1.1\", \"display_name\": \"Default templates\", \"description\": \"OpenAI default document, presentation, and spreadsheet templates.\", \"keywords\": [\"artifact\", \"template\", \"document\", \"presentation\", \"spreadsheet\"], \"bundle_download_url\": \"https://sdmntprsouthcentralus.oaiusercontent.com/files/<masked>/raw?se=2026-08-14T16%3A33%3A49Z&sp=r&sv=2026-02-06&sr=b&scid=<masked>&skoid=<masked>&sktid=<masked>&skt=2026-08-14T07%3A20%3A33Z&ske=2026-08-15T07%3A20%3A33Z&sks=b&skv=2026-02-06&sig=wBk%2B53Ue3Z8qJJoirS9rB4MtT4U6x4jdubTLl4hsPLs%3D\", \"app_ids\": [\"connector_openai_default_templates\"], \"app_manifest\": {\"apps\": {\"default_templates\": {\"id\": \"connector_openai_default_templates\", \"required\": true}}}, \"interface\": {\"short_description\": \"Default templates for documents, spreadsheets, and presentations\", \"long_description\": \"Create documents, presentations, and spreadsheets from OpenAI-provided reference templates.\", \"developer_name\": \"OpenAI\", \"category\": \"Productivity\", \"plugin_category_id\": \"productivity\", \"capabilities\": [\"Interactive\", \"Write\"], \"website_url\": \"https://openai.com/\", \"privacy_policy_url\": \"https://openai.com/policies/row-privacy-policy/\", \"terms_of_service_url\": \"https://openai.com/policies/row-terms-of-use/\", \"brand_color\": \"#10A37F\", \"default_prompt\": \"Create a document using the Minimal Letterhead template\", \"default_prompts\": [\"Create a document using the Minimal Letterhead template\", \"Create an Analytics Dashboard spreadsheet using the Analytics Dashboard template\", \"Create a planning presentation with the Team Alignment template\"], \"composer_icon_url\": \"https://files.openai.com/content?id=file_000000003ff881f7a0f373c6706ad6c4&cdn=1&cp=pi&ma=32054400&ts=0&p=pi&cid=8&sig=31691355d47842d6c69192acd5fc1b96e37419dd2ee82403ce5c1cb89a4fc514&v=0\", \"logo_url\": \"https://files.openai.com/content?id=file_000000006f0881f7920f68ea73090c9e&cdn=1&cp=pi&ma=30931200&ts=0&p=pi&cid=8&sig=e148b243e9b564cdd436c55acf99dcf76c498bc03721b8ba76a35fead5221cd9&v=0\", \"logo_url_dark\": null, \"screenshot_urls\": []}, \"skills\": [{\"name\": \"artifact-template-analytics-dashboard\", \"description\": \"Create a spreadsheet using the Analytics Dashboard template and its retained reference file. Use when the user selects or names Analytics Dashboard. Monitor acquisition, engagement, retention, revenue, and conversion funnel KPIs with charts.\", \"plugin_release_skill_id\": \"pluginrsk_6a6ced4fdbd081918551b9ff949b0dcd\", \"interface\": {\"display_name\": \"Analytics Dashboard\", \"short_description\": \"Create spreadsheets with the Analytics Dashboard template\", \"brand_color\": null, \"default_prompt\": \"Create a new spreadsheet with this template.\", \"iconography\": null, \"icon_small_url\": null, \"icon_large_url\": \"https://files.openai.com/content?id=file_00000000c8a481f7b63f7f5534324155&cdn=1&cp=pi&ma=30499200&ts=0&p=pi&cid=8&sig=57b4642a2868a8bd71bd38f0f67b7aae70bf67a3ae6e27a44bb5bf2eda19ce5f&v=0\"}}, {\"name\": \"artifact-template-business-review\", \"description\": \"Create a presentation using the Business Review template and its retained reference file. Use when the user selects or names Business Review. Review business performance, KPIs, segment results, strategic priorities, decisions, and outlook.\", \"plugin_release_skill_id\": \"pluginrsk_6a6ced4fdbdc8191a3080f71992db75f\", \"interface\": {\"display_name\": \"Business Review\", \"short_description\": \"Create pr …<truncated, structure continues>"
+}

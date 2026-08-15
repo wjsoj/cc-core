@@ -1,0 +1,43 @@
+{
+  "_note": "Second MCP client identity: same codex-mcp-client UA but WITH originator: Codex Desktop. Header ORDER of originator vs x-openai-product-sku is not stable across calls (both orders observed) - the client emits them from an unordered map, so order is not a fingerprint here.",
+  "_capture_id": "198",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/ps/mcp",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "user-agent": "codex-mcp-client/0.147.0-alpha.6.6",
+    "x-openai-product-sku": "codex",
+    "originator": "Codex Desktop",
+    "mcp-protocol-version": "2025-06-18",
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "accept": "text/event-stream, application/json",
+    "content-type": "application/json",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "content-length": "85",
+    "Connection": "close"
+  },
+  "req_body": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"tools/list\", \"params\": {\"_meta\": {\"progressToken\": 0}}}",
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:29:05 GMT",
+    "content-type": "application/json",
+    "content-length": "256572",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "c07eddaa-2796-41ab-9386-5ba1bc898687",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<masked>",
+    "cf-cache-status": "DYNAMIC",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "x-content-type-options": "nosniff",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=1qGBIHl%2FmZeN0dRG1c7QQB5ypDvszTCZa3DKK10hgIVqtMxPKsK9VTvHflZTnTObFpAH1vuHjKAclPDqmu7MWHHGDq2zXJwzChZlD6kCZhScd9v2vaKeJWFV9MyjQjIT3tygiT%2BGNon8\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b1561b5e55f5b6-AMS"
+  },
+  "res_body": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": {\"tools\": [{\"name\": \"sites.add_custom_domain\", \"title\": \"Sites_add_custom_domain\", \"description\": \"Add a custom domain to a published site. The response includes a CNAME target for subdomains, A record targets for zone apex domains, and all App Garden and Cloudflare validation records that must be set before the custom domain can route to the Site.\", \"inputSchema\": {\"properties\": {\"project_id\": {\"description\": \"Exact opaque site project ID. Copy it verbatim from .openai/hosting.json's project_id or the id field returned by create_site, list_sites, or get_site. Never invent, modify, or substitute another identifier.\", \"title\": \"Project Id\", \"type\": \"string\"}, \"hostname\": {\"description\": \"Bare custom hostname, such as www.example.com\", \"title\": \"Hostname\", \"type\": \"string\"}}, \"required\": [\"project_id\", \"hostname\"], \"title\": \"AppgardenAddCustomDomainRequest\", \"type\": \"object\", \"additionalProperties\": false}, \"annotations\": {\"readOnlyHint\": false, \"destructiveHint\": false, \"openWorldHint\": true}, \"outputSchema\": {\"properties\": {\"result\": {\"properties\": {\"id\": {\"title\": \"Id\", \"type\": \"string\"}, \"project_id\": {\"title\": \"Project Id\", \"type\": \"string\"}, \"hostname\": {\"title\": \"Hostname\", \"type\": \"string\"}, \"worker_name\": {\"title\": \"Worker Name\", \"type\": \"string\"}, \"status\": {\"enum\": [\"pending\", \"active\", \"failed\"], \"title\": \"AppCustomDomainStatus\", \"type\": \"string\"}, \"provider_status\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"title\": \"Provider Status\"}, \"ssl_status\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"title\": \"Ssl Status\"}, \"cname_target\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"description\": \"CNAME target to use for custom subdomains.\", \"title\": \"Cname Target\"}, \"apex_proxy_ipv4_targets\": {\"description\": \"A record targets to use when the custom hostname is a zone apex.\", \"items\": {\"type\": \"string\"}, \"title\": \"Apex Proxy Ipv4 Targets\", \"type\": \"array\"}, \"validation_records\": {\"items\": {\"properties\": {\"record_type\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Record Type\"}, \"name\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Name\"}, \"value\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"title\": \"Value\"}}, \"title\": \"AppgardenCustomDomainValidationRecordResponse\", \"type\": \"object\", \"additionalProperties\": false}, \"title\": \"Validation Records\", \"type\": \"array\"}, \"last_error\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"title\": \"Last Error\"}, \"created_at\": {\"title\": \"Created At\", \"type\": \"string\"}, \"updated_at\": {\"title\": \"Updated At\", \"type\": \"string\"}}, \"required\": [\"id\", \"project_id\", \"hostname\", \"worker_name\", \"status\", \"provider_status\", \"ssl_status\", \"cname_target\", \"apex_proxy_ipv4_targets\", \"validation_records\", \"last_error\", \"created_at\", \"updated_at\"], \"title\": \"AppgardenCustomDomainResponse\", \"type\": \"object\", \"additionalProperties\": false}}, \"required\": [\"result\"], \"title\": \"add_custom_domain_output\", \"type\": \"object\", \"additionalProperties\": false}, \"_meta\": {\"resource_name\": \"sites.add_custom_domain\", \"_codex_apps\": {\"resource_uri\": \"/connector_20205bf7d4e99a89d7154bb849718324/implicit_link::connector_20205bf7d4e99a89d7154bb849718324/add_custom_domain\", \"contains_mcp_source\": false}, \"connector_id\": \"connector_20205bf7d4e99a89d7154bb849718324\", \"connector_name\": \"Sites\", \"connector_description\": \"Use Sites to build, save, deploy, and inspect websites such as landing pages, portfolios, dashboards, portals, trackers, hubs, games, and internal tools. Always use Sites when .openai/hosting.json exists. Use Sites skills for local implementation, validation, source preparation, and artifact packaging. Use this connector for site creation, runtime environment variables, versions, production deployments, and access controls. Read .openai/hosting.json before creating a site and reuse its project_id when present. Treat Sites IDs and cursors as opaque: copy them exactly f …<truncated, structure continues>"
+}

@@ -28,7 +28,7 @@ import (
 
 // Header values pinned to Claude Code 2.1.224 / @anthropic-ai/sdk 0.94.0.
 // Values verified against a live CC 2.1.224 OAuth capture covering the full
-// login→conversation chain (2026-08-07, Arch Linux — see crack/cc2224/SPEC.md).
+// login→conversation chain (2026-08-07, Arch Linux — see crack/claudev2.1.224/SPEC.md).
 // The 2.1.220 → 2.1.224 diff is a VERSION-STRING-ONLY bump: every Stainless
 // value (0.94.0 / node v26.3.0 / x64), the request body's top-level key set,
 // the 4-block system layout, cache_control ttl/scope, the metadata shape, and
@@ -38,7 +38,7 @@ import (
 // ⚠️ Capture gap: that session ran entirely in 1M-context mode, so it re-verified
 // ClaudeAnthropicBeta1M item-for-item but observed NO non-1M main request and no
 // count_tokens request. ClaudeAnthropicBetaFull and ClaudeAnthropicBetaCountTokens
-// therefore carry forward from 2.1.220 unverified at 2.1.224 (see crack/cc2224/
+// therefore carry forward from 2.1.220 unverified at 2.1.224 (see crack/claudev2.1.224/
 // SPEC.md §"Unresolved"); nothing in the capture contradicts them.
 //
 // CLICurrentVersion MUST match the version baked into ClaudeCLIUserAgent;
@@ -54,11 +54,11 @@ const (
 	// telemetry env.node_version (sidecar), which the live capture confirms move
 	// together. UNCHANGED through 2.1.224 (still v26.3.0) — re-confirmed in both
 	// the request headers and the telemetry env of the 2.1.224 capture
-	// (crack/cc2224/SPEC.md).
+	// (crack/claudev2.1.224/SPEC.md).
 	ClaudeStainlessRuntimeV = "v26.3.0"
 	ClaudeStainlessPackageV = "0.94.0"
-	// ClaudeStainlessOS deliberately does NOT track the capture. The cc2220
-	// dumps were taken on macOS (cc2224 happens to be Linux, which is not a
+	// ClaudeStainlessOS deliberately does NOT track the capture. The claudev2.1.220
+	// dumps were taken on macOS (claudev2.1.224 happens to be Linux, which is not a
 	// reason to start tracking it), but the proxy runs on Linux and the OS it
 	// advertises has to agree with everything else it claims to be: the
 	// per-account synthetic host in auth.HostProfile and the platform fields
@@ -76,7 +76,7 @@ const (
 	// doesn't send is also a fingerprint signal.
 	//
 	// The 2.1.220 request list is CONTEXT-MODE DEPENDENT — established by the
-	// 2026-07-31 Linux capture (crack/cc2220/SPEC.md §1a), which caught both
+	// 2026-07-31 Linux capture (crack/claudev2.1.220/SPEC.md §1a), which caught both
 	// modes in one session:
 	//
 	//	non-1M (claude-opus-4-8)   → this 13-item list        (5 requests)
@@ -105,18 +105,18 @@ const (
 	// fallback-credit-2026-06-01 between effort and extended-cache-ttl. Captured
 	// verbatim from the one `claude-opus-5` request in the 2026-07-31 session
 	// whose telemetry reported the model as `claude-opus-5[1m]`
-	// (crack/cc2220/SPEC.md §1a).
+	// (crack/claudev2.1.220/SPEC.md §1a).
 	//
 	// NOT injected automatically: a request body carries no 1M marker (the
 	// `[1m]` suffix exists only in telemetry), so cc-core cannot infer the mode.
 	// Exported so a fork offering an explicit "1M mode" sends the real list
 	// instead of hand-assembling one. RE-CONFIRMED item-for-item at 2.1.224
-	// (crack/cc2224/rows/13-v1_messages.json, claude-opus-5 in 1M mode), so this
+	// (crack/claudev2.1.224/rows/13-v1_messages.json, claude-opus-5 in 1M mode), so this
 	// is now two independent captures across two versions rather than one sample.
 	ClaudeAnthropicBeta1M = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,advanced-tool-use-2025-11-20,effort-2025-11-24,fallback-credit-2026-06-01,extended-cache-ttl-2025-04-11,cache-diagnosis-2026-04-07"
 	// ClaudeAnthropicBetaCountTokens is the beta list real CC sends on
 	// POST /v1/messages/count_tokens — a request class of its own, NOT the main
-	// list (5 items, 4 samples, crack/cc2220/SPEC.md §1b). count_tokens also
+	// list (5 items, 4 samples, crack/claudev2.1.220/SPEC.md §1b). count_tokens also
 	// omits X-Stainless-Timeout, which every main request carries; headers.go
 	// reproduces both differences.
 	//
@@ -132,20 +132,20 @@ const (
 	// heartbeat emits the `[1m]` + 9-item pair, so this stays the 9-item list.
 	// Verified unchanged 2.1.156→2.1.214. The 2.1.214 capture session ran WITH 1M
 	// context, so its telemetry directly RE-CONFIRMS this exact 9-item list paired
-	// with the `claude-opus-4-8[1m]` model (crack/cc2214/SPEC.md §3). Our sidecar
+	// with the `claude-opus-4-8[1m]` model (crack/claudev2.1.214/SPEC.md §3). Our sidecar
 	// keeps emitting the `[1m]` + 9-item pair. The ordinary Sonnet 5 capture at
 	// 2.1.220 independently observed the expected 8-item non-1M variant, but is
 	// not evidence for changing this 1M sidecar constant. The 2.1.224 capture
 	// RE-CONFIRMS this exact 9-item list verbatim, again paired with a `[1m]`
 	// model (`claude-opus-5[1m]`), alongside the 8-item non-1M variant in the
-	// same batch (crack/cc2224/SPEC.md §3). Keep it semantically
+	// same batch (crack/claudev2.1.224/SPEC.md §3). Keep it semantically
 	// separate from ClaudeAnthropicBetaFull: request betas and reported telemetry
 	// betas vary on different axes even when this 1M list happens to be a prefix.
 	ClaudeReportedBetas = "claude-code-20250219,oauth-2025-04-20,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07"
 
 	// ClaudeAnthropicBetaApikey is the Anthropic-Beta REQUEST HEADER real CC
 	// sends on the API-KEY path (real CC pointed at a 3rd-party gateway with
-	// x-api-key), captured from crack/apikey/rows/*-POST-…v1_messages. Strict
+	// x-api-key), captured from crack/claudev2.1.126-apikey/rows/*-POST-…v1_messages. Strict
 	// gateways (fucheers, etc.) reject any unknown beta token — notably they
 	// reject advanced-tool-use-* and cache-diagnosis-*, which real CC does NOT
 	// send on the apikey path. It also drops oauth-2025-04-20 (no OAuth here).

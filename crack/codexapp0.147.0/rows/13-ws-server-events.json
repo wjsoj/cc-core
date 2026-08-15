@@ -1,0 +1,442 @@
+{
+  "_note": "One sample per server->client event type observed on WS session 1786725004558-463 (541 frames). Numeric metrics are kept verbatim — they are the leak surface, not identity.",
+  "event_types_observed": [
+    "codex.rate_limits",
+    "codex.response.metadata",
+    "response.completed",
+    "response.content_part.added",
+    "response.content_part.done",
+    "response.created",
+    "response.custom_tool_call_input.delta",
+    "response.custom_tool_call_input.done",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.output_text.delta",
+    "response.output_text.done",
+    "responsesapi.websocket_timing"
+  ],
+  "samples": {
+    "response.custom_tool_call_input.delta": {
+      "type": "response.custom_tool_call_input.delta",
+      "delta": ".exec",
+      "item_id": "<ITEM_ID>",
+      "obfuscation": "z0HVC851CDF",
+      "output_index": 1,
+      "sequence_number": 10
+    },
+    "response.custom_tool_call_input.done": {
+      "type": "response.custom_tool_call_input.done",
+      "input": "<masked tool-call source>",
+      "item_id": "<ITEM_ID>",
+      "output_index": 1,
+      "sequence_number": 89
+    },
+    "response.output_item.done": {
+      "type": "response.output_item.done",
+      "item": {
+        "id": "<ITEM_ID>",
+        "type": "custom_tool_call",
+        "status": "completed",
+        "call_id": "<CALL_ID>",
+        "input": "<masked tool-call source>",
+        "internal_chat_message_metadata_passthrough": {
+          "create_time": 1786725016.07556,
+          "turn_id": "<TURN_ID>"
+        },
+        "name": "exec",
+        "metadata": {
+          "turn_id": "<TURN_ID>"
+        }
+      },
+      "output_index": 1,
+      "sequence_number": 90
+    },
+    "responsesapi.websocket_timing": {
+      "type": "responsesapi.websocket_timing",
+      "timing_metrics": {
+        "timing_scope": "logical_turn",
+        "response_id": "<RESP_ID>",
+        "responsesapi_chat_runner_streaming_token_batch_size": 0,
+        "websocket_output_text_delta_tbt_ms": 18.32780665,
+        "websocket_output_text_delta_count": 41,
+        "pre_inference_ms": 271.104265,
+        "client_tool_pause_total_ms": 847.441401,
+        "total_turn_time_s": 9.554948344,
+        "xapi_validation_time_s": null,
+        "num_engine_calls": 2,
+        "engine_ids": "gpt56sol-codex-a-c321",
+        "engine_uncached_prompt_tokens_total": 11728,
+        "engine_cached_prompt_tokens_total": 33792,
+        "engine_total_prompt_tokens_total": 45520,
+        "first_sampled_message_reasoning_tokens": null,
+        "first_sampled_message_ttft_ms": 503.0,
+        "engine_queue_max_ms": 1041.0,
+        "engine_iapi_ttft_total_ms": 1887.0,
+        "engine_service_ttft_total_ms": 2298.479868,
+        "engine_iapi_sampling_total_ms": 3329.0,
+        "engine_service_sampling_total_ms": 5375.6809809999995,
+        "engine_iapi_inference_total_ms": 5216.0,
+        "engine_service_inference_total_ms": 7674.160849,
+        "engine_iapi_tbt_across_engine_calls_ms": 11.171140939597315,
+        "engine_service_tbt_across_engine_calls_ms": null,
+        "engine_service_minus_iapi_tbt_across_engine_calls_ms": null,
+        "responsesapi_duration_excl_client_tools_ms": 9076.983627,
+        "responsesapi_duration_excl_engine_per_tool_call_ms": [
+          352.059374,
+          1050.763404
+        ],
+        "responsesapi_duration_excl_engine_per_tool_call_truncated": null,
+        "responses_duration_excl_engine_wait_and_sampling_ms": 1402.8227779999997,
+        "responses_duration_excl_engine_wait_and_sampling_iapi_ms": 3860.9836269999996,
+        "responses_duration_excl_engine_and_client_tool_time_ms": 1399.651605000001,
+        "engine_service_total_ms": 3698.131473000001,
+        "num_sampled_tokens_total": 298,
+        "responses_duration_pause_count": 1,
+        "critical_path": {
+          "scope": "response",
+          "coverage": "complete",
+          "boundary_type": "actionable_output_item_done",
+          "num_engine_calls": 1,
+          "engine_ids": "gpt56sol-codex-a-c321",
+          "responses_harness_unblocked_ms": 4490.423047,
+          "responses_pre_inference_ms": 955.562158,
+          "engine_wall_ms": 3444.397721,
+          "client_tool_pause_ms": 0.0,
+          "responses_other_ms": 90.46316800000068,
+          "engine_iapi_total_ms": 2437.0,
+          "taas_request_setup_total_ms": null,
+          "taas_provider_wait_total_ms": null,
+          "sampling_and_stream_total_ms": 1053.0,
+          "inference_residual_total_ms": null
+        }
+      }
+    },
+    "response.completed": {
+      "type": "response.completed",
+      "response": {
+        "id": "<RESP_ID>",
+        "object": "response",
+        "created_at": 1786725016,
+        "status": "completed",
+        "background": false,
+        "completed_at": 1786725019,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "incomplete_details": null,
+        "instructions": null,
+        "max_output_tokens": null,
+        "max_tool_calls": null,
+        "model": "gpt-5.6-sol",
+        "moderation": null,
+        "output": [],
+        "parallel_tool_calls": false,
+        "presence_penalty": 0.0,
+        "previous_response_id": "<RESP_ID>",
+        "prompt_cache_key": "<SESSION_ID>",
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+          "context": "all_turns",
+          "effort": "medium",
+          "mode": "standard",
+          "summary": "detailed"
+        },
+        "safety_identifier": "<USER_ID>",
+        "service_tier": "default",
+        "store": false,
+        "temperature": 1.0,
+        "text": {
+          "format": {
+            "type": "text"
+          },
+          "verbosity": "low"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+          "image_gen": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "image_tokens": 0,
+              "text_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "image_tokens": 0,
+              "text_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "web_search": {
+            "num_requests": 0
+          }
+        },
+        "tools": [
+          {
+            "_elided": "4 tool definitions echoed back by the server"
+          }
+        ],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 22735,
+          "input_tokens_details": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 22272
+          },
+          "output_tokens": 106,
+          "output_tokens_details": {
+            "reasoning_tokens": 10
+          },
+          "total_tokens": 22841
+        },
+        "user": null,
+        "metadata": {}
+      },
+      "sequence_number": 91,
+      "safety_buffering": false
+    },
+    "codex.rate_limits": {
+      "type": "codex.rate_limits",
+      "plan_type": "plus",
+      "rate_limits": {
+        "allowed": true,
+        "limit_reached": false,
+        "primary": {
+          "used_percent": 0,
+          "window_minutes": 10080,
+          "reset_after_seconds": 604739,
+          "reset_at": 1787329759
+        },
+        "secondary": null
+      },
+      "code_review_rate_limits": null,
+      "additional_rate_limits": null,
+      "credits": {
+        "has_credits": false,
+        "unlimited": false,
+        "balance": "0"
+      },
+      "promo": null
+    },
+    "codex.response.metadata": {
+      "type": "codex.response.metadata",
+      "headers": {
+        "x-models-etag": "W/\"f978193f34ff002d2389e61fcc51c735\"",
+        "x-codex-turn-state": "<ENCRYPTED_REDACTED>",
+        "x-codex-safety-buffering-enabled": "true",
+        "x-codex-safety-buffering-faster-model": "gpt-5.6-luna"
+      }
+    },
+    "response.created": {
+      "type": "response.created",
+      "response": {
+        "id": "<RESP_ID>",
+        "object": "response",
+        "created_at": 1786725020,
+        "status": "in_progress",
+        "background": false,
+        "completed_at": null,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "incomplete_details": null,
+        "instructions": null,
+        "max_output_tokens": null,
+        "max_tool_calls": null,
+        "model": "gpt-5.6-sol",
+        "moderation": null,
+        "output": [],
+        "parallel_tool_calls": false,
+        "presence_penalty": 0.0,
+        "previous_response_id": "<RESP_ID>",
+        "prompt_cache_key": "<SESSION_ID>",
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+          "context": "all_turns",
+          "effort": "medium",
+          "mode": "standard",
+          "summary": "detailed"
+        },
+        "safety_identifier": "<USER_ID>",
+        "service_tier": "auto",
+        "store": false,
+        "temperature": 1.0,
+        "text": {
+          "format": {
+            "type": "text"
+          },
+          "verbosity": "low"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+          "image_gen": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "image_tokens": 0,
+              "text_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "image_tokens": 0,
+              "text_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "web_search": {
+            "num_requests": 0
+          }
+        },
+        "tools": [
+          {
+            "_elided": "4 tool definitions echoed back by the server"
+          }
+        ],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": null,
+        "user": null,
+        "metadata": {}
+      },
+      "sequence_number": 0,
+      "safety_buffering": false
+    },
+    "response.in_progress": {
+      "type": "response.in_progress",
+      "response": {
+        "id": "<RESP_ID>",
+        "object": "response",
+        "created_at": 1786725020,
+        "status": "in_progress",
+        "background": false,
+        "completed_at": null,
+        "error": null,
+        "frequency_penalty": 0.0,
+        "incomplete_details": null,
+        "instructions": null,
+        "max_output_tokens": null,
+        "max_tool_calls": null,
+        "model": "gpt-5.6-sol",
+        "moderation": null,
+        "output": [],
+        "parallel_tool_calls": false,
+        "presence_penalty": 0.0,
+        "previous_response_id": "<RESP_ID>",
+        "prompt_cache_key": "<SESSION_ID>",
+        "prompt_cache_retention": "24h",
+        "reasoning": {
+          "context": "all_turns",
+          "effort": "medium",
+          "mode": "standard",
+          "summary": "detailed"
+        },
+        "safety_identifier": "<USER_ID>",
+        "service_tier": "auto",
+        "store": false,
+        "temperature": 1.0,
+        "text": {
+          "format": {
+            "type": "text"
+          },
+          "verbosity": "low"
+        },
+        "tool_choice": "auto",
+        "tool_usage": {
+          "image_gen": {
+            "input_tokens": 0,
+            "input_tokens_details": {
+              "image_tokens": 0,
+              "text_tokens": 0
+            },
+            "output_tokens": 0,
+            "output_tokens_details": {
+              "image_tokens": 0,
+              "text_tokens": 0
+            },
+            "total_tokens": 0
+          },
+          "web_search": {
+            "num_requests": 0
+          }
+        },
+        "tools": [
+          {
+            "_elided": "4 tool definitions echoed back by the server"
+          }
+        ],
+        "top_logprobs": 0,
+        "top_p": 0.98,
+        "truncation": "disabled",
+        "usage": null,
+        "user": null,
+        "metadata": {}
+      },
+      "sequence_number": 1,
+      "safety_buffering": false
+    },
+    "response.output_item.added": {
+      "type": "response.output_item.added",
+      "item": {
+        "id": "<ITEM_ID>",
+        "type": "reasoning",
+        "content": [],
+        "encrypted_content": "<ENCRYPTED_REDACTED>",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "<TURN_ID>"
+        },
+        "summary": [],
+        "metadata": {
+          "turn_id": "<TURN_ID>"
+        }
+      },
+      "output_index": 0,
+      "sequence_number": 2
+    },
+    "response.content_part.added": {
+      "type": "response.content_part.added",
+      "content_index": 0,
+      "item_id": "<ITEM_ID>",
+      "output_index": 1,
+      "part": {
+        "type": "output_text",
+        "annotations": [],
+        "logprobs": [],
+        "text": "<masked prose>"
+      },
+      "sequence_number": 5
+    },
+    "response.output_text.delta": {
+      "type": "response.output_text.delta",
+      "content_index": 0,
+      "delta": "<masked prose>",
+      "item_id": "<ITEM_ID>",
+      "logprobs": [],
+      "obfuscation": "mmhqVcC0mvJE7f",
+      "output_index": 1,
+      "sequence_number": 6,
+      "safety_buffering": false
+    },
+    "response.output_text.done": {
+      "type": "response.output_text.done",
+      "content_index": 0,
+      "item_id": "<ITEM_ID>",
+      "logprobs": [],
+      "output_index": 1,
+      "sequence_number": 59,
+      "text": "<masked prose>"
+    },
+    "response.content_part.done": {
+      "type": "response.content_part.done",
+      "content_index": 0,
+      "item_id": "<ITEM_ID>",
+      "output_index": 1,
+      "part": {
+        "type": "output_text",
+        "annotations": [],
+        "logprobs": [],
+        "text": "<masked prose>"
+      },
+      "sequence_number": 60
+    }
+  }
+}

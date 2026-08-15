@@ -57,7 +57,7 @@ func probeServer(t *testing.T) (*httptest.Server, func() []probeRecord) {
 // The post-login probes are NOT header-identical. Real CC 2.1.220 sends
 // Content-Type + Cache-Control: no-cache on /api/oauth/profile and neither on
 // /api/oauth/claude_cli/roles. Emitting one uniform header set for both is a
-// fingerprint tell. (crack/cc2220/SPEC.md §2.)
+// fingerprint tell. (crack/claudev2.1.220/SPEC.md §2.)
 func TestLoginProbeHeadersPerEndpoint(t *testing.T) {
 	srv, records := probeServer(t)
 

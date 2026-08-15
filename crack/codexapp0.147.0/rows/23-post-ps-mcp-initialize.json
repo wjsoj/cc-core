@@ -1,0 +1,41 @@
+{
+  "_note": "Streamable-HTTP MCP client embedded in codex-rs. NOTE the two departures from every other endpoint here: user-agent is codex-mcp-client/<ver> (NOT the Codex Desktop UA) and the sku header is x-openai-product-sku (NOT oai-product-sku). This variant carries NO originator - it is the codex-rs core client. The initialize call is the only one without mcp-protocol-version.",
+  "_capture_id": "109",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/ps/mcp",
+  "http_version": "1.1",
+  "h2": false,
+  "req_headers": {
+    "user-agent": "codex-mcp-client/0.147.0-alpha.6.6",
+    "x-openai-product-sku": "codex",
+    "authorization": "Bearer <masked>",
+    "chatgpt-account-id": "<masked>",
+    "accept": "text/event-stream, application/json",
+    "content-type": "application/json",
+    "cookie": "<masked>",
+    "host": "chatgpt.com",
+    "content-length": "227",
+    "Connection": "close"
+  },
+  "req_body": "{\"jsonrpc\": \"2.0\", \"id\": 0, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2025-06-18\", \"capabilities\": {\"elicitation\": {\"form\": {}, \"url\": {}}}, \"clientInfo\": {\"name\": \"codex-mcp-client\", \"title\": \"Codex\", \"version\": \"0.147.0-alpha.6.6\"}}}",
+  "status": 200,
+  "res_headers": {
+    "date": "Fri, 14 Aug 2026 16:28:53 GMT",
+    "content-type": "application/json",
+    "content-length": "269",
+    "connection": "close",
+    "server": "cloudflare",
+    "x-oai-request-id": "b768de39-b4ec-411a-a8e6-4ab28e56af1a",
+    "x-openai-proxy-wasm": "v0.1",
+    "x-content-type-options": "nosniff",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<masked>",
+    "cross-origin-opener-policy": "same-origin-allow-popups",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=7u%2Fo9BG38V5%2FCQyoU2%2F3MTprriX14DD8juoRi08OLZbBQPkfo71AhE1nhSkc%2Bt4S%2F7KtkCFQZelq%2B3zc5fonHokPlEO0%2BiCdpYsgRiXus%2FnviGKrqc3%2B6E6mkBQT\"}]}",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "cf-ray": "a2b155d018f593be-AMS"
+  },
+  "res_body": "{\"jsonrpc\": \"2.0\", \"id\": 0, \"result\": {\"protocolVersion\": \"2025-06-18\", \"capabilities\": {\"resources\": {\"subscribe\": false, \"listChanged\": false}, \"tools\": {\"listChanged\": false}, \"extensions\": {\"io.modelcontextprotocol/ui\": {}}}, \"serverInfo\": {\"name\": \"plugin-runtime\", \"version\": \"0.1.0\"}}}"
+}
