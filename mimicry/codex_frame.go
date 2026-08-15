@@ -196,7 +196,16 @@ func RewriteCodexClientFrame(frame []byte, id CodexFrameIdentity) ([]byte, error
 
 	meta, found := extractCodexClientMetadata(trimmed)
 	if !found {
-		return appendCodexClientMetadata(trimmed, norm)
+		out, aerr := appendCodexClientMetadata(trimmed, norm)
+		if aerr != nil {
+			return frame, aerr
+		}
+		// The synthesized metadata is already ours, but prompt_cache_key is a
+		// TOP-LEVEL key and may still be the client's. This branch is exactly
+		// the third-party client the rebinding exists for — returning early
+		// here used to skip it, so the one case the doc promised to cover was
+		// the one case that leaked.
+		return rebindCodexPromptCacheKey(out, norm.SessionID), nil
 	}
 
 	// Read the client's ids, then map each to ours. Anything the client did not

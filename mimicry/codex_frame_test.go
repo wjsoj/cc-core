@@ -451,6 +451,36 @@ func TestSynthesizedClientMetadataMatchesCapturedShape(t *testing.T) {
 	}
 }
 
+// The no-client_metadata branch is the third-party client this whole function
+// exists for, and it used to return early — skipping the prompt_cache_key
+// rebind, so the one case the doc promised to cover was the one that leaked.
+func TestRewriteCodexClientFrameRebindsCacheKeyWhenSynthesizingMetadata(t *testing.T) {
+	frame := `{"type":"response.create","model":"gpt-5.6-sol",` +
+		`"prompt_cache_key":"attacker-chosen-key","input":[]}`
+	out, err := RewriteCodexClientFrame([]byte(frame), testIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "attacker-chosen-key") {
+		t.Errorf("client-chosen prompt_cache_key survived:\n%s", out)
+	}
+	var f struct {
+		PromptCacheKey string            `json:"prompt_cache_key"`
+		ClientMetadata map[string]string `json:"client_metadata"`
+	}
+	if err := json.Unmarshal(out, &f); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if f.PromptCacheKey != ourSessionID {
+		t.Errorf("prompt_cache_key = %q, want %q", f.PromptCacheKey, ourSessionID)
+	}
+	// And it must agree with the metadata we just synthesized.
+	if f.ClientMetadata["session_id"] != f.PromptCacheKey {
+		t.Errorf("prompt_cache_key %q disagrees with session_id %q",
+			f.PromptCacheKey, f.ClientMetadata["session_id"])
+	}
+}
+
 // A third-party client that sends its own cache key must not have it forwarded:
 // it would leak the client's identifier upstream and disagree with the session
 // we advertised on the handshake.
