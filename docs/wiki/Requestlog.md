@@ -153,17 +153,21 @@ flowchart TD
 
 ## 索引 schema
 
-迁移列表 `storeMigrations`（`store.go:344`）是**只追加**的：每一项是一个完整的 schema delta，**永远不要重排或改写既有条目，只能追加**。`migrate()`（`store.go:553`）按 `PRAGMA user_version` 逐条在事务内执行并推进版本号。**当前 v4**。
+迁移列表 `storeMigrations`（`store.go:344`）是**只追加**的：每一项是一个完整的 schema delta，**永远不要重排或改写既有条目，只能追加**。`migrate()`（`store.go:553`）按 `PRAGMA user_version` 逐条在事务内执行并推进版本号。**当前 v6**。每条迁移各自在一个事务里，所以不存在"迁移只做了一半"的库——这也是它们可以写成一次性 DDL（`CREATE INDEX` 而不是 `CREATE INDEX IF NOT EXISTS`）的前提。
 
 **迁移 4（v0.8.89）—— `req.cny_rate`**：存结算时刻的 USD→CNY 汇率快照。**已被迁移 5 撤销**，条目本身保留不删——`storeMigrations` 只追加，删掉一项会让数组变短，之后新增的那一项复用它的编号，于是在任何已经盖过该版本号的库上永远不会执行。
 
 **迁移 5 —— 删掉 `req.cny_rate`**：`ALTER TABLE req DROP COLUMN cny_rate`。撤销的理由是这个列的收益从未兑现：唯一读它的是消费对账单，而按行汇率换算就**强制对账单逐行 materialise 整个区间**（`agg_cube` 不带汇率，钱算不出来），这正是重度账号的对账单会撞上 50 万行扫描上限的原因。成本是结构性的，收益是一个没人真的拿去跟历史汇率对账的数字。现在人民币按**读取时的当前汇率**换算，每份文件把自己用的汇率印在上面，做到文件内自洽。代价说清楚：汇率变动后同一区间两次导出总额不同——用量凭证可以接受，发票不行，文档上写明了。
 
-该列不在任何索引和约束里，所以 `DROP COLUMN` 合法；但它会**重写整张表**，大归档上是一次性的启动开销，在迁移事务内支付。`TestDroppingTheRateKeepsEveryRow` 把库倒回 v4（补列、灌值、盖版本号）再重开，验证行数一个不少。
+该列不在任何索引和约束里，所以 `DROP COLUMN` 合法；但它会**重写整张表**，大归档上是一次性的启动开销，在迁移事务内支付。`TestDroppingTheRateKeepsEveryRow` 把库倒回 v4（补列、灌值、删掉后续迁移建出来的东西、盖版本号）再重开，验证行数一个不少——倒回时要把 v4 之后的产物一并清掉，因为从 v4 起的每一条迁移都会重放一次，而它们都只打算跑一次。
+
+**迁移 6 —— `idx_cube_ct`**：`CREATE INDEX idx_cube_ct ON agg_cube(client_token, bday)`。`agg_cube` 的主键以 `(day, bday, model, client, …)` 开头，而成员级查询只约束 `client_token` 加一个日期区间，主键前缀一列都没被约束住，于是**主键完全用不上**：`EXPLAIN QUERY PLAN` 给出 `SCAN agg_cube`，每个 GROUP BY 再加一个 TEMP B-TREE。面板一次只问一个问题时这是可以接受的；workspace 用量端点**按成员各问一次**，代价变成 (成员数 × 分组数 × 整个 cube)，而且这个代价由 cube 的维度基数决定（每加一个渠道或模型都会让它变宽），跟被问的那个成员花了多少钱无关。
+
+有了索引，同样的查询变成对该成员自己那几行的前缀 seek：在 43k 行的 cube 上实测，30 天的成员明细（ByModel + ByDay）**20.5ms → 4.5ms**，且 ByDay 那一路直接不再需要 TEMP B-TREE——索引本身就是按 `bday` 有序的。代价是每行 cube 约 86 字节（`WITHOUT ROWID` 表的二级索引要把九列主键整个重复一遍作为指针），生产 cube 规模下不到 1 MB，对着几百 MB 的归档。**不带 token 过滤的全局查询不会去用它**：它不是覆盖索引，全表扫仍然更划算——`TestMemberFilteredCubeQuerySeeksRatherThanScans` 钉住前半句（成员查询必须 seek），`TestDayBoundedQueryMatchesTheScan` 一类的 parity 测试保证后半句不改变答案。
 
 ⚠️ **`OpenStoreForRead` 要求版本严格相等**（`store_write.go`）。同一个库若被新旧二进制混用，只读打开会硬失败。
 
-🚨 **迁移 5 之后回滚不再安全**。迁移 4 时代旧二进制对新库是 no-op 且所有 SELECT 用显式列名，所以回滚无害；但迁移 5 **删掉了一个旧代码仍在 SELECT 的列**，旧二进制打开 v5 库后 `migrate()` 静默 no-op（`i < len` 直接不进循环），随后每一次 entries 查询和 export 都会 `no such column: cny_rate` 而失败。要回滚必须同时把 `requests.db` 恢复到迁移前的备份。
+🚨 **迁移 5 之后回滚不再安全**。迁移 4 时代旧二进制对新库是 no-op 且所有 SELECT 用显式列名，所以回滚无害；但迁移 5 **删掉了一个旧代码仍在 SELECT 的列**，旧二进制打开 v5 库后 `migrate()` 静默 no-op（`i < len` 直接不进循环），随后每一次 entries 查询和 export 都会 `no such column: cny_rate` 而失败。要回滚必须同时把 `requests.db` 恢复到迁移前的备份。迁移 6 本身回滚无害——它只加了一个索引，旧二进制读写照常（`OpenStoreForRead` 的版本相等检查仍会拒绝，那是迁移 5 之后就有的约束）。
 
 ### 连接参数（`store.go:154-170`）
 
@@ -284,6 +288,7 @@ CREATE TABLE meta (
 | `idx_req_client` | `ON req(client COLLATE NOCASE, ts DESC, id DESC) WHERE attempt_only = 0` | `Filter.Client` | `store.go:421` |
 | `idx_req_user` | `ON req(user_id, ts DESC, id DESC) WHERE attempt_only = 0` | `Filter.UserID` | `store.go:422` |
 | `idx_req_src` | `UNIQUE ON req(src_file, src_off) WHERE src_off >= 0` | 两个 producer 的幂等去重 | `store.go:485` |
+| `idx_cube_ct` | `ON agg_cube(client_token, bday)` | 成员级 cube 查询的前缀 seek（迁移 6） | `store.go:585` |
 
 迁移 2 的两个动机（`store.go:397-409`），都是在真实 1M 行归档上量出来的：
 
@@ -336,7 +341,7 @@ default:
 
 ### 部分行（partial line）
 
-`ingestFile`（`store_ingest.go:213-303`）用 `bufio.NewReaderSize(fh, 256*1024)` + `ReadBytes('\n')`。**没有换行的 EOF 意味着一个半截行，丢弃并停止**——偏移停在它之前，下一轮重新完整读取（`store_ingest.go:211-212`、`store_ingest.go:248-252`）。回归测试是 `TestStorePartialLine`（`store_test.go:458`）。
+`ingestFile`（`store_ingest.go:213-303`）用 `bufio.NewReaderSize(fh, 256*1024)` + `ReadBytes('\n')`。**没有换行的 EOF 意味着一个半截行，丢弃并停止**——偏移停在它之前，下一轮重新完整读取（`store_ingest.go:211-212`、`store_ingest.go:248-252`）。回归测试是 `TestStorePartialLine`（`store_test.go:597`）。
 
 畸形行被跳过（扫描路径也跳过），但**偏移照样前进**，所以不会反复重读（`store_ingest.go:260-263`）。
 
@@ -414,8 +419,10 @@ func cubeEligible(f Filter) bool {
 
 1. 先取条目页（永远走 `req`，`ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?`）。
 2. `PageOnly` 直接返回。
-3. `cubeEligible(f)` → `aggregatesFromCube`（`store_query.go:176-211`），对 cube 做四次 GROUP BY（`''` / client / model / bday）。cube 足够小，四次 grouping 是微秒级，所以不像 `req` 路径那样需要先物化。
-4. 否则 → `aggregatesFromReq`（`store_query.go:266-310`），**一次** `WITH m AS MATERIALIZED (...)` 物化过滤后的切片，再 `UNION ALL` 四种 grouping。
+3. `cubeEligible(f)` → `aggregatesFromCube`（`store_query.go:187-236`），对 cube 做**至多**四次 GROUP BY（`''` / client / model / bday），每个维度一条独立的 `SELECT`。cube 足够小，不像 `req` 路径那样需要先物化；维度分开发也正是 `Dims` 能把其中三条整条砍掉的原因。
+4. 否则 → `aggregatesFromReq`（`store_query.go:296-360`），**一次** `WITH m AS MATERIALIZED (...)` 物化过滤后的切片，再把选中的 grouping 分支 `UNION ALL` 起来。
+
+两条路径都先取 `f.effectiveDims()`（`query.go:147-155`），这是**唯一**解释 `Dims` 的地方——见下文 `Filter` 字段说明。cube 路径少发几条 SQL 省得干干净净（90 天无过滤窗口实测 76.6ms → 21.9ms，只要 `ByClient` 一维）；`req` 路径少的只是 GROUP BY 分支，物化那一段占大头，省不掉。一个分支都没选中时 `aggregatesFromReq` 直接 `return nil`，不发空 SQL。
 
 `aggregatesFromReq` 上的性能注释（`store_query.go:253-265`）：显而易见的写法——每个维度一个 grouped query——要付四趟；而这里一趟不便宜，过滤索引覆盖谓词但不覆盖那十一个计数器列，所以每个匹配行都是一次单独的表查找。生产数据上一个匹配 116k 行的过滤器**每个维度 0.54s**，面板的 model 过滤器于是花了 **~3.9s** 做四遍同样的工作。物化一次再分四种方式 group，总共 **0.57s**。`MATERIALIZED` 是显式写死的而不是交给 planner：SQLite 可能把被引用多次的 CTE 内联，那会悄悄把这里避免的四趟又恢复回来。
 
@@ -450,7 +457,7 @@ func cubeEligible(f Filter) bool {
 - **`ingest` 不清。** 那些文件已经正确折叠进 `req` 了，清掉只会让扫描器把整个归档重读一遍。
 - **一行都不删。** 旧实现是 `rebuildAll`：一个事务里 `DELETE FROM req` / `agg_cube` / `ingest`，靠文件扫描器从 JSONL 重建。那只在归档存在时才成立——在 [`JSONLArchive: false`](#无归档模式jsonlarchive-false) 下没有文件可重读，**改一行配置就会静默抹掉整个保留窗口的请求历史**，而当天的备份会忠实地把这个空结果传上去。
 
-回归测试：`TestZoneChangeRelabelsWithoutArchive` / `TestZoneChangeKeepsIngestLedger` / `TestSameZoneIsNoOp`（`store_relabel_test.go`）、`TestStoreBucketLocationChange`（`store_test.go:520`）、`TestBucketLocationDayBoundary`（`requestlog_test.go:221`）。
+回归测试：`TestZoneChangeRelabelsWithoutArchive` / `TestZoneChangeKeepsIngestLedger` / `TestSameZoneIsNoOp`（`store_relabel_test.go`）、`TestStoreBucketLocationChange`（`store_test.go:659`）、`TestBucketLocationDayBoundary`（`requestlog_test.go:221`）。
 
 > 注意：`scanRecord` 把 `r.TS` 渲染成展示时区（`store_query.go:346-349`），瞬间相同，但与扫描路径返回的时区标注不同。
 
@@ -578,12 +585,14 @@ n, err := writer.RewriteClientMask("sk-...aaaa", "sk-...zzzz")
 | `TestProviderLegacyTreatedAsAnthropic` | `requestlog_test.go:208` | 无 provider 的历史行 |
 | `TestBucketLocationDayBoundary` | `requestlog_test.go:221` | **陷阱 1**（扫描路径） |
 | `TestQueryBoundedPaginationAndPageOnly` | `requestlog_test.go:264` | 堆分页 + `PageOnly` 提前终止 |
-| `TestStoreQueryMatchesScan` | `store_test.go:232` | 索引与扫描逐字段一致 |
-| `TestStoreAggregateByAuthMatchesScan` | `store_test.go:271` | 同上 |
-| `TestStoreAggregateHourlyMatchesScan` | `store_test.go:308` | 同上 |
-| `TestStoreSelfHeal` | `store_test.go:364` | **四种自愈**：append / 等长原地重写（仅 mtime 变）/ truncate / 保留删除 |
-| `TestStorePartialLine` | `store_test.go:458` | 半截行既不入库也不跳过 |
-| `TestStoreBucketLocationChange` | `store_test.go:520` | **陷阱 1**（drop & rebuild） |
+| `TestZeroDimsIsEveryDimension` | `store_test.go:263` | **`Dims` 零值 == `DimAll`**，两条路径 × 三种窗口形状逐字段相等 |
+| `TestDimsLeaveUnrequestedAggregatesEmpty` | `store_test.go:315` | 只请求一个 grouping 时其余确实没算 |
+| `TestStoreQueryMatchesScan` | `store_test.go:360` | 索引与扫描逐字段一致（`filterCases` 含 dims 组合，两条路径都跑） |
+| `TestStoreAggregateByAuthMatchesScan` | `store_test.go:399` | 同上 |
+| `TestStoreAggregateHourlyMatchesScan` | `store_test.go:436` | 同上 |
+| `TestStoreSelfHeal` | `store_test.go:492` | **四种自愈**：append / 等长原地重写（仅 mtime 变）/ truncate / 保留删除 |
+| `TestStorePartialLine` | `store_test.go:597` | 半截行既不入库也不跳过 |
+| `TestStoreBucketLocationChange` | `store_test.go:659` | **陷阱 1**（drop & rebuild） |
 | `TestWriterDualWriteMatchesScan` | `store_write_test.go:41` | 双 producer 结果一致 |
 | `TestWriterDualWriteDedup` | `store_write_test.go:94` | **`(src_file, src_off)` 幂等** |
 | `TestWriterCrashBeforeIndexFlush` | `store_write_test.go:139` | 崩溃后由扫描器补回 |
@@ -594,7 +603,7 @@ n, err := writer.RewriteClientMask("sk-...aaaa", "sk-...zzzz")
 | `TestPruneBefore` | `store_write_test.go:327` | 保留期裁剪 |
 | `TestCubeMatchesReqAggregates` | `store_write_test.go:370` | cube 与 `req` 聚合等价 |
 
-`TestStoreSelfHeal` 里的重写用例（`store_test.go:405-420`）显式断言 `len(rewritten) == len(data)`，并把 mtime 改到未来——**"只有 mtime 动了"正是被测的那个信号**。
+`TestStoreSelfHeal` 里的重写用例（`store_test.go:533-548`）显式断言 `len(rewritten) == len(data)`，并把 mtime 改到未来——**"只有 mtime 动了"正是被测的那个信号**。
 
 ---
 
@@ -630,13 +639,14 @@ func (s *Store) Export(fromDay, toDay string, out io.Writer) (int, error)
 func (r Record) BilledOrCost() float64
 ```
 
-`Filter` 全字段（`query.go:73-97`）：`Dir`、`From`、`To`、`ClientToken`、`Client`、`Model`、`Provider`、`Status`、`AuthID`、`UserID`、`Limit`、`Offset`、`PageOnly`。空串与零时间表示"无约束"；`Limit <= 0` 默认 50（`query.go:256-258`）。
+`Filter` 全字段（`query.go:95-143`）：`Dir`、`From`、`To`、`ClientToken`、`Client`、`Model`、`Provider`、`Status`、`AuthID`、`UserID`、`FromDay`、`ToDay`、`Limit`、`Offset`、`PageOnly`、`Dims`。空串与零时间表示"无约束"；`Limit <= 0` 默认 50（`query.go:256-258`）。
 
 - `ClientToken` **优先于** `Client`（`Client` 只是孤儿记录的回退）。
 - `Provider`：历史记录没有 provider 字段，`Provider == "anthropic"` 时会匹配它们，无需回填（`query.go:80`、`query.go:413-424`、`store_query.go:402-407`）。
-- `PageOnly`（`query.go:88-96`）：把查询变成廉价的列表查找——**跳过 Summary/ByClient/ByModel/ByDay 聚合**，并且一旦从最新的日志文件里收集到 `Offset+Limit` 条匹配就停止扫描。**只给那些只渲染 `Entries`、永不读聚合映射或 `Summary.Count` 的调用方用**（设了它，这些字段是零值/空）。
+- `PageOnly`（`query.go:128-135`）：把查询变成廉价的列表查找——**跳过 Summary/ByClient/ByModel/ByDay 聚合**，并且一旦从最新的日志文件里收集到 `Offset+Limit` 条匹配就停止扫描。**只给那些只渲染 `Entries`、永不读聚合映射或 `Summary.Count` 的调用方用**（设了它，这些字段是零值/空）。
+- `Dims`（`query.go:136-142`）：位掩码，挑 `Summary` / `ByClient` / `ByModel` / `ByDay` 里真正要算的那几个（`DimSummary` / `DimByClient` / `DimByModel` / `DimByDay`，全选是 `DimAll`）。**零值等于全算**，这条是整个设计的命门：`Filter` 在两个 fork 里都是带字段名的复合字面量，没听说过这个字段的调用方必须逐字段拿到和以前一样的结果。零值也把出错方向摆正了——一个算错的 dims 若归零，结果是多算（慢一点，仍然完全正确），而不是悄悄返回空的 `ByModel` 让调用方渲染成"零消费"。判定只在 `effectiveDims()`（`query.go:147-155`）一处：`PageOnly` 覆盖它并返回 0（一个都不算），`Dims == 0` 翻译成 `DimAll`，其余原样。没请求的映射保持空（非 nil）。
 
-`Result`（`query.go:100-107`）：`Summary`、`ByClient`、`ByModel`、`ByDay`、`Entries`、`Scanned`。索引路径下 `Scanned = Summary.Count`（`store_query.go:156`）。
+`Result`（`query.go:198-205`）：`Summary`、`ByClient`、`ByModel`、`ByDay`、`Entries`、`Scanned`。索引路径下 `Scanned = Summary.Count`，因此它**跟随 `DimSummary`**——没请求 summary 就没有计数可报，为 0（`store_query.go:160-171`）。想要分页总数的调用方必须显式带上 `DimSummary`。扫描路径的 `Scanned` 语义本来就不同（读过的行数，不是匹配数），不受 dims 影响。
 
 `Aggregate`（`query.go:36-54`）：`Count`、`InputTokens`、`OutputTokens`、`CacheReadTokens`、`CacheCreateTokens`、`CacheCreate1hTokens`（子集，非加数）、`CostUSD`、`BilledUSD`（按行回退 `BilledOrCost`）、`Errors`、`TotalDurationMs`。
 
@@ -649,13 +659,13 @@ func (r Record) BilledOrCost() float64
 | 文件 | 行数 | 职责 |
 |---|---|---|
 | `requestlog/requestlog.go` | 562 | 包文档、`Record` / `ClaudeAudit` / `Options`、`Writer` 全生命周期、retention GC、`RewriteClientMask` 的 JSONL 侧 |
-| `requestlog/query.go` | 480 | `bucketLoc` 与 `SetBucketLocation`、`Aggregate` / `Filter` / `Result` / `HourBucket`、三个公开查询入口的 **JSONL 扫描实现**、`matches()`、`entryHeap` |
+| `requestlog/query.go` | 587 | `bucketLoc` 与 `SetBucketLocation`、`Aggregate` / `Filter` / `Dims` / `Result` / `HourBucket`、三个公开查询入口的 **JSONL 扫描实现**、`matches()`、`entryHeap` |
 | `requestlog/store.go` | ~670 | `Store` 类型、按目录注册与查找（`lookupStore` / `indexFor`）、`OpenStore` / `Close` / `loop` / `maybeCatchUp`、**全部 schema 迁移**、`reconcileBucketLocation` / `relabelBuckets` / `relabelDay` |
 | `requestlog/store_ingest.go` | 441 | 增量 ingest 与三种自愈、`ingestFile` / `insertRecord`、`aggSelect` / `aggCols` / `cubeDims`、`rebuildCube` / `ensureCube` |
-| `requestlog/store_query.go` | 420 | 三个入口的 **SQL 实现**、`cubeEligible`、`aggregatesFromCube` / `aggregatesFromReq`、`filterWhere` / `cubeWhere` / `timeWhere`、`scanRecord` |
+| `requestlog/store_query.go` | 459 | 三个入口的 **SQL 实现**、`cubeEligible`、`aggregatesFromCube` / `aggregatesFromReq`、`filterWhere` / `cubeWhere` / `timeWhere`、`scanRecord` |
 | `requestlog/store_write.go` | 319 | `pendingRow` / `appendRows` / `markDirty`、`pruneBefore`、索引侧 `rewriteClientMask` / `reconcileIngestStats`、`OpenStoreForRead`、`Export` / `exportRange` |
 | `requestlog/requestlog_test.go` | 326 | Writer + 扫描路径测试 |
-| `requestlog/store_test.go` | 593 | 索引与扫描的一致性、自愈、部分行、时区变更 |
+| `requestlog/store_test.go` | 732 | 索引与扫描的一致性、自愈、部分行、时区变更 |
 | `requestlog/store_write_test.go` | 401 | 双写、去重、无归档、导出、裁剪、cube 等价 |
 
 依赖：`modernc.org/sqlite`（纯 Go，无 cgo）、`github.com/sirupsen/logrus`。

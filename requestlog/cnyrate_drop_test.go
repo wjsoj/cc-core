@@ -29,7 +29,9 @@ func TestDroppingTheRateKeepsEveryRow(t *testing.T) {
 	st.Close()
 
 	// Rewind the database to the state migration 5 has to upgrade: the column
-	// present, populated, and the version stamped at 4.
+	// present, populated, the version stamped at 4, and nothing a later
+	// migration created still standing — every migration from 5 on is replayed
+	// from here, and they are written to run exactly once.
 	dbPath := filepath.Join(dir, IndexFileName)
 	raw, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -38,6 +40,7 @@ func TestDroppingTheRateKeepsEveryRow(t *testing.T) {
 	for _, stmt := range []string{
 		`ALTER TABLE req ADD COLUMN cny_rate REAL NOT NULL DEFAULT 0`,
 		`UPDATE req SET cny_rate = 7.1842`,
+		`DROP INDEX IF EXISTS idx_cube_ct`,
 		`PRAGMA user_version = 4`,
 	} {
 		if _, err := raw.Exec(stmt); err != nil {

@@ -557,6 +557,33 @@ ALTER TABLE req ADD COLUMN cny_rate REAL NOT NULL DEFAULT 0;
 	`
 ALTER TABLE req DROP COLUMN cny_rate;
 `,
+
+	// 6: a per-token seek into the cube.
+	//
+	// The cube's primary key starts (day, bday, model, client, …), so it can
+	// only be seeked when the leading columns are constrained. A member-level
+	// query constrains client_token and a day range and nothing else, which
+	// leaves the key unusable: EXPLAIN QUERY PLAN answers `SCAN agg_cube` plus
+	// a TEMP B-TREE for every grouping. That was tolerable while the only
+	// caller was the admin panel asking one question at a time, and stopped
+	// being so with workspace usage, which asks it once per member — the cost
+	// is (members × groupings × whole cube) and grows with the cube's row
+	// count, which is driven by dimension cardinality (every added credential
+	// or model widens it) rather than by the member being asked about.
+	//
+	// With the index the same query is a prefix seek over that member's own
+	// rows: measured on a 43k-row cube, a 30-day member breakdown (ByModel +
+	// ByDay) goes 20.5ms → 4.5ms, and the ByDay grouping loses its TEMP
+	// B-TREE outright because the index already delivers bday in order.
+	//
+	// It costs ~86 bytes a cube row (a secondary index on a WITHOUT ROWID
+	// table repeats the full nine-column key as its pointer) — well under a
+	// megabyte at production cube sizes, against an archive measured in
+	// hundreds. Fleet-wide queries, which constrain no token, simply do not
+	// pick it: it is not covering, so a full scan of the cube still wins.
+	`
+CREATE INDEX idx_cube_ct ON agg_cube(client_token, bday);
+`,
 }
 
 func (s *Store) migrate() error {

@@ -145,15 +145,18 @@ func (s *Store) storeQuery(f Filter) (*Result, error) {
 		return res, nil
 	}
 
+	dims := f.effectiveDims()
 	if cubeEligible(f) {
-		if err := s.aggregatesFromCube(res, f); err != nil {
+		if err := s.aggregatesFromCube(res, f, dims); err != nil {
 			return nil, err
 		}
 	} else {
-		if err := s.aggregatesFromReq(res, where, args); err != nil {
+		if err := s.aggregatesFromReq(res, where, args, dims); err != nil {
 			return nil, err
 		}
 	}
+	// Scanned follows DimSummary: it is Summary.Count on this path, so a
+	// caller that did not ask for the summary has no count to be told.
 	res.Scanned = res.Summary.Count
 	return res, nil
 }
@@ -179,20 +182,27 @@ func cubeEligible(f Filter) bool {
 }
 
 // aggregatesFromCube answers Summary/ByClient/ByModel/ByDay from the pre-summed
-// cube. The cube is small enough (~10k rows for a 90-day, 1M-record archive)
-// that four groupings over it are microseconds, so unlike the req path there is
-// nothing to gain from materializing it first.
-func (s *Store) aggregatesFromCube(res *Result, f Filter) error {
+// cube. Each dimension is its own GROUP BY rather than one materialized pass:
+// the cube is small enough (~10k rows for a 90-day, 1M-record archive) that
+// there is nothing to gain from materializing it first, and keeping them
+// separate is what lets dims drop a grouping outright. They are not free —
+// a 90-day unfiltered window measures 76.6ms for all four — so a caller that
+// wants one grouping pays 21.9ms instead.
+func (s *Store) aggregatesFromCube(res *Result, f Filter, dims Dims) error {
 	where, args := cubeWhere(f)
 	for _, spec := range []struct {
+		bit Dims
 		dim string
 		dst map[string]Aggregate
 	}{
-		{`''`, nil},
-		{`CASE WHEN client_token != '' THEN client_token ELSE client END`, res.ByClient},
-		{`model`, res.ByModel},
-		{`bday`, res.ByDay},
+		{DimSummary, `''`, nil},
+		{DimByClient, `CASE WHEN client_token != '' THEN client_token ELSE client END`, res.ByClient},
+		{DimByModel, `model`, res.ByModel},
+		{DimByDay, `bday`, res.ByDay},
 	} {
+		if !dims.has(spec.bit) {
+			continue
+		}
 		rows, err := s.db.Query(`SELECT `+spec.dim+`, `+rollupSelect+`
 			FROM agg_cube WHERE `+where+` GROUP BY `+spec.dim, args...)
 		if err != nil {
@@ -283,21 +293,36 @@ func cubeWhere(f Filter) (string, []any) {
 // MATERIALIZED is explicit rather than left to the planner: SQLite may inline
 // a CTE referenced more than once, which would silently restore the four
 // passes this exists to avoid.
-func (s *Store) aggregatesFromReq(res *Result, where string, args []any) error {
+// Dropping a dimension here only drops its GROUP BY branch; the materialized
+// slice is the bulk of the cost and is paid as soon as any branch is wanted.
+func (s *Store) aggregatesFromReq(res *Result, where string, args []any, dims Dims) error {
+	var branches []string
+	if dims.has(DimSummary) {
+		branches = append(branches, `SELECT 'total' AS kind, '' AS dim, `+aggSelect+` FROM m`)
+	}
+	if dims.has(DimByClient) {
+		branches = append(branches, `SELECT 'client', CASE WHEN client_token != '' THEN client_token ELSE client END,
+			`+aggSelect+` FROM m GROUP BY 2`)
+	}
+	if dims.has(DimByModel) {
+		branches = append(branches, `SELECT 'model', model, `+aggSelect+` FROM m GROUP BY 2`)
+	}
+	if dims.has(DimByDay) {
+		branches = append(branches, `SELECT 'day', bday, `+aggSelect+` FROM m GROUP BY 2`)
+	}
+	if len(branches) == 0 {
+		// No branch means no statement at all — an empty string is not valid
+		// SQL, and there is nothing to fill in either way.
+		return nil
+	}
+
 	q := `WITH m AS MATERIALIZED (
 			SELECT client, client_token, model, bday, input, output,
 			       cache_read, cache_create, cache_create_1h,
 			       cost_usd, billed_usd, status, error, duration_ms
 			FROM req WHERE ` + where + `
 		)
-		SELECT 'total' AS kind, '' AS dim, ` + aggSelect + ` FROM m
-		UNION ALL
-		SELECT 'client', CASE WHEN client_token != '' THEN client_token ELSE client END,
-			` + aggSelect + ` FROM m GROUP BY 2
-		UNION ALL
-		SELECT 'model', model, ` + aggSelect + ` FROM m GROUP BY 2
-		UNION ALL
-		SELECT 'day', bday, ` + aggSelect + ` FROM m GROUP BY 2`
+		` + strings.Join(branches, "\n\t\tUNION ALL\n\t\t")
 
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
@@ -314,9 +339,9 @@ func (s *Store) aggregatesFromReq(res *Result, where string, args []any) error {
 		}
 		switch kind {
 		case "total":
-			// Ungrouped, so this row exists even when nothing matched — which
-			// is what makes an empty result report a zero summary rather than
-			// no summary at all.
+			// Ungrouped, so whenever DimSummary was requested this row exists
+			// even if nothing matched — which is what makes an empty result
+			// report a zero summary rather than no summary at all.
 			res.Summary = a
 		case "client":
 			res.ByClient[key] = a

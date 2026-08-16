@@ -2,6 +2,7 @@ package requestlog
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -249,4 +250,64 @@ func TestResolveDays(t *testing.T) {
 			t.Errorf("mutated a filter with no labels: %+v", got)
 		}
 	})
+}
+
+// A per-member window must seek into the cube, not scan it.
+//
+// The cube's key leads with (day, bday, model, client, …), so a filter that
+// only names a token and a day range constrains none of the prefix and the
+// key is unusable. That is affordable when the panel asks one question; the
+// workspace usage endpoint asks it once per member, and the price of a scan
+// is then (members × groupings × whole cube) — a cost driven by the cube's
+// dimension cardinality rather than by how much the member actually spent.
+// idx_cube_ct is what keeps that proportional to the member's own rows.
+func TestMemberFilteredCubeQuerySeeksRatherThanScans(t *testing.T) {
+	withShanghaiBuckets(t)
+	dir := t.TempDir()
+	base := time.Now().UTC().Add(-6 * time.Hour).Truncate(time.Second)
+	writeLog(t, dir, sampleRecords(base))
+	st := openReadyStore(t, dir)
+
+	f := Filter{
+		ClientToken: "sk-...aaaa",
+		FromDay:     dayLabel(base.Add(-73 * time.Hour)),
+		ToDay:       dayLabel(base),
+	}.resolveDays()
+	where, args := cubeWhere(f)
+
+	// Every grouping aggregatesFromCube can issue, since they are separate
+	// statements and the planner decides each one on its own.
+	for _, dim := range []string{`''`, `model`, `bday`,
+		`CASE WHEN client_token != '' THEN client_token ELSE client END`} {
+		plan := explainPlan(t, st, `SELECT `+dim+`, `+rollupSelect+
+			` FROM agg_cube WHERE `+where+` GROUP BY `+dim, args...)
+		if !strings.Contains(plan, "idx_cube_ct") {
+			t.Errorf("GROUP BY %s did not use the token index:\n%s", dim, plan)
+		}
+		if strings.Contains(plan, "SCAN agg_cube") {
+			t.Errorf("GROUP BY %s still scans the whole cube:\n%s", dim, plan)
+		}
+	}
+}
+
+func explainPlan(t *testing.T, st *Store, q string, args ...any) string {
+	t.Helper()
+	rows, err := st.db.Query("EXPLAIN QUERY PLAN "+q, args...)
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatalf("explain scan: %v", err)
+		}
+		out = append(out, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("explain rows: %v", err)
+	}
+	return strings.Join(out, "\n")
 }

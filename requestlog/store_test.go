@@ -226,7 +226,135 @@ func filterCases(dir string, base time.Time) []struct {
 		{"window", Filter{Dir: dir, From: base.Add(-50 * time.Hour), To: base.Add(-24 * time.Hour)}},
 		{"combo", Filter{Dir: dir, Provider: "anthropic", Status: 200, Limit: 2}},
 		{"no-match", Filter{Dir: dir, Model: "does-not-exist"}},
+		// Dims, on both aggregate paths: an unbounded filter and a
+		// day-labelled one, which is what routes to req vs the cube. The
+		// scanning path has no such split, so running the same dims through
+		// both is how a dims bug that only lives in one of them shows up.
+		{"dims-summary", Filter{Dir: dir, Dims: DimSummary}},
+		{"dims-by-client", Filter{Dir: dir, Dims: DimByClient}},
+		{"dims-model-day", Filter{Dir: dir, Dims: DimByModel | DimByDay}},
+		{"dims-all-explicit", Filter{Dir: dir, Dims: DimAll}},
+		{"dims-with-filter", Filter{Dir: dir, Provider: "anthropic", Dims: DimSummary | DimByModel}},
+		{"dims-no-match", Filter{Dir: dir, Model: "does-not-exist", Dims: DimSummary}},
+		{"dims-page-only-wins", Filter{Dir: dir, Limit: 4, PageOnly: true, Dims: DimAll}},
+		{"dims-cube-summary", Filter{
+			Dir: dir, FromDay: dayLabel(base.Add(-73 * time.Hour)), ToDay: dayLabel(base),
+			Dims: DimSummary,
+		}},
+		{"dims-cube-by-client", Filter{
+			Dir: dir, FromDay: dayLabel(base.Add(-73 * time.Hour)), ToDay: dayLabel(base),
+			Dims: DimByClient,
+		}},
+		{"dims-cube-model-day", Filter{
+			Dir: dir, FromDay: dayLabel(base.Add(-73 * time.Hour)), ToDay: dayLabel(base),
+			Dims: DimByModel | DimByDay,
+		}},
+		{"dims-cube-default", Filter{
+			Dir: dir, FromDay: dayLabel(base.Add(-73 * time.Hour)), ToDay: dayLabel(base),
+		}},
 	}
+}
+
+// TestZeroDimsIsEveryDimension is the regression nail for the one rule the
+// whole design rests on: existing callers construct Filter as a struct
+// literal and have never heard of Dims, so a zero value must produce exactly
+// what an explicit DimAll produces — on both the cube and the req path, and
+// with the index on and off.
+func TestZeroDimsIsEveryDimension(t *testing.T) {
+	withShanghaiBuckets(t)
+	dir := t.TempDir()
+	base := time.Now().UTC().Add(-6 * time.Hour).Truncate(time.Second)
+	writeLog(t, dir, sampleRecords(base))
+
+	shapes := []struct {
+		name string
+		f    Filter
+	}{
+		{"unbounded", Filter{Dir: dir, Limit: 50}},
+		{"day-labelled", Filter{
+			Dir: dir, Limit: 50,
+			FromDay: dayLabel(base.Add(-73 * time.Hour)), ToDay: dayLabel(base),
+		}},
+		{"timestamp-window", Filter{
+			Dir: dir, Limit: 50,
+			From: base.Add(-50 * time.Hour), To: base.Add(-24 * time.Hour),
+		}},
+	}
+
+	check := func(t *testing.T, stage string) {
+		t.Helper()
+		for _, sh := range shapes {
+			zero, err := Query(sh.f)
+			if err != nil {
+				t.Fatalf("%s/%s zero dims: %v", stage, sh.name, err)
+			}
+			explicit := sh.f
+			explicit.Dims = DimAll
+			all, err := Query(explicit)
+			if err != nil {
+				t.Fatalf("%s/%s DimAll: %v", stage, sh.name, err)
+			}
+			// Scanned counts work done, which differs between the two paths
+			// but not between two runs of the same one — so it is compared
+			// here, unlike in the cross-path tests.
+			if !reflect.DeepEqual(zero, all) {
+				t.Errorf("%s/%s: zero Dims != DimAll\n  zero %+v\n  all  %+v", stage, sh.name, zero, all)
+			}
+		}
+	}
+
+	check(t, "scan")
+	openReadyStore(t, dir)
+	check(t, "index")
+}
+
+// TestDimsLeaveUnrequestedAggregatesEmpty pins the other half of the
+// contract: asking for one grouping must actually skip the others rather
+// than quietly computing them anyway, which is what makes the whole change
+// worth an API field.
+func TestDimsLeaveUnrequestedAggregatesEmpty(t *testing.T) {
+	withShanghaiBuckets(t)
+	dir := t.TempDir()
+	base := time.Now().UTC().Add(-6 * time.Hour).Truncate(time.Second)
+	writeLog(t, dir, sampleRecords(base))
+
+	day := dayLabel(base)
+	cases := []struct {
+		name string
+		f    Filter
+	}{
+		{"req-path", Filter{Dir: dir, Limit: 50, Dims: DimByModel}},
+		{"cube-path", Filter{Dir: dir, Limit: 50, FromDay: day, ToDay: day, Dims: DimByModel}},
+	}
+
+	check := func(t *testing.T, stage string) {
+		t.Helper()
+		for _, c := range cases {
+			res, err := Query(c.f)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", stage, c.name, err)
+			}
+			if len(res.ByModel) == 0 {
+				t.Errorf("%s/%s: ByModel empty, the one grouping that was asked for", stage, c.name)
+			}
+			if len(res.ByClient) != 0 || len(res.ByDay) != 0 {
+				t.Errorf("%s/%s: unrequested groupings populated: by_client=%v by_day=%v",
+					stage, c.name, res.ByClient, res.ByDay)
+			}
+			if res.Summary != (Aggregate{}) {
+				t.Errorf("%s/%s: unrequested summary populated: %+v", stage, c.name, res.Summary)
+			}
+			// Entries are orthogonal to dims — a caller that wants a page and
+			// one grouping must still get the page.
+			if len(res.Entries) == 0 {
+				t.Errorf("%s/%s: entries empty", stage, c.name)
+			}
+		}
+	}
+
+	check(t, "scan")
+	openReadyStore(t, dir)
+	check(t, "index")
 }
 
 func TestStoreQueryMatchesScan(t *testing.T) {
