@@ -121,7 +121,7 @@ func (s *Store) storeQuery(f Filter) (*Result, error) {
 	entArgs := append(append([]any{}, args...), f.Limit, f.Offset)
 	rows, err := s.db.Query(`SELECT ts, client, client_token, provider, auth_id, auth_label,
 			auth_kind, model, input, output, cache_read, cache_create, cache_create_1h,
-			cost_usd, billed_usd, multiplier, cny_rate, status, duration_ms, stream, path,
+			cost_usd, billed_usd, multiplier, status, duration_ms, stream, path,
 			attempts, error, user_id, audit
 		FROM req WHERE `+where+`
 		ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?`, entArgs...)
@@ -352,7 +352,7 @@ func scanRecord(rows scannable) (Record, error) {
 	err := rows.Scan(&ts, &r.Client, &r.ClientToken, &r.Provider, &r.AuthID,
 		&r.AuthLabel, &r.AuthKind, &r.Model, &r.Input, &r.Output, &r.CacheRead,
 		&r.CacheCreate, &r.CacheCreate1h, &r.CostUSD, &r.BilledUSD, &r.Multiplier,
-		&r.CNYPerUSD, &r.Status, &r.DurationMs, &stream, &r.Path, &r.Attempts, &r.Error,
+		&r.Status, &r.DurationMs, &stream, &r.Path, &r.Attempts, &r.Error,
 		&r.UserID, &audit)
 	if err != nil {
 		return r, err

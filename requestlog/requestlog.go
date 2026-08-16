@@ -80,34 +80,9 @@ type Record struct {
 	// bill line against the catalog rate, immune to subsequent group
 	// config changes.
 	Multiplier float64 `json:"multiplier,omitempty"`
-	// CNYPerUSD is the USD→CNY rate at the moment this request settled.
-	//
-	// Wallets are denominated in USD, but users pay in CNY and read their
-	// spend in CNY, so every yuan figure is a conversion. Converting at
-	// *display* time makes that figure float: the same date range exported
-	// twice a week apart yields two different totals, neither reproducible
-	// once the live rate has moved on. Snapshotting the rate per row makes
-	// the yuan amount a historical fact — recomputable forever as
-	// BilledOrCost() × CNYPerUSD — which is what a spend statement has to be.
-	//
-	// Zero on rows written before this field existed and on deployments with
-	// no billing layer. Readers must treat zero as "unknown" and decide their
-	// own fallback rather than multiplying by it.
-	CNYPerUSD float64 `json:"cny_per_usd,omitempty"`
 	// UserID identifies the SaaS account this request belongs to (used
 	// by per-user dashboards to filter to just that account's history).
 	UserID int64 `json:"user_id,omitempty"`
-}
-
-// BilledCNY converts this row's charge at its own snapshotted rate, reporting
-// ok=false when the row predates rate capture. Callers that need a number
-// regardless must supply their own fallback rate explicitly — silently
-// substituting today's rate is how a statement stops being reproducible.
-func (r Record) BilledCNY() (float64, bool) {
-	if r.CNYPerUSD <= 0 {
-		return 0, false
-	}
-	return r.BilledOrCost() * r.CNYPerUSD, true
 }
 
 // ClaudeAudit is privacy-safe evidence of Claude request preparation, identity

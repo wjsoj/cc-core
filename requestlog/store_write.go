@@ -288,7 +288,7 @@ func (s *Store) exportRange(fromDay, toDay string, emit func(Record) error) erro
 	var args []any
 	sb.WriteString(`SELECT ts, client, client_token, provider, auth_id, auth_label,
 		auth_kind, model, input, output, cache_read, cache_create, cache_create_1h,
-		cost_usd, billed_usd, multiplier, cny_rate, status, duration_ms, stream, path,
+		cost_usd, billed_usd, multiplier, status, duration_ms, stream, path,
 		attempts, error, user_id, audit
 		FROM req WHERE 1 = 1`)
 	if fromDay != "" {
