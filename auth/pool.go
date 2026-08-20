@@ -48,10 +48,11 @@ type Pool struct {
 	// 5h window still gives a reasonable "recent load" signal for picking
 	// the least-used Codex credential
 	// (see usage.Counts.WeightedTotal — input 1×, cache_create 1.25×,
-	// cache_read 0.1×, output 5×). Drives OAuth selection in
-	// pickOAuthLocked: the candidate with the lowest weighted usage wins,
-	// so cache-heavy credentials aren't penalized by the near-free
-	// cache_read stream and the scarce output tokens dominate.
+	// cache_read 0.1×, output 5×). It is the SECOND ordering key in
+	// pickOAuthLocked, applied among candidates of equal client fan-out: the
+	// least-used candidate wins, so cache-heavy credentials aren't penalized
+	// by the near-free cache_read stream and the scarce output tokens
+	// dominate.
 	usageLoad func(authID string) int64
 }
 
@@ -142,6 +143,37 @@ func (p *Pool) activeCountLocked(authID string, now time.Time) int {
 		}
 	}
 	return n
+}
+
+// clientFanoutsLocked maps each OAuth auth ID to the set of distinct client
+// tokens currently pinned to it inside the active window. Caller must hold
+// p.mu.
+//
+// The unit is the client TOKEN, not the session: one user running several CLI
+// windows holds several slots on the same credential, and upstream reads that
+// as one device with several concurrent sessions — the shape a real user
+// produces. What does not look real is one subscription account serving many
+// unrelated users at once, and that is what this counts.
+//
+// Built in a single pass and handed to pickOAuthLocked, so scheduling stays
+// O(sessions) per Acquire rather than O(candidates x sessions). No new state is
+// retained: the sessions map is already expired by gcLocked on the same
+// activeWindow.
+func (p *Pool) clientFanoutsLocked(now time.Time) map[string]map[string]struct{} {
+	cutoff := now.Add(-p.activeWindow)
+	out := make(map[string]map[string]struct{}, len(p.oauths))
+	for _, s := range p.sessions {
+		if s.authID == "" || s.kind != KindOAuth || s.lastSeen.Before(cutoff) {
+			continue
+		}
+		set, ok := out[s.authID]
+		if !ok {
+			set = make(map[string]struct{}, 4)
+			out[s.authID] = set
+		}
+		set[s.clientToken] = struct{}{}
+	}
+	return out
 }
 
 // AcquireOptions tunes credential selection beyond the positional arguments.
@@ -283,7 +315,7 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 			// its dedicated pool whenever it has slots. No upgrade for
 			// clients already in the shared tier.
 			upgrade := clientGroup != "" && clientGroup != "new" && a.Group != clientGroup &&
-				p.pickOAuthLocked(now, excluded, map[string]bool{clientGroup: true}, provider, clientModel) != nil
+				p.pickOAuthLocked(now, excluded, map[string]bool{clientGroup: true}, provider, clientModel, clientToken) != nil
 			if !upgrade {
 				// Reusing an assignment we already hold a slot for: counts us
 				// only once because activeCountLocked scans distinct sessions.
@@ -329,7 +361,7 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 	for _, tier := range tiers {
 		if !opts.APIKeyOnly {
 			for {
-				chosen := p.pickOAuthLocked(now, excluded, tier, provider, clientModel)
+				chosen := p.pickOAuthLocked(now, excluded, tier, provider, clientModel, clientToken)
 				if chosen == nil {
 					break
 				}
@@ -717,16 +749,40 @@ func (p *Pool) oauthUsableLocked(a *Auth, now time.Time, clientModel string) boo
 // (cap=0) always have room. excluded may be nil. group is an exact match;
 // "" is the public tier.
 //
-// Selection is purely least-used-first (not spare-slot-first): as long as a
-// credential has any free slot, it's a valid candidate, and ties break on
-// weighted recent-window usage (see usage.Counts.WeightedTotal). This
-// spreads load toward credentials doing less real work — cache-heavy
-// clients don't starve a credential out just by racking up near-free
-// cache_read volume.
-func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedGroups map[string]bool, provider, clientModel string) *Auth {
+// Candidates are ordered by client fan-out first, then by weighted
+// recent-window usage (see usage.Counts.WeightedTotal), then by ID.
+//
+// Fan-out leads because upstream sheds load per account, and in production the
+// shed rate tracked how many distinct client tokens an account was serving far
+// more closely than how much traffic it carried: accounts serving 2-5 tokens
+// shed ~0% while accounts serving 13-17 shed 40%+, at comparable request
+// volume and prompt size. One subscription account fielding 17 unrelated users
+// at once is not a shape a real user produces.
+//
+// This is an ORDERING, deliberately not a cap. A hard per-account fan-out limit
+// would return nil once every account reached it, turning a busy minute into a
+// 503; ordering can never exhaust the candidate set, it only decides who goes
+// first. With N healthy accounts and M active tokens, fan-out converges on
+// ceil(M/N) on its own.
+//
+// Usage remains the tie-break, so among accounts at equal fan-out the load
+// balancer still spreads work toward credentials doing less real work —
+// cache-heavy clients don't starve a credential out just by racking up
+// near-free cache_read volume.
+//
+// Fan-out is measured as it would be AFTER clientToken joins: a token already
+// present on a candidate adds nothing, so a returning user's extra windows
+// prefer the account they are already on. That keeps a single user's sessions
+// together (and their prompt cache warm) while spreading distinct users apart.
+//
+// This is reached only when the session has no usable sticky assignment, so
+// reordering here never migrates an established session off its credential.
+func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedGroups map[string]bool, provider, clientModel, clientToken string) *Auth {
+	fanouts := p.clientFanoutsLocked(now)
 	type cand struct {
-		a    *Auth
-		load int64 // weighted tokens consumed in the recent load-balancing window (0 if unknown)
+		a      *Auth
+		fanout int   // distinct client tokens this auth would serve with us on it
+		load   int64 // weighted tokens consumed in the recent load-balancing window (0 if unknown)
 	}
 	var cands []cand
 	for _, a := range p.oauths {
@@ -751,12 +807,20 @@ func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedG
 		if p.usageLoad != nil {
 			used = p.usageLoad(a.ID)
 		}
-		cands = append(cands, cand{a: a, load: used})
+		tokens := fanouts[a.ID]
+		fanout := len(tokens)
+		if _, already := tokens[clientToken]; !already {
+			fanout++
+		}
+		cands = append(cands, cand{a: a, fanout: fanout, load: used})
 	}
 	if len(cands) == 0 {
 		return nil
 	}
 	sort.SliceStable(cands, func(i, j int) bool {
+		if cands[i].fanout != cands[j].fanout {
+			return cands[i].fanout < cands[j].fanout
+		}
 		if cands[i].load != cands[j].load {
 			return cands[i].load < cands[j].load
 		}
