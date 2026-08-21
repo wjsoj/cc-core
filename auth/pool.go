@@ -54,6 +54,42 @@ type Pool struct {
 	// by the near-free cache_read stream and the scarce output tokens
 	// dominate.
 	usageLoad func(authID string) int64
+
+	// affinity remembers which OAuth credential last served a slot, and
+	// outlives the slot itself. See defaultAffinityTTL for why.
+	affinity    map[string]affinityEntry
+	affinityTTL time.Duration
+}
+
+// defaultAffinityTTL is how long a slot's credential is remembered after the
+// slot itself expires.
+//
+// sessions are GC'd one activeWindow (5 min) after their last request, taking
+// the credential binding with them, so the next turn is scheduled from scratch
+// by load. For an interactive client that is the common case, not the rare
+// one: read the diff, run the tests, think, send the next turn eight minutes
+// later — and land on a different account, where the upstream prompt cache for
+// this conversation does not exist. A 60k-token context then re-uploads as
+// fresh input instead of a near-free cache read, which costs both latency to
+// first token and money, every single time.
+//
+// So the binding is remembered separately and for longer than the slot. An
+// hour matches how long the upstream caches an idle prefix at the outside, and
+// the WS path's response→account binding (codexRespAccountTTL), so a returning
+// conversation is offered its old account for as long as reusing it can still
+// pay off.
+//
+// This is a PREFERENCE, not a pin. The remembered credential is fed back
+// through the ordinary sticky path, so health, group, model, exclusion and
+// concurrency all still gate it and an unusable one simply falls through to a
+// normal pick. It is deliberately kept out of p.sessions: concurrency is
+// accounted on live sessions, and an hour-long memory must not make an idle
+// conversation occupy a slot it is not using.
+const defaultAffinityTTL = time.Hour
+
+type affinityEntry struct {
+	authID string
+	exp    time.Time
 }
 
 type session struct {
@@ -81,6 +117,8 @@ func NewPool(oauths, apikeys []*Auth, activeWindow time.Duration, useUTLS bool, 
 		oauths:       append([]*Auth(nil), oauths...),
 		apikeys:      append([]*Auth(nil), apikeys...),
 		sessions:     make(map[string]*session),
+		affinity:     make(map[string]affinityEntry),
+		affinityTTL:  defaultAffinityTTL,
 		activeWindow: activeWindow,
 		useUTLS:      useUTLS,
 		defaultProxy: defaultProxy,
@@ -129,6 +167,36 @@ func (p *Pool) gcLocked(now time.Time) {
 		if s.lastSeen.Before(cutoff) {
 			delete(p.sessions, k)
 		}
+	}
+	for k, e := range p.affinity {
+		if now.After(e.exp) {
+			delete(p.affinity, k)
+		}
+	}
+}
+
+// rememberAffinityLocked records that slotKey was served by an OAuth authID, so
+// a later turn of the same conversation can be offered it again after the slot
+// has been GC'd. Caller holds p.mu.
+func (p *Pool) rememberAffinityLocked(slotKey, authID string, now time.Time) {
+	if slotKey == "" || authID == "" || p.affinityTTL <= 0 {
+		return
+	}
+	if p.affinity == nil {
+		p.affinity = make(map[string]affinityEntry)
+	}
+	p.affinity[slotKey] = affinityEntry{authID: authID, exp: now.Add(p.affinityTTL)}
+}
+
+// SetAffinityTTL overrides how long a slot's credential is remembered past the
+// slot's own lifetime. Zero disables the memory entirely, restoring
+// schedule-from-scratch on every re-created slot.
+func (p *Pool) SetAffinityTTL(d time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.affinityTTL = d
+	if d <= 0 {
+		p.affinity = make(map[string]affinityEntry)
 	}
 }
 
@@ -297,6 +365,16 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 	s, ok := p.sessions[sessionKey]
 	if !ok {
 		s = &session{clientToken: clientToken, sessionID: sessionID, provider: provider}
+		// The slot expired but the conversation did not. Offer it the
+		// credential it had, so a turn sent after a pause can still read its
+		// prefix out of that account's prompt cache instead of re-uploading
+		// it. Seeding s.authID rather than picking directly is what keeps this
+		// honest: the sticky branch below re-validates health, group, model,
+		// exclusion and free capacity exactly as it does for a live slot, and
+		// an unusable memory costs nothing but a map lookup.
+		if e, hit := p.affinity[sessionKey]; hit && now.Before(e.exp) {
+			s.authID, s.kind = e.authID, KindOAuth
+		}
 		p.sessions[sessionKey] = s
 	}
 
@@ -320,6 +398,7 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 				// Reusing an assignment we already hold a slot for: counts us
 				// only once because activeCountLocked scans distinct sessions.
 				s.lastSeen = now
+				p.rememberAffinityLocked(sessionKey, a.ID, now)
 				p.mu.Unlock()
 				if err := a.EnsureFresh(ctx, 5*time.Minute, p.useUTLS); err != nil {
 					log.Warnf("auth: ensure-fresh sticky %s failed, releasing: %v", a.ID, err)
@@ -368,6 +447,7 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 				s.authID = chosen.ID
 				s.kind = KindOAuth
 				s.lastSeen = now
+				p.rememberAffinityLocked(sessionKey, chosen.ID, now)
 				p.mu.Unlock()
 				if err := chosen.EnsureFresh(ctx, 5*time.Minute, p.useUTLS); err != nil {
 					log.Warnf("auth: ensure-fresh %s failed, excluding: %v", chosen.ID, err)
@@ -677,9 +757,14 @@ func (p *Pool) Unstick(provider, clientToken, sessionID string) {
 	provider = NormalizeProvider(provider)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if s, ok := p.sessions[slotKey(provider, clientToken, sessionID)]; ok {
+	key := slotKey(provider, clientToken, sessionID)
+	if s, ok := p.sessions[key]; ok {
 		s.authID = ""
 	}
+	// Unstick means this credential misbehaved for this conversation. Keeping
+	// it in the affinity memory would hand it straight back on the next turn,
+	// so the memory has to go with the binding.
+	delete(p.affinity, key)
 }
 
 func (p *Pool) findOAuthLocked(id string) *Auth {
