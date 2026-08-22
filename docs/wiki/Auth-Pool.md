@@ -782,7 +782,9 @@ clearExpiredQuotaLocked(now)
 
 14. **`ModelMap` 是改写表，不是白名单**（types.go:108-116、1251-1300）。`ResolveUpstreamModel` 的 `ok` 恒 true，`AcceptsModel` 恒 true。任何"这个 key 只支持这些模型"的直觉都是错的。
 
-15. **fable 只有一条绕开点**（pool.go:685）。Anthropic 订阅 OAuth 对 fable 返回 `credits_required`，哪怕包含额度分毫未动。判定落在 `oauthUsableLocked` 的**第一行**，因此对 sticky 复用路径同样生效——fable 请求会**打断**已有的 sticky OAuth 绑定（见 `TestFableBreaksStickyOAuthAssignment`）。而当调用方 `AllowAPIKeyFallback: false` 时，fable 返回 `nil` 而不是退回 OAuth（`TestFableRespectsDisabledAPIKeyFallback`）。
+15. **fable 默认和别的模型一样走 OAuth**。能不能服务 fable 是**每个号自己的事**：开通的 `claude_max` 号有独立的周额度，没开通的号返回 `credits_required`。承载这个事实的是 `oauthUsableLocked` 里那条按模型族的冷却——只标记真正拒绝了的那个号，且只挡 fable，该号的其它模型照常调度。
+
+    想恢复"fable 一律不碰 OAuth"的老策略，把包级变量 `AnthropicFableOAuthDisabled` 置 true（**启动时设一次**，不支持热切）。此时 `AnthropicModelRequiresAPIKey` 才返回 true，判定落在 `oauthUsableLocked` 的**第一行**，因此对 sticky 复用路径同样生效——fable 请求会**打断**已有的 sticky OAuth 绑定（见 `TestFableBreaksStickyOAuthAssignmentWhenDisabled`）；而当调用方 `AllowAPIKeyFallback: false` 时，fable 返回 `nil` 而不是退回 OAuth（`TestFableRespectsDisabledAPIKeyFallbackWhenDisabled`）。
 
 16. **`ClearQuota` 会连带清空 `ModelRateLimits`**（types.go:1115-1122）。管理面点一次"清除配额"，所有按模型族的冷却也一起没了。
 

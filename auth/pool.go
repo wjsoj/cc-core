@@ -795,10 +795,16 @@ func (p *Pool) findOAuthLocked(id string) *Auth {
 // failures walk ConsecutiveFailures up to hardFailureThreshold, which this
 // function does honour.
 func (p *Pool) oauthUsableLocked(a *Auth, now time.Time, clientModel string) bool {
-	// Fable 5 requires separately purchased usage credits. Anthropic
-	// subscription OAuth accounts return credits_required even when their
-	// included allowance is untouched, so never send this model to OAuth. The
-	// Acquire loop will proceed directly to the API-key pool in the same tier.
+	// Fable on subscription OAuth is a PER-CREDENTIAL entitlement, not a
+	// service-wide rule: a claude_max bootstrap lists claude-fable-5[1m] with
+	// disabled_reason=null and carries an independent weekly allotment, while a
+	// non-entitled account answers credits_required. Both facts belong to one
+	// credential, so the correct filter is the model-scoped cooldown below —
+	// set on whichever credential actually refused. This blanket check answers
+	// false unless AnthropicFableOAuthDisabled is on.
+	//
+	// It stays on the FIRST line because when it is on it must also break an
+	// existing sticky OAuth binding, not just new picks.
 	if NormalizeProvider(a.Provider) == ProviderAnthropic && AnthropicModelRequiresAPIKey(clientModel) {
 		return false
 	}

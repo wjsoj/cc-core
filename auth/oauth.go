@@ -53,8 +53,10 @@ const (
 //     name, so the cheaper card applies; the client-facing name is what gets
 //     displayed. The two converge when the promo lapses.
 //   - claude-fable-5 is deliberately absent — it is the premium tier at 2×
-//     Opus and is API-key-only (AnthropicModelRequiresAPIKey). Folding
-//     anything into or out of it would misroute and misbill.
+//     Opus and has no retired generation to fold forward. Mapping anything
+//     into or out of it would misbill by a factor of two, and note that
+//     ResolveUpstreamModel's prefix fallback means a hand-written `claude`
+//     or `claude-fable` key WOULD capture it.
 //   - Haiku is deliberately absent — a different price tier, and mimicry
 //     skips body mimicry for Haiku, so silently re-pointing it changes more
 //     than the model name.
