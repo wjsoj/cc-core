@@ -772,10 +772,13 @@ func (a *Auth) MarkUsageLimitReached(resetAt time.Time) {
 }
 
 // ModelScopeAnthropicFable is the model-family scope for Anthropic's fable
-// models. Subscription OAuth accounts do not include this family: Anthropic
-// rejects it with details.error_code=credits_required even while the account's
-// included allowance remains available. Keep the scope separate so a rejection
-// can never be mistaken for an account-wide quota exhaustion.
+// models. Anthropic bills fable against an independent weekly allotment that
+// rejects on its own while the shared 5h/7d quota stays available, so a fable
+// exhaustion must be scoped to the family — never the whole account.
+//
+// A non-entitled account answers details.error_code=credits_required instead;
+// that is also a per-credential fact and belongs in this same scope. What it is
+// NOT is a service-wide rule — see AnthropicFableOAuthDisabled.
 const ModelScopeAnthropicFable = "anthropic:fable"
 
 // AnthropicModelScope maps a client model string to the model-family rate-limit
@@ -794,11 +797,22 @@ func AnthropicModelScope(model string) string {
 	return ""
 }
 
+// AnthropicFableOAuthDisabled restores the historical blanket rule that fable
+// never touches subscription OAuth, for deployments whose accounts genuinely
+// lack the entitlement. Default false: fable schedules onto OAuth like every
+// other model, and a credential that refuses it self-excludes for that family
+// alone via MarkModelRateLimited(ModelScopeAnthropicFable, …).
+//
+// Set once at startup, before the pool takes traffic. It is deliberately a
+// plain bool rather than an atomic: flipping it under load would change routing
+// mid-request for no operational gain, and the pool lock does not cover it.
+var AnthropicFableOAuthDisabled = false
+
 // AnthropicModelRequiresAPIKey reports whether a model must bypass Anthropic
-// subscription OAuth credentials. Fable 5 is sold through usage credits; the
-// API-key pool is the only valid route for it in this service.
+// subscription OAuth credentials under the current policy. It is the predicate
+// behind AnthropicFableOAuthDisabled and answers false while that flag is off.
 func AnthropicModelRequiresAPIKey(model string) bool {
-	return AnthropicModelScope(model) == ModelScopeAnthropicFable
+	return AnthropicFableOAuthDisabled && AnthropicModelScope(model) == ModelScopeAnthropicFable
 }
 
 // MarkModelRateLimited records that a specific model-family scope on this
