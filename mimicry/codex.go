@@ -188,6 +188,11 @@ func validHeaderValue(s string) bool {
 //
 // The advertised identity is DefaultCodexProfile() — Codex Desktop. Use
 // ApplyCodexHeadersWithProfile to pick a different one.
+//
+// It mints a FRESH session id per request. That is correct only for a caller
+// with no conversation to speak of; anything serving multi-turn traffic must
+// pass a stable one through ApplyCodexHeadersWithSession — see the session-id
+// note there for what a per-request id costs.
 func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCompact bool, model, serviceTier string) {
 	ApplyCodexHeadersWithProfile(req, DefaultCodexProfile(), accessToken, accountID, isCompact, model, serviceTier)
 }
@@ -195,7 +200,38 @@ func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCo
 // ApplyCodexHeadersWithProfile is ApplyCodexCLIHeaders with an explicit client
 // identity. The profile's Originator / UserAgent / Version are written as one
 // unit and must never be mixed with another profile's — see CodexClientProfile.
+//
+// Like ApplyCodexCLIHeaders, this mints a fresh session id per request.
 func ApplyCodexHeadersWithProfile(req *http.Request, p CodexClientProfile, accessToken, accountID string, isCompact bool, model, serviceTier string) {
+	ApplyCodexHeadersWithSession(req, p, accessToken, accountID, isCompact, model, serviceTier, "")
+}
+
+// ApplyCodexHeadersWithSession is ApplyCodexHeadersWithProfile with the
+// conversation's upstream session id supplied by the caller.
+//
+// # Why the session id must be stable
+//
+// `session-id` is not decoration on this path: the backend uses it to place a
+// conversation in the upstream prompt cache, exactly as it does for the frame's
+// prompt_cache_key on the WebSocket path (see codexws.SessionRegistry, where a
+// stable key bought 22272 of 22735 input tokens in the captured turn). A fresh
+// id per request tells the backend every turn is a brand-new conversation, so
+// each one re-uploads a context the account already has cached.
+//
+// This was not always visible. cc-core sent the id under the misspelled header
+// name `Session_id` for two capture generations; the backend ignored a name no
+// client sends, so the per-request value was harmless. Correcting the spelling
+// to `session-id` made the backend start reading it — and production Codex
+// cache hit rate fell from ~87% to ~45% over the following days, with a third
+// of all turns arriving with cache_read == 0 while carrying >10k of context.
+// Passing a per-request id here is therefore a REGRESSION, not a default.
+//
+// sessionID must be a UUIDv7 the caller can reproduce for every request of the
+// same conversation — derive it with CodexSessionUUIDFor, or let a
+// codexws.SessionRegistry own the (anchor, startedAt) bookkeeping. Empty falls
+// back to a freshly minted v7, which costs stickiness but never ships a shape
+// the backend rejects.
+func ApplyCodexHeadersWithSession(req *http.Request, p CodexClientProfile, accessToken, accountID string, isCompact bool, model, serviceTier, sessionID string) {
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	if isCompact {
@@ -214,7 +250,14 @@ func ApplyCodexHeadersWithProfile(req *http.Request, p CodexClientProfile, acces
 	// Drop the historical misspelling before writing the correct one, so a
 	// rebuilt/retried request can never carry both.
 	req.Header.Del("Session_id")
-	setCodexHeader(req.Header, CodexSessionIDHeader, NewRequestUUID())
+	// Version 7, not v4: every session id in both Codex captures is a v7 and
+	// the version nibble is visible on the wire. NewRequestUUID (v4) stood here
+	// until the header name was corrected, at which point the backend began
+	// reading a field that was both unstable and the wrong UUID version.
+	if sessionID == "" {
+		sessionID = NewCodexSessionUUID()
+	}
+	setCodexHeader(req.Header, CodexSessionIDHeader, sessionID)
 	req.Header.Set("Version", p.Version)
 	req.Header.Set("Originator", p.Originator)
 	req.Header.Set("User-Agent", p.UserAgent)

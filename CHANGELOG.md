@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.8.97 — codex: a session id the upstream prompt cache can hold on to
+
+The HTTP Codex path minted a fresh `session-id` per **request**. That header is
+how the backend places a conversation in its prompt cache, so every turn of a
+live conversation announced itself as a brand-new one and re-uploaded a context
+the account already had cached.
+
+This was harmless for as long as it was invisible. cc-core sent the id under the
+misspelled name `Session_id` for two capture generations; the backend ignores a
+header name no client sends, so the unstable value never reached it. v0.8.88
+(`7bb59a3`) corrected the spelling to `session-id` — and production Codex cache
+hit rate fell from ~87% to ~45% over the following days, with a third of all
+turns arriving at `cache_read == 0` while carrying more than 10k of context.
+Measured over six hours on one deployment: 3953 cold turns, 457M input tokens
+re-sent for nothing.
+
+The diagnosis is worth recording because the obvious suspect was wrong. Credential
+stickiness was fine — turns that stayed on one credential went cold at 39.8%,
+turns that switched at 37.8%, which is no difference at all. Two conversations
+running concurrently on the same credential told the story: one read 100736
+tokens out of cache while the other, its input climbing 1000 tokens a turn,
+never read a single one.
+
+- **`ApplyCodexHeadersWithSession`** takes the conversation's session id from
+  the caller. Derive it with `CodexSessionUUIDFor`, or let a
+  `codexws.SessionRegistry` own the `(anchor, startedAt)` bookkeeping — the
+  registry is not WebSocket-specific despite where it lives, and its doc comment
+  now says so. `ApplyCodexCLIHeaders` / `ApplyCodexHeadersWithProfile` keep their
+  signatures and still mint per request, which is correct only for a caller with
+  no conversation to name.
+
+- **The minted fallback is a UUIDv7**, not the v4 `NewRequestUUID` produced.
+  Every session id in both Codex captures is a v7 and the version nibble is
+  visible on the wire; `7bb59a3` moved the WS path to v7 and left this one
+  behind.
+
 ## v0.8.77 — requestlog: answer whole-day windows from the cube
 
 The admin panel's date pickers produce whole-day windows, but a window is

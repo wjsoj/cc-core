@@ -175,3 +175,44 @@ func TestCodexModelAndTier(t *testing.T) {
 		})
 	}
 }
+
+// The session id is the upstream prompt-cache namespace on this path. Handing
+// the same conversation a new one per request is what dropped production Codex
+// cache hit rate from ~87% to ~45%, so a caller-supplied id must survive
+// verbatim across repeated applications.
+func TestApplyCodexHeadersWithSessionIsStable(t *testing.T) {
+	const sess = "01a0011b-1234-7abc-8def-0123456789ab"
+	seen := make([]string, 0, 2)
+	for range 2 {
+		req := httptest.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil)
+		ApplyCodexHeadersWithSession(req, DefaultCodexProfile(), "tok", "acct", false, "gpt-5.6-sol", "", sess)
+		//nolint:staticcheck // SA1008: the raw map key is the point — Header.Get
+		// would canonicalize and miss the exact name we put on the wire.
+		v, ok := req.Header[CodexSessionIDHeader]
+		if !ok || len(v) == 0 {
+			t.Fatalf("header %q must be set, got %v", CodexSessionIDHeader, req.Header)
+		}
+		seen = append(seen, v[0])
+	}
+	for _, got := range seen {
+		if got != sess {
+			t.Errorf("session-id = %q, want the caller's %q verbatim", got, sess)
+		}
+	}
+}
+
+// Empty means "no conversation to be sticky about" — still a v7, because the
+// version nibble is on the wire and every id in both captures is a v7. This
+// path shipped a v4 (NewRequestUUID) until the header name was corrected.
+func TestApplyCodexHeadersMintsV7SessionID(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil)
+	ApplyCodexHeadersWithSession(req, DefaultCodexProfile(), "tok", "acct", false, "", "", "")
+	//nolint:staticcheck // SA1008: see above — asserting on the wire name.
+	v := req.Header[CodexSessionIDHeader]
+	if len(v) == 0 || len(v[0]) != 36 {
+		t.Fatalf("session-id = %v, want a 36-char UUID", v)
+	}
+	if got := v[0][14]; got != '7' {
+		t.Errorf("session-id %q has version nibble %q, want '7'", v[0], got)
+	}
+}

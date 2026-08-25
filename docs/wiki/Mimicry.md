@@ -464,15 +464,19 @@ body 装载走 `installPreparedBody`（`:457-464`）：`bytes.Clone` 后同时�
 
 Codex 侧和 Claude 侧结构相似但**没有 prepared 管线**，也没有计费块 / 身份派生这一套。
 
-### 头（HTTP 路径：`ApplyCodexCLIHeaders` / `ApplyCodexHeadersWithProfile`）
+### 头（HTTP 路径：`ApplyCodexHeadersWithSession` 及其两个便捷包装）
 
 ```go
-func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCompact bool, model, serviceTier string)   // codex.go:191
+func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCompact bool, model, serviceTier string)
 func ApplyCodexHeadersWithProfile(req *http.Request, p CodexClientProfile, accessToken, accountID string,
-                                  isCompact bool, model, serviceTier string)                                             // codex.go:198
+                                  isCompact bool, model, serviceTier string)
+func ApplyCodexHeadersWithSession(req *http.Request, p CodexClientProfile, accessToken, accountID string,
+                                  isCompact bool, model, serviceTier, sessionID string)   // 实现在这一层
 ```
 
-`ApplyCodexCLIHeaders` 保留原名与原签名（两个 fork 按位置调用），现在只是**带着 `DefaultCodexProfile()`（Desktop）委托**给 `ApplyCodexHeadersWithProfile`。名字里的 "CLI" 已经是历史遗留。
+`ApplyCodexCLIHeaders` 保留原名与原签名（两个 fork 按位置调用），现在只是**带着 `DefaultCodexProfile()`（Desktop）委托**下去。名字里的 "CLI" 已经是历史遗留。
+
+**有多轮会话的调用方必须走 `ApplyCodexHeadersWithSession`**，另两个包装每次现铸 id，只适合"根本没有会话可言"的调用方。
 
 | Header | 值 | 备注 | 行号 |
 |---|---|---|---|
@@ -483,13 +487,17 @@ func ApplyCodexHeadersWithProfile(req *http.Request, p CodexClientProfile, acces
 | `x-codex-routing-hint` | `model=<模型>[;tier=…]` | 仅在有模型名时设置，设置前先 `Del` 以免重试残留上一次的模型 | `codex.go:208-211` |
 | `Accept-Encoding` | `identity` | **传输必要性，非 capture 指纹** —— 保证 SSE 与 4xx 错误体端到端可读 | `codex.go:212` |
 | `Connection` | `Keep-Alive` | | `codex.go:213` |
-| **`session-id`** | 每请求新 UUID | 先 `Del("Session_id")` 清掉历史拼写，再用**非规范 map 键**写入（`setCodexHeader`，`codex.go:236`）。`Header.Set` 会把它重新规范成 `Session-Id` | `codex.go:216-217` |
+| **`session-id`** | 调用方给的会话 id；空则现铸一个 **UUIDv7** | 先 `Del("Session_id")` 清掉历史拼写，再用**非规范 map 键**写入（`setCodexHeader`）。`Header.Set` 会把它重新规范成 `Session-Id`。**值必须整条会话稳定**——见下方警告 | `codex.go` |
 | `Version` | `p.Version`（默认 `0.147.0-alpha.6.6`） | | `codex.go:218` |
 | `Originator` | `p.Originator`（默认 `Codex Desktop`） | | `codex.go:219` |
 | `User-Agent` | `p.UserAgent` | **强制覆盖**——转发 `curl/8.x` 会被 Cloudflare 边缘 403 | `codex.go:220` |
 | `Chatgpt-Account-Id` | `accountID`（非空时） | | `codex.go:221-223` |
 
-> **`Session_id` → `session-id` 是本轮最便宜也最重要的修复。** Go 只在 `Header.Set` 时做规范化，而下划线不在规范化范围内，所以旧代码把一个**没有任何真实客户端会发的头名**原样送上了线。写要走 `setCodexHeader`（裸 map 赋值），**断言也必须用原始 map 键**（`req.Header["session-id"]`）而不是 `Header.Get`——后者会把两种拼写都命中，测试会假绿（回归测试 `TestApplyCodexCLIHeadersSessionIDHeaderName`，`codex_headers_test.go:46`）。
+> **这个头的值必须整条会话稳定，而且这一点是拼写修好之后才开始收费的。** 后端用 `session-id` 把一条会话放进它的 prompt cache。HTTP 路径长期**每请求**现铸一个新 id：在拼写还是 `Session_id` 的年代后端根本不读，无害；v0.8.88 把拼写改对之后后端开始读了，于是每一轮都自称是全新会话——生产 Codex 缓存命中率从 ~87% 掉到 ~45%，三分之一的轮次带着 >10k 上下文却 `cache_read == 0`（六小时 3953 轮、4.57 亿 input token 白传）。v0.8.97 加了 `ApplyCodexHeadersWithSession`，并把现铸的回退从 v4（`NewRequestUUID`）改成 v7。
+>
+> 排查时**先怀疑凭证粘性是错的**：同凭证连续轮次冷启动 39.8%、换凭证 37.8%，没有差别。真正说明问题的是同一凭证上并发的两条会话——一条 `cache_read` 读到 100736，另一条 input 每轮涨 1000 却一个都没读到。
+>
+> **`Session_id` → `session-id` 本身是当时最便宜也最重要的修复。** Go 只在 `Header.Set` 时做规范化，而下划线不在规范化范围内，所以旧代码把一个**没有任何真实客户端会发的头名**原样送上了线。写要走 `setCodexHeader`（裸 map 赋值），**断言也必须用原始 map 键**（`req.Header["session-id"]`）而不是 `Header.Get`——后者会把两种拼写都命中，测试会假绿（回归测试 `TestApplyCodexCLIHeadersSessionIDHeaderName`，`codex_headers_test.go:46`）。
 
 > **被新抓包推翻的旧表述**：本页此前写"`x-codex-turn-metadata` / `x-codex-window-id` / `x-codex-beta-features` / `thread-id` 是 WS/TUI-only，代理没有真实 workspace/window，伪造比省略更像假的"。**在 0.135.0 上这句是对的**——那一代的 `x-codex-turn-metadata` 带一个 `workspaces` map，内含用户 cwd、git remote URL、commit hash 与 dirty 标志，代理确实伪造不了。`crack/codexapp0.147.0/rows/10` 显示 0.147.0 Desktop **已经删掉了那个 map**（workspace 状态搬到了 turn 变体上的一个 `workspace_kind` 字符串），握手变体里只剩代理本就合法拥有的 id。于是这五个头**在 WS 握手上改为发送**（HTTP 路径仍不发，那边没有任何抓包支持）。
 
@@ -523,7 +531,7 @@ WS 中继会把下游客户端的 `response.create` 帧转发给上游。逐字�
 | 函数 | 语义 | 行号 |
 |---|---|---|
 | `CodexInstallationIDFor(accountKey)` | `sha256("cc-core-codex-installation/" + accountKey)` → UUID。真实 Codex 装机时随机一次并终身复用；我们按**账号**派生，**绝不按 client token** —— 后者会把一个 ChatGPT 账号呈现成 N 台机器，正好是真实形态的反面 | `codex_identity.go:142` |
-| `NewCodexSessionUUID()` | 现铸一个 **UUIDv7** | `codex_identity.go:153` |
+| `NewCodexSessionUUID()` | 现铸一个 **UUIDv7**。也是 `ApplyCodexHeadersWithSession` 在 `sessionID == ""` 时的回退 | `codex_identity.go:153` |
 | `CodexSessionUUIDFor(anchor, startedAt)` | 稳定的 UUIDv7：前 48 bit 是 `startedAt` 的 Unix 毫秒，随机尾部由 anchor 派生。`startedAt` 必须是调用方能对同一会话复现的时刻——传 `time.Now()` 会每请求换 id 而毁掉粘性 | `codex_identity.go:174` |
 | `CodexWindowID(sessionID)` | `"<session>:0"`，代理每会话只有一个逻辑窗口 | `codex_identity.go:268` |
 | `NewCodexHandshakeMetadata(installationID, sessionID, threadID)` | 握手（`prewarm`）变体的 `x-codex-turn-metadata` | `codex_identity.go:249` |
@@ -709,6 +717,8 @@ WS 中继会把下游客户端的 `response.create` 帧转发给上游。逐字�
 | `TestDefaultCodexProfileIsDesktop` | 默认身份是 Desktop（改默认会同时影响两个 fork 的生产流量） | `codex_identity_test.go:130` |
 | `TestCodexProfilesAreSelfConsistent` | 每个 profile 内 originator / UA 首段 / version 三者一致 | `codex_headers_test.go:35` |
 | `TestApplyCodexCLIHeadersSessionIDHeaderName` | 头名是 `session-id`（按**原始 map 键**断言）、且不再出现 `Session_id` | `codex_headers_test.go:46` |
+| `TestApplyCodexHeadersWithSessionIsStable` | 调用方给的 session id 原样落到头上，重复应用不变 | `codex_headers_test.go` |
+| `TestApplyCodexHeadersMintsV7SessionID` | 空 sessionID 现铸的是 **v7**（版本 nibble 上线可见），不是历史的 v4 | `codex_headers_test.go` |
 | `TestApplyCodexHeadersWithProfile` | 显式 profile 生效且不与默认混字段 | `codex_headers_test.go:64` |
 | `TestApplyCodexCLIHeadersSendsNoLegacyBeta` | HTTP 路径不发 `OpenAI-Beta` | `codex_headers_test.go:13` |
 | `TestApplyCodexCLIHeadersRoutingHint` / `…ClearsStaleHint` / `TestCodexRoutingHintRejectsUnsafeModel` | routing hint 的设置、重试清理与注入防护 | `codex_headers_test.go:91,117,134` |

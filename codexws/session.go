@@ -19,6 +19,13 @@ import (
 // fresh id per WebSocket connection and every reconnect pays list price for a
 // conversation the upstream already has cached.
 //
+// The registry is NOT WebSocket-specific, despite living here. The plain HTTP
+// path carries the same `session-id` header (mimicry.ApplyCodexHeadersWithSession)
+// and the backend reads it the same way: that path minted a fresh id per
+// REQUEST — not merely per connection — and production Codex cache hit rate
+// fell from ~87% to ~45% once a header-name fix made the backend start reading
+// it. Any caller with a multi-turn conversation to name belongs here.
+//
 // mimicry.CodexSessionUUIDFor is deterministic given (anchor, startedAt), so
 // the only thing needed for stickiness is a stable startedAt. Two stateless
 // ways to get one were considered and rejected:

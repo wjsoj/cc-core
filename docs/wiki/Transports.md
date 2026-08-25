@@ -195,6 +195,8 @@ x-codex-window-id / x-codex-turn-metadata / sec-websocket-extensions
 
 所以注册表记录每个会话**真正第一次出现**的时刻，那正是真实客户端的 session start。
 
+> **注册表不是 WS 专属的**，尽管它住在 `codexws` 包里。HTTP 路径带的是同一个 `session-id` 头、后端读法也一样，而那条路径曾**每请求**（不只是每连接）现铸一个新 id——生产 Codex 缓存命中率因此从 ~87% 掉到 ~45%（v0.8.97 修复，见 `Mimicry.md`）。任何有多轮会话要命名的调用方都该走这里。
+
 | 签名 | 位置 | 说明 |
 |---|---|---|
 | `func NewSessionRegistry(ttl time.Duration) *SessionRegistry` | `codexws/session.go:75` | `ttl<=0` → `DefaultSessionTTL`（**6h**，长于工作会话的静默间隙、短于抓包报告的 24h `prompt_cache_retention`，条目绝不会活得比它要命中的缓存更久） |
