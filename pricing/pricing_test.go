@@ -279,3 +279,97 @@ func TestCacheCreate1hConfigurable(t *testing.T) {
 		t.Error("nonZero must recognise a card carrying only a 1h cache rate")
 	}
 }
+
+// TestOpenAICatalogMatchesPublishedRates pins the OpenAI cards to the rates on
+// developers.openai.com/api/docs/pricing as read on 2026-08-25 (standard
+// service tier, short context).
+//
+// This exists because the GPT-5.6 line shipped with placeholder rates derived
+// from the 5.5/5.4 ladder — sol/terra/luna were assumed to reuse the previous
+// tier's prices, and luna in particular billed at $1.00/$6.00 against a real
+// $0.20/$1.20, overcharging every request through it by 5x for as long as the
+// card stood. A catalog value that is merely plausible is indistinguishable
+// from a correct one at runtime; only a table checked against the page catches
+// it, so keep this table and the page in sync together.
+func TestOpenAICatalogMatchesPublishedRates(t *testing.T) {
+	cat := NewCatalog(Config{})
+	for _, tc := range []struct {
+		model string
+		want  ModelPrice
+	}{
+		{"gpt-5.6", ModelPrice{InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00}},
+		{"gpt-5.6-sol", ModelPrice{InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00}},
+		{"gpt-5.6-terra", ModelPrice{InputPer1M: 2.00, OutputPer1M: 12.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50}},
+		{"gpt-5.6-luna", ModelPrice{InputPer1M: 0.20, OutputPer1M: 1.20, CacheReadPer1M: 0.02, CacheCreatePer1M: 0.25}},
+		{"gpt-5.6-cyber", ModelPrice{InputPer1M: 12.50, OutputPer1M: 75.00, CacheReadPer1M: 1.25, CacheCreatePer1M: 15.625}},
+		{"gpt-5.5", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50}},
+		{"gpt-5.5-pro", ModelPrice{InputPer1M: 30.00, OutputPer1M: 180.00}},
+		{"gpt-5.4", ModelPrice{InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25}},
+		{"gpt-5.4-mini", ModelPrice{InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075}},
+		{"gpt-5.4-nano", ModelPrice{InputPer1M: 0.20, OutputPer1M: 1.25, CacheReadPer1M: 0.02}},
+		{"gpt-5.4-pro", ModelPrice{InputPer1M: 30.00, OutputPer1M: 180.00}},
+		{"gpt-5.3-codex", ModelPrice{InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175}},
+		{"gpt-5.2", ModelPrice{InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175}},
+		{"gpt-5.2-pro", ModelPrice{InputPer1M: 21.00, OutputPer1M: 168.00}},
+		{"gpt-5.1", ModelPrice{InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125}},
+		{"gpt-5", ModelPrice{InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125}},
+		{"gpt-5-mini", ModelPrice{InputPer1M: 0.25, OutputPer1M: 2.00, CacheReadPer1M: 0.025}},
+		{"gpt-5-nano", ModelPrice{InputPer1M: 0.05, OutputPer1M: 0.40, CacheReadPer1M: 0.005}},
+		{"gpt-5-pro", ModelPrice{InputPer1M: 15.00, OutputPer1M: 120.00}},
+		{"gpt-4.1", ModelPrice{InputPer1M: 2.00, OutputPer1M: 8.00, CacheReadPer1M: 0.50}},
+		{"gpt-4.1-mini", ModelPrice{InputPer1M: 0.40, OutputPer1M: 1.60, CacheReadPer1M: 0.10}},
+		{"gpt-4.1-nano", ModelPrice{InputPer1M: 0.10, OutputPer1M: 0.40, CacheReadPer1M: 0.025}},
+		{"gpt-4o", ModelPrice{InputPer1M: 2.50, OutputPer1M: 10.00, CacheReadPer1M: 1.25}},
+		{"gpt-4o-mini", ModelPrice{InputPer1M: 0.15, OutputPer1M: 0.60, CacheReadPer1M: 0.075}},
+		{"o4-mini", ModelPrice{InputPer1M: 1.10, OutputPer1M: 4.40, CacheReadPer1M: 0.275}},
+		{"o3", ModelPrice{InputPer1M: 2.00, OutputPer1M: 8.00, CacheReadPer1M: 0.50}},
+		{"o3-mini", ModelPrice{InputPer1M: 1.10, OutputPer1M: 4.40, CacheReadPer1M: 0.55}},
+		{"o3-pro", ModelPrice{InputPer1M: 20.00, OutputPer1M: 80.00}},
+		{"o1", ModelPrice{InputPer1M: 15.00, OutputPer1M: 60.00, CacheReadPer1M: 7.50}},
+		{"o1-pro", ModelPrice{InputPer1M: 150.00, OutputPer1M: 600.00}},
+		{"chat-latest", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50}},
+	} {
+		if got := cat.Lookup(ProviderOpenAI, tc.model); got != tc.want {
+			t.Errorf("openai/%s = %+v, published rate is %+v", tc.model, got, tc.want)
+		}
+	}
+}
+
+// TestOpenAISKUsDoNotInheritAShorterCard guards the specific failure mode that
+// makes a missing OpenAI card expensive rather than free: Lookup falls back by
+// trimming trailing "-segment"s, so a size or tier variant with no card of its
+// own silently bills at the base model's rate. gpt-5.4-nano is 12.5x cheaper
+// than gpt-5.4 and gpt-5.5-pro is 6x dearer than gpt-5.5 — the fallback errs in
+// both directions, so neither may be reachable.
+func TestOpenAISKUsDoNotInheritAShorterCard(t *testing.T) {
+	cat := NewCatalog(Config{})
+	for _, tc := range []struct{ variant, base string }{
+		{"gpt-5.4-nano", "gpt-5.4"},
+		{"gpt-5.4-pro", "gpt-5.4"},
+		{"gpt-5.5-pro", "gpt-5.5"},
+		{"gpt-5.2-pro", "gpt-5.2"},
+		{"gpt-5-pro", "gpt-5"},
+		{"gpt-4.1-nano", "gpt-4.1"},
+	} {
+		if got, base := cat.Lookup(ProviderOpenAI, tc.variant), cat.Lookup(ProviderOpenAI, tc.base); got == base {
+			t.Errorf("openai/%s resolved to the %s card (%+v) — it has no card of its own and the prefix fallback is billing it as the base model",
+				tc.variant, tc.base, got)
+		}
+	}
+}
+
+// TestOpenAIDatedVariantsStillResolve confirms the prefix fallback still does
+// its intended job for date-suffixed names now that the catalog has many more
+// hyphenated neighbours.
+func TestOpenAIDatedVariantsStillResolve(t *testing.T) {
+	cat := NewCatalog(Config{})
+	for _, tc := range []struct{ dated, base string }{
+		{"gpt-5.6-luna-2026-08-01", "gpt-5.6-luna"},
+		{"gpt-5.6-sol-2026-08-01", "gpt-5.6-sol"},
+		{"gpt-5.4-mini-2026-01-01", "gpt-5.4-mini"},
+	} {
+		if got, want := cat.Lookup(ProviderOpenAI, tc.dated), cat.Lookup(ProviderOpenAI, tc.base); got != want {
+			t.Errorf("openai/%s = %+v, want the %s card %+v", tc.dated, got, tc.base, want)
+		}
+	}
+}

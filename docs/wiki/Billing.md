@@ -283,26 +283,64 @@ flowchart TD
 | `anthropic/claude-fable-5` | 10.00 | 50.00 | 1.00 | 12.50 | `:357` |
 | `anthropic/claude-sonnet-4-6` | 3.00 | 15.00 | 0.30 | 3.75 | `:363` |
 | `anthropic/claude-sonnet-5` ⚠️ | 2.00 | 10.00 | 0.20 | 2.50 | `:381` |
-| `openai/gpt-5.2` | 1.75 | 14.00 | 0.175 | — | `:395` |
-| `openai/gpt-5.3-codex` | 1.75 | 14.00 | 0.175 | — | `:396` |
-| `openai/gpt-5.3-codex-spark` | 1.75 | 14.00 | 0.175 | — | `:397` |
-| `openai/gpt-5.4` | 2.50 | 15.00 | 0.25 | — | `:398` |
-| `openai/gpt-5.4-mini` | 0.75 | 4.50 | 0.075 | — | `:399` |
-| `openai/gpt-5.5` | 5.00 | 30.00 | 0.50 | — | `:400` |
-| `openai/gpt-5.6-sol` | 5.00 | 30.00 | 0.50 | 6.25 | `:408` |
-| `openai/gpt-5.6-terra` | 2.50 | 15.00 | 0.25 | 3.125 | `:409` |
-| `openai/gpt-5.6-luna` | 1.00 | 6.00 | 0.10 | 1.25 | `:410` |
-| `openai/gpt-5` | 1.25 | 10.00 | 0.125 | — | `:413` |
-| `openai/gpt-5-mini` | 0.25 | 2.00 | 0.025 | — | `:414` |
-| `openai/gpt-5-nano` | 0.05 | 0.40 | 0.005 | — | `:415` |
-| `openai/gpt-4o` | 2.50 | 10.00 | 1.25 | — | `:416` |
-| `openai/gpt-4o-mini` | 0.15 | 0.60 | 0.075 | — | `:417` |
+| `openai/gpt-5.6` (sol 别名) ⚠️ | 4.00 | 20.00 | 0.40 | 5.00 | `:426` |
+| `openai/gpt-5.6-sol` ⚠️ | 4.00 | 20.00 | 0.40 | 5.00 | `:427` |
+| `openai/gpt-5.6-terra` | 2.00 | 12.00 | 0.20 | 2.50 | `:428` |
+| `openai/gpt-5.6-luna` | 0.20 | 1.20 | 0.02 | 0.25 | `:429` |
+| `openai/gpt-5.6-cyber` | 12.50 | 75.00 | 1.25 | 15.625 | `:430` |
+| `openai/gpt-5.5` | 5.00 | 30.00 | 0.50 | — | `:434` |
+| `openai/gpt-5.5-pro` | 30.00 | 180.00 | — | — | `:435` |
+| `openai/gpt-5.5-cyber` | 12.50 | 75.00 | 1.25 | — | `:436` |
+| `openai/gpt-5.4` | 2.50 | 15.00 | 0.25 | — | `:437` |
+| `openai/gpt-5.4-mini` | 0.75 | 4.50 | 0.075 | — | `:438` |
+| `openai/gpt-5.4-nano` | 0.20 | 1.25 | 0.02 | — | `:439` |
+| `openai/gpt-5.4-pro` | 30.00 | 180.00 | — | — | `:440` |
+| `openai/gpt-5.2` | 1.75 | 14.00 | 0.175 | — | `:441` |
+| `openai/gpt-5.2-pro` | 21.00 | 168.00 | — | — | `:442` |
+| `openai/gpt-5.1` | 1.25 | 10.00 | 0.125 | — | `:443` |
+| `openai/gpt-5.3-codex` | 1.75 | 14.00 | 0.175 | — | `:449` |
+| `openai/gpt-5.3-codex-spark` | 1.75 | 14.00 | 0.175 | — | `:450` |
+| `openai/daybreak-blue-latest` | 4.00 | 20.00 | 0.40 | 5.00 | `:456` |
+| `openai/daybreak-red-latest` | 12.50 | 75.00 | 1.25 | 15.625 | `:457` |
+| `openai/gpt-5` | 1.25 | 10.00 | 0.125 | — | `:460` |
+| `openai/gpt-5-mini` | 0.25 | 2.00 | 0.025 | — | `:461` |
+| `openai/gpt-5-nano` | 0.05 | 0.40 | 0.005 | — | `:462` |
+| `openai/gpt-5-pro` | 15.00 | 120.00 | — | — | `:463` |
+| `openai/gpt-5-search-api` | 1.25 | 10.00 | 0.125 | — | `:464` |
+| `openai/chat-latest` | 5.00 | 30.00 | 0.50 | — | `:465` |
+| `openai/gpt-4.1` | 2.00 | 8.00 | 0.50 | — | `:466` |
+| `openai/gpt-4.1-mini` | 0.40 | 1.60 | 0.10 | — | `:467` |
+| `openai/gpt-4.1-nano` | 0.10 | 0.40 | 0.025 | — | `:468` |
+| `openai/gpt-4o` | 2.50 | 10.00 | 1.25 | — | `:469` |
+| `openai/gpt-4o-mini` | 0.15 | 0.60 | 0.075 | — | `:470` |
+| `openai/o4-mini` | 1.10 | 4.40 | 0.275 | — | `:476` |
+| `openai/o3` | 2.00 | 8.00 | 0.50 | — | `:477` |
+| `openai/o3-mini` | 1.10 | 4.40 | 0.55 | — | `:478` |
+| `openai/o3-pro` | 20.00 | 80.00 | — | — | `:479` |
+| `openai/o1` | 15.00 | 60.00 | 7.50 | — | `:480` |
+| `openai/o1-pro` | 150.00 | 600.00 | — | — | `:481` |
 
 「—」表示未设置（值为 0），即该模型的缓存写入不单独计价。
 
 **⚠️ `claude-sonnet-5` 是引导期价格，2026-08-31 到期**（`pricing/pricing.go:374-377`）。其**标价**与 sonnet-4-6 相同（3/15），当前卡片是标价的 2/3。自 2026-09-01 起 Anthropic 按标价出账；届时不改这张卡，每笔 sonnet-5 请求少收 33%。到期动作：把四个值改成 `3.00 / 15.00 / 0.30 / 3.75`，删掉该注释，并从 `pricing/intro_expiry_test.go` 的 `introductoryRates` 里移除这一条。
 
 > 这条到期日不再靠人记：`TestIntroductoryRatesHaveNotLapsed` 会在 2026-09-01 当天开始失败，直到卡片被改成标价；`TestIntroductoryRatesAreBelowList` 反向兜底，防止引导价被误改到高于标价。新增任何限时折扣卡片时，往 `introductoryRates` 里加一行即可获得同样的保护。
+
+**⚠️ `gpt-5.6` / `gpt-5.6-sol` 同样是限时价**，OpenAI 承诺"至少到 2026-11-21"，但**没有公布回落后的标价**。`introductoryRates` 里为它登记了一个**占位标价**（上代旗舰 gpt-5.5 的卡片 + 5.6 线 1.25× 的缓存写入率），到期日设 2026-11-22。占位的用途只是让构建在那天失败、逼人回官网重读，**不是**对回落价格的断言 —— 测试红了就去查真实价格再填，别直接把占位值抄进卡片。
+
+#### OpenAI 卡片的三个坑
+
+1. **这张表是 standard 服务档 + 短上下文。** OpenAI 现在公布四个服务档（standard / batch / flex / fast，"fast" 是 2026-07-30 由 "priority" 改名而来），并且 5.4 及以上的前沿线还有第二条价带，**在 272K 上下文长度处切换**：越过之后各项费率大致翻倍（`gpt-5.6-sol` input 4→8、output 20→30）。`ModelPrice` 只承载一条价带，所以**超过 272K 的请求按短上下文价出账，少收**。这是已知缺口，不是 bug —— 见下节。
+2. **缓存写入是 5.6 线独有的概念。** OpenAI 只对 `gpt-5.6-{sol,terra,luna,cyber}` 公布 `cache writes`（干净的 1.25× input）；更早的卡片 `CacheCreatePer1M` 留零是**正确**的，那些模型只计缓存读取。
+3. **卡片缺失不等于零收费，等于按最近的短名字收费。** `Lookup` 的前缀回退按 `-` 逐段裁剪，所以没有自己卡片的尺寸/档位变体会静默按基础模型出账。`gpt-5.4-nano` 曾按 `gpt-5.4` 出账（**超收 12.5 倍**），`gpt-5.5-pro` 曾按 `gpt-5.5` 出账（**少收 6 倍**）。回退在两个方向上都会错，所以每个已公布 SKU 都得有自己的一行 —— `TestOpenAISKUsDoNotInheritAShorterCard` 钉住这一点。
+
+> 2026-08-25 对 developers.openai.com/api/docs/pricing 全表重核时发现：GPT-5.6 三档当初是按 5.5/5.4 的阶梯**推断**出来的，而非抄自官网 —— `luna` 实收 $0.20/$1.20，卡片却写 $1.00/$6.00，**每笔请求超收 5 倍**，且运行时无任何迹象。看起来合理的目录值和正确的目录值在运行时无法区分，只有对着页面逐行核表才抓得住。`TestOpenAICatalogMatchesPublishedRates` 现在把整张 OpenAI 表钉在官网数值上，改价时两边一起动。
+
+#### 已知缺口：272K 长上下文价带
+
+`ModelPrice` 是单价带结构，`Cost()` 不看请求规模。OpenAI 对 `gpt-5.6-{sol,terra,luna}`、`gpt-5.5(-pro)`、`gpt-5.4(-pro)` 在 **≥272K 上下文**时切换到第二条价带（约 2× input / 1.5× output）。当前实现对这类请求按短上下文价出账，**少收**。
+
+补齐它需要给 `ModelPrice` 加一组长上下文费率 + 阈值字段，并让 `Cost()` 依据 `Counts` 的 input 总量（`InputTokens + CacheReadTokens + CacheCreateTokens`）选带 —— 沿用 `CacheCreate1hPer1M` 的"零值即不区分"惯例即可保持向后兼容。尚未实施：这是计费行为变更而不是数值修正，需要单独决定并公告。
 
 **dated variant 靠前缀回退覆盖**：`claude-fable-5-2026…`、`claude-sonnet-5-2026…` 都回落到各自的无日期条目，因此只需要维护一条（`pricing/pricing.go:354-356`、`:379-380`）。`claude-haiku-4-5` 例外地同时写了有日期和无日期两条。
 
@@ -537,6 +575,9 @@ API：
 | Opus 各卡一致 | `pricing/pricing_test.go:46` `TestOpusTierCardsAreIdentical` |
 | Sonnet-5 引导价 | `pricing/pricing_test.go:63` `TestSonnet5IntroPrice` |
 | 引导价到期即构建失败 | `pricing/intro_expiry_test.go` `TestIntroductoryRatesHaveNotLapsed` / `TestIntroductoryRatesAreBelowList` |
+| OpenAI 全表对齐官网数值 | `pricing/pricing_test.go:294` `TestOpenAICatalogMatchesPublishedRates` |
+| OpenAI SKU 不得继承短名字卡片 | `pricing/pricing_test.go:344` `TestOpenAISKUsDoNotInheritAShorterCard` |
+| OpenAI 日期变体仍回退到基础卡 | `pricing/pricing_test.go:364` `TestOpenAIDatedVariantsStillResolve` |
 | 用户配置覆盖 / 裸键归 Anthropic | `pricing/pricing_test.go:112`、`:124` |
 | `[1m]` 后缀剥离 | `pricing/pricing_test.go:151`、`:177` |
 | 1h 拆分默认关闭 / 启用 / 可配 | `pricing/pricing_test.go:214`、`:242`、`:266` |

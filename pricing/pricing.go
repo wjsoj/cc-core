@@ -385,36 +385,100 @@ var builtIn = map[string]ModelPrice{
 		CacheCreatePer1M: 2.50,
 	},
 
-	// ─── OpenAI / Codex (subscription tier labels) ─────────────────────
-	// Official OpenAI API per-1M-token rates (input / cached-input / output),
-	// verified 2026-05-30 against developers.openai.com/api/docs/pricing,
-	// developers.openai.com/codex/pricing (credit rate 1 credit = $0.04), and
-	// OpenRouter. gpt-5.2 and gpt-5.3-codex-spark aren't on the standard API
-	// page (spark is a Pro research preview) but both bill at the gpt-5.3-codex
-	// rate per the codex credit card and per-model calculators.
-	ProviderOpenAI + "/gpt-5.2":             {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	// ─── OpenAI / Codex ────────────────────────────────────────────────
+	// Official OpenAI API per-1M-token rates, re-verified 2026-08-25 against
+	// developers.openai.com/api/docs/pricing (the `.md` mirror of that page is
+	// the machine-readable form and is what these numbers were transcribed
+	// from). They apply to both ChatGPT-subscription OAuth credentials
+	// (notional cost for weekly-limit enforcement) and BYOK API-key
+	// credentials (real cost).
+	//
+	// THREE THINGS ABOUT THIS TABLE THAT ARE EASY TO GET WRONG:
+	//
+	// 1. These are the STANDARD service tier at SHORT context. OpenAI now
+	//    publishes four service tiers (standard / batch / flex / fast — "fast"
+	//    is what "priority" was renamed to on 2026-07-30) and, for the 5.4+
+	//    frontier line, a second price band that kicks in at **272K context
+	//    length**: above it every rate roughly doubles (gpt-5.6-sol 4→8 in,
+	//    20→30 out). ModelPrice carries one band, so a >272K request bills at
+	//    the short-context rate and under-charges. See the long-context table
+	//    in the source page before assuming a card is wrong.
+	//
+	// 2. Cache WRITES are a 5.6-line-only concept. OpenAI publishes
+	//    `cache writes` for gpt-5.6-{sol,terra,luna,cyber} only, at a clean
+	//    1.25× input; every older card leaves CacheCreatePer1M zero, which is
+	//    correct — those models bill cached reads and nothing else.
+	//
+	// 3. Lookup's prefix fallback trims on "-", so a MISSING card is not a
+	//    zero bill, it is the nearest shorter name's bill. That is how
+	//    gpt-5.4-nano used to bill at the gpt-5.4 card (12.5× over) and
+	//    gpt-5.5-pro at the gpt-5.5 card (6× under). Every published SKU below
+	//    gets its own row precisely so the fallback never has to guess.
+
+	// Frontier — GPT-5.6 line. `gpt-5.6` is the published alias for sol.
+	//
+	// ⚠️ gpt-5.6-sol carries PROMOTIONAL pricing that OpenAI commits to "at
+	// least through November 21, 2026"; the post-promo list price is not
+	// published. Registered in introductoryRates with the previous flagship
+	// (gpt-5.5) card as the placeholder list price, so the build fails on
+	// 2026-11-22 and someone re-reads the page rather than billing a lapsed
+	// promo forever.
+	ProviderOpenAI + "/gpt-5.6":       {InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00},
+	ProviderOpenAI + "/gpt-5.6-sol":   {InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00},
+	ProviderOpenAI + "/gpt-5.6-terra": {InputPer1M: 2.00, OutputPer1M: 12.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50},
+	ProviderOpenAI + "/gpt-5.6-luna":  {InputPer1M: 0.20, OutputPer1M: 1.20, CacheReadPer1M: 0.02, CacheCreatePer1M: 0.25},
+	ProviderOpenAI + "/gpt-5.6-cyber": {InputPer1M: 12.50, OutputPer1M: 75.00, CacheReadPer1M: 1.25, CacheCreatePer1M: 15.625},
+
+	// Frontier — GPT-5.5 / 5.4 / 5.2 / 5.1 / 5 lines. No cache-write rate is
+	// published for any of them.
+	ProviderOpenAI + "/gpt-5.5":       {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
+	ProviderOpenAI + "/gpt-5.5-pro":   {InputPer1M: 30.00, OutputPer1M: 180.00},
+	ProviderOpenAI + "/gpt-5.5-cyber": {InputPer1M: 12.50, OutputPer1M: 75.00, CacheReadPer1M: 1.25},
+	ProviderOpenAI + "/gpt-5.4":       {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25},
+	ProviderOpenAI + "/gpt-5.4-mini":  {InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075},
+	ProviderOpenAI + "/gpt-5.4-nano":  {InputPer1M: 0.20, OutputPer1M: 1.25, CacheReadPer1M: 0.02},
+	ProviderOpenAI + "/gpt-5.4-pro":   {InputPer1M: 30.00, OutputPer1M: 180.00},
+	ProviderOpenAI + "/gpt-5.2":       {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
+	ProviderOpenAI + "/gpt-5.2-pro":   {InputPer1M: 21.00, OutputPer1M: 168.00},
+	ProviderOpenAI + "/gpt-5.1":       {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
+
+	// Codex tier labels. gpt-5.3-codex is on the page under "Specialized
+	// models"; gpt-5.3-codex-spark (a Pro research preview) is not published
+	// separately and bills at the same card per the Codex credit calculator
+	// (1 credit = $0.04).
 	ProviderOpenAI + "/gpt-5.3-codex":       {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
 	ProviderOpenAI + "/gpt-5.3-codex-spark": {InputPer1M: 1.75, OutputPer1M: 14.00, CacheReadPer1M: 0.175},
-	ProviderOpenAI + "/gpt-5.4":             {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25},
-	ProviderOpenAI + "/gpt-5.4-mini":        {InputPer1M: 0.75, OutputPer1M: 4.50, CacheReadPer1M: 0.075},
-	ProviderOpenAI + "/gpt-5.5":             {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
-	// gpt-5.6-{sol,terra,luna} (codex-tui 0.144.1 catalog). The three tiers are a
-	// price ladder, NOT one shared rate — verified 2026-07-10 against OpenRouter's
-	// live models API (openrouter.ai/api/v1/models), the official per-token
-	// standard: sol = flagship (== gpt-5.5), terra = mid (== gpt-5.4), luna =
-	// light. cache-write is a clean 1.25× input across all three (OpenRouter
-	// publishes input_cache_write for the 5.6 line; the 5.4/5.5 cards above don't
-	// carry it). Reasoning effort is a request field, not a name suffix.
-	ProviderOpenAI + "/gpt-5.6-sol":   {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25},
-	ProviderOpenAI + "/gpt-5.6-terra": {InputPer1M: 2.50, OutputPer1M: 15.00, CacheReadPer1M: 0.25, CacheCreatePer1M: 3.125},
-	ProviderOpenAI + "/gpt-5.6-luna":  {InputPer1M: 1.00, OutputPer1M: 6.00, CacheReadPer1M: 0.10, CacheCreatePer1M: 1.25},
+
+	// Daybreak aliases. OpenAI states these currently point at gpt-5.6-sol and
+	// gpt-5.6-cyber respectively, and that pricing follows whatever they are
+	// repointed at — so these two rows go stale silently on the next Daybreak
+	// release. Re-check them whenever the 5.6 line moves.
+	ProviderOpenAI + "/daybreak-blue-latest": {InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00},
+	ProviderOpenAI + "/daybreak-red-latest":  {InputPer1M: 12.50, OutputPer1M: 75.00, CacheReadPer1M: 1.25, CacheCreatePer1M: 15.625},
 
 	// ─── OpenAI BYOK API models ────────────────────────────────────────
-	ProviderOpenAI + "/gpt-5":       {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
-	ProviderOpenAI + "/gpt-5-mini":  {InputPer1M: 0.25, OutputPer1M: 2.00, CacheReadPer1M: 0.025},
-	ProviderOpenAI + "/gpt-5-nano":  {InputPer1M: 0.05, OutputPer1M: 0.40, CacheReadPer1M: 0.005},
-	ProviderOpenAI + "/gpt-4o":      {InputPer1M: 2.50, OutputPer1M: 10.00, CacheReadPer1M: 1.25},
-	ProviderOpenAI + "/gpt-4o-mini": {InputPer1M: 0.15, OutputPer1M: 0.60, CacheReadPer1M: 0.075},
+	ProviderOpenAI + "/gpt-5":            {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
+	ProviderOpenAI + "/gpt-5-mini":       {InputPer1M: 0.25, OutputPer1M: 2.00, CacheReadPer1M: 0.025},
+	ProviderOpenAI + "/gpt-5-nano":       {InputPer1M: 0.05, OutputPer1M: 0.40, CacheReadPer1M: 0.005},
+	ProviderOpenAI + "/gpt-5-pro":        {InputPer1M: 15.00, OutputPer1M: 120.00},
+	ProviderOpenAI + "/gpt-5-search-api": {InputPer1M: 1.25, OutputPer1M: 10.00, CacheReadPer1M: 0.125},
+	ProviderOpenAI + "/chat-latest":      {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50},
+	ProviderOpenAI + "/gpt-4.1":          {InputPer1M: 2.00, OutputPer1M: 8.00, CacheReadPer1M: 0.50},
+	ProviderOpenAI + "/gpt-4.1-mini":     {InputPer1M: 0.40, OutputPer1M: 1.60, CacheReadPer1M: 0.10},
+	ProviderOpenAI + "/gpt-4.1-nano":     {InputPer1M: 0.10, OutputPer1M: 0.40, CacheReadPer1M: 0.025},
+	ProviderOpenAI + "/gpt-4o":           {InputPer1M: 2.50, OutputPer1M: 10.00, CacheReadPer1M: 1.25},
+	ProviderOpenAI + "/gpt-4o-mini":      {InputPer1M: 0.15, OutputPer1M: 0.60, CacheReadPer1M: 0.075},
+
+	// o-series reasoning models. o1/o3/o4 names contain no "-" segment that
+	// Lookup could trim onto a GPT card, so a missing row here lands on the
+	// OpenAI provider default (the gpt-5 card) rather than anything sane —
+	// o1-pro would bill at 1/120th of its real input rate.
+	ProviderOpenAI + "/o4-mini": {InputPer1M: 1.10, OutputPer1M: 4.40, CacheReadPer1M: 0.275},
+	ProviderOpenAI + "/o3":      {InputPer1M: 2.00, OutputPer1M: 8.00, CacheReadPer1M: 0.50},
+	ProviderOpenAI + "/o3-mini": {InputPer1M: 1.10, OutputPer1M: 4.40, CacheReadPer1M: 0.55},
+	ProviderOpenAI + "/o3-pro":  {InputPer1M: 20.00, OutputPer1M: 80.00},
+	ProviderOpenAI + "/o1":      {InputPer1M: 15.00, OutputPer1M: 60.00, CacheReadPer1M: 7.50},
+	ProviderOpenAI + "/o1-pro":  {InputPer1M: 150.00, OutputPer1M: 600.00},
 }
 
 // QuantizeUSD rounds a dollar amount to MonetaryScale decimal places, using the
