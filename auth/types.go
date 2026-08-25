@@ -795,8 +795,21 @@ func AnthropicModelScope(model string) string {
 }
 
 // AnthropicModelRequiresAPIKey reports whether a model must bypass Anthropic
-// subscription OAuth credentials. Fable 5 is sold through usage credits; the
-// API-key pool is the only valid route for it in this service.
+// subscription OAuth credentials.
+//
+// DEPRECATED as a routing input, and it currently reports nothing the
+// scheduler acts on. Until 2026-08-25 Anthropic sold Fable 5 through
+// separately purchased usage credits and rejected subscription OAuth accounts
+// with details.error_code=credits_required, so oauthUsableLocked refused fable
+// on OAuth outright. Fable is now permanently included in the plans and routes
+// like any other model.
+//
+// The function is kept exported and behaviourally unchanged for two reasons:
+// it is the documented shape of the rollback (restore its short-circuit in
+// oauthUsableLocked), and it still answers the question it always answered —
+// "is this one of the fable models" — for any caller that has its own reason
+// to ask. It is NOT a statement about routing any more; do not reintroduce it
+// as one without a fresh credits_required observation to justify it.
 func AnthropicModelRequiresAPIKey(model string) bool {
 	return AnthropicModelScope(model) == ModelScopeAnthropicFable
 }

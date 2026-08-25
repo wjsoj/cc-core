@@ -795,13 +795,22 @@ func (p *Pool) findOAuthLocked(id string) *Auth {
 // failures walk ConsecutiveFailures up to hardFailureThreshold, which this
 // function does honour.
 func (p *Pool) oauthUsableLocked(a *Auth, now time.Time, clientModel string) bool {
-	// Fable 5 requires separately purchased usage credits. Anthropic
-	// subscription OAuth accounts return credits_required even when their
-	// included allowance is untouched, so never send this model to OAuth. The
-	// Acquire loop will proceed directly to the API-key pool in the same tier.
-	if NormalizeProvider(a.Provider) == ProviderAnthropic && AnthropicModelRequiresAPIKey(clientModel) {
-		return false
-	}
+	// NOTE: Fable 5 used to be rejected here outright — Anthropic sold it
+	// through separately purchased usage credits and answered subscription
+	// OAuth accounts with details.error_code=credits_required even when their
+	// included allowance was untouched, so the only valid route was the
+	// API-key pool. That changed on 2026-08-25: fable is now permanently
+	// included in the subscription plans, and OAuth credentials serve it like
+	// any other model.
+	//
+	// The per-model quota scope (ModelScopeAnthropicFable) is UNRELATED and
+	// still applies below — fable keeps its own weekly window, and exhausting
+	// it cools down only that family. Do not conflate the two: the gate that
+	// was removed was "never route here", the check that remains is "this
+	// credential's fable window is spent right now".
+	//
+	// To roll back, restore the AnthropicModelRequiresAPIKey short-circuit
+	// here; the helper is still exported and still classifies fable models.
 	if a.Disabled {
 		return false
 	}

@@ -53,8 +53,10 @@ const (
 //     name, so the cheaper card applies; the client-facing name is what gets
 //     displayed. The two converge when the promo lapses.
 //   - claude-fable-5 is deliberately absent — it is the premium tier at 2×
-//     Opus and is API-key-only (AnthropicModelRequiresAPIKey). Folding
-//     anything into or out of it would misroute and misbill.
+//     Opus, so folding anything into or out of it would misbill by 2×. (It
+//     used to be API-key-only as well; that gate was removed on 2026-08-25
+//     when Anthropic made fable permanently plan-included. The price-tier
+//     reason for keeping it out of the map is untouched by that.)
 //   - Haiku is deliberately absent — a different price tier, and mimicry
 //     skips body mimicry for Haiku, so silently re-pointing it changes more
 //     than the model name.

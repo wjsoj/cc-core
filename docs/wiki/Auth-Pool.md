@@ -191,7 +191,7 @@ PoolHealth (auth/health_state.go:239)  按 provider 聚合，由 Pool.Health(pro
 
 | 字段 | 行 | 语义 |
 |---|---|---|
-| `AllowAPIKeyFallback bool` | 157 | 是否允许在某 tier 内回落到 API key。**也门控 API-key-only 模型**（如 fable）：为 false 时这些模型直接返回 nil，而不是违反调用方的计费 opt-in。**last-resort 同样受它门控**——它是计费 opt-in，不是健康判定 |
+| `AllowAPIKeyFallback bool` | 157 | 是否允许在某 tier 内回落到 API key。**last-resort 同样受它门控**——它是计费 opt-in，不是健康判定。（2026-08-25 前它还额外门控 fable：那时 fable 是 API-key-only，为 false 就直接返回 nil。fable 现已计划内包含，走普通 OAuth 路径，这条特例没了） |
 | `APIKeyOnly bool` | 162 | 完全跳过 OAuth 选择（用于本地请求准备失败后、用原始 body 重放）。**仍然要求** `AllowAPIKeyFallback`，调用方不能借此绕过计费 opt-in |
 | `ExcludeIDs []string` | 165 | 本次请求已试过并失败的凭据 ID |
 
@@ -259,7 +259,7 @@ PoolHealth (auth/health_state.go:239)  按 provider 聚合，由 Pool.Health(pro
 |---|---|---|
 | `ModelScopeAnthropicFable` | types.go:779 | 常量，`"anthropic:fable"` |
 | `AnthropicModelScope(model string) string` | types.go:786 | 归一化后匹配 `claude-fable-5` / `claude-fable-5-*` / `claude-fable-5[*`（先剥 `anthropic/` 前缀、转小写），命中返回 fable scope，否则 `""` |
-| `AnthropicModelRequiresAPIKey(model string) bool` | types.go:800 | `AnthropicModelScope(model) == ModelScopeAnthropicFable` |
+| `AnthropicModelRequiresAPIKey(model string) bool` | types.go:813 | `AnthropicModelScope(model) == ModelScopeAnthropicFable`。**已不再是路由输入**（2026-08-25 起），保留为回滚锚点与 fable 家族判定 |
 
 ---
 
@@ -349,7 +349,7 @@ tier 偏好已经编码在候选列表的 append 顺序里（调用方按优先�
 
 按顺序：
 
-1. **fable 强制走 API key**：`NormalizeProvider(a.Provider) == ProviderAnthropic && AnthropicModelRequiresAPIKey(clientModel)` → false（pool.go:685）。这是 fable 绕开订阅 OAuth 的**唯一**落点。
+1. ~~**fable 强制走 API key**~~ —— **已于 2026-08-25 移除**。此前 Anthropic 用 usage credits 单独售卖 fable，对订阅 OAuth 返回 `credits_required`，所以这里第一行就把 fable 挡在 OAuth 之外。fable 现已永久计划内包含，走与其他模型完全相同的路径。**注意不要与第 5 步的按模型族限流混淆**：被移除的是"永不路由到这里"，保留的是"这条凭据此刻的 fable 窗口已用尽"。
 2. `a.Disabled` → false
 3. `a.IsHardFailed()` → false
 4. `a.IsQuotaExceeded(now)` → false
@@ -579,7 +579,7 @@ disabled → hard_failed → quota → cooling → half_open → degraded → he
 
 ### `PoolHealth`（auth/health_state.go:239-272）与 `Pool.Health`（auth/pool.go:895）
 
-`Pool.Health(provider)` 把该 provider 下**OAuth 与 API key 一起**聚合——状态页问的是"这个 provider 还能不能服务"，而答案经常只取决于 API key（fable 类模型根本不碰 OAuth）或者只取决于 OAuth（没配 key）。
+`Pool.Health(provider)` 把该 provider 下**OAuth 与 API key 一起**聚合——状态页问的是"这个 provider 还能不能服务"，而答案经常只取决于 API key，或者只取决于 OAuth（没配 key）。
 
 | 字段/方法 | 位置 | 语义 |
 |---|---|---|
@@ -782,7 +782,11 @@ clearExpiredQuotaLocked(now)
 
 14. **`ModelMap` 是改写表，不是白名单**（types.go:108-116、1251-1300）。`ResolveUpstreamModel` 的 `ok` 恒 true，`AcceptsModel` 恒 true。任何"这个 key 只支持这些模型"的直觉都是错的。
 
-15. **fable 只有一条绕开点**（pool.go:685）。Anthropic 订阅 OAuth 对 fable 返回 `credits_required`，哪怕包含额度分毫未动。判定落在 `oauthUsableLocked` 的**第一行**，因此对 sticky 复用路径同样生效——fable 请求会**打断**已有的 sticky OAuth 绑定（见 `TestFableBreaksStickyOAuthAssignment`）。而当调用方 `AllowAPIKeyFallback: false` 时，fable 返回 `nil` 而不是退回 OAuth（`TestFableRespectsDisabledAPIKeyFallback`）。
+15. **fable 的 API-key-only 硬门已于 2026-08-25 移除**（`oauthUsableLocked`，`auth/pool.go:797`）。此前 Anthropic 用单独购买的 usage credits 售卖 fable，对订阅 OAuth 返回 `credits_required`（哪怕包含额度分毫未动），判定落在该函数**第一行**，因此连 sticky 复用路径都绕不过——fable 请求会打断已有的 sticky OAuth 绑定。fable 现已永久计划内包含：走 OAuth、保留 sticky 绑定（`TestFableKeepsStickyOAuthAssignment`），`AllowAPIKeyFallback: false` 也照常从 OAuth 供给（`TestFableServedByOAuthWithoutAPIKeyFallback`）。
+
+    **但 fable 的额度仍然是独立的**，这一层没有跟着移除，也不要跟着移除。可能出现"这条 OAuth 凭据别的模型都能用、唯独 fable 用不完"的局面：`MarkModelRateLimited(ModelScopeAnthropicFable, resetAt)` 只让 `oauthUsableLocked` 对 **fable** 返回 false，账号级的 `IsQuotaExceeded` 保持 false、`IsHealthy` 保持 true，于是 tier 循环把这笔 fable 流量交给 API key，而该凭据继续为其他模型服务（`TestFableUsesOAuthThenFallsBackWhenItsWindowIsSpent`、`TestFableWindowExhaustionIsNotAccountQuota`）。**把按模型族的限流写成账号级 quota 是这里最贵的错误**——凭据会因为一个只影响单一模型族的限制而对**所有**模型消失，且 quota 冷却会让它在流量早已被转移之后仍长时间发暗。
+
+    回滚方式：在 `oauthUsableLocked` 恢复 `AnthropicModelRequiresAPIKey` 短路即可，该函数仍然导出、行为未变。
 
 16. **`ClearQuota` 会连带清空 `ModelRateLimits`**（types.go:1115-1122）。管理面点一次"清除配额"，所有按模型族的冷却也一起没了。
 
@@ -861,12 +865,13 @@ clearExpiredQuotaLocked(now)
 | 非瞬时错误不重试 | `auth/retry_test.go:91` `TestRetryRoundTripper_NoRetryOnNonTransient` |
 | ctx 取消立即停止重试 | `auth/retry_test.go:103` `TestRetryRoundTripper_StopsOnCanceledContext` |
 | `AnthropicModelScope` 的 fable 变体匹配（dated / `[1m]` / 大小写） | `auth/model_rate_limit_test.go:9` `TestAnthropicModelScope` |
-| `AnthropicModelRequiresAPIKey` | `auth/model_rate_limit_test.go:29` `TestAnthropicModelRequiresAPIKey` |
+| `AnthropicModelRequiresAPIKey`（家族判定，已非路由输入） | `auth/model_rate_limit_test.go:29` `TestAnthropicModelRequiresAPIKey` |
 | 按模型族限流的打标与过期 | `auth/model_rate_limit_test.go:47` `TestModelRateLimitMarkAndExpiry` |
 | `ClearQuota` 连带清空模型族冷却 | `auth/model_rate_limit_test.go:81` `TestClearQuotaClearsModelScopes` |
-| **fable 只走 API key，其他模型不受影响**（端到端） | `auth/model_rate_limit_test.go:93` `TestScheduleRoutesFableOnlyToAPIKey` |
-| fable 请求打断已有 sticky OAuth 绑定 | `auth/model_rate_limit_test.go:117` `TestFableBreaksStickyOAuthAssignment` |
-| `AllowAPIKeyFallback: false` 时 fable 返回 nil 而非退回 OAuth | `auth/model_rate_limit_test.go:131` `TestFableRespectsDisabledAPIKeyFallback` |
+| **fable 走 OAuth，窗口用尽才回落 API key**（端到端） | `auth/model_rate_limit_test.go:104` `TestFableUsesOAuthThenFallsBackWhenItsWindowIsSpent` |
+| **fable 窗口用尽不得升级为账号级 quota** | `auth/model_rate_limit_test.go:142` `TestFableWindowExhaustionIsNotAccountQuota` |
+| fable 请求保留已有 sticky OAuth 绑定 | `auth/model_rate_limit_test.go:172` `TestFableKeepsStickyOAuthAssignment` |
+| `AllowAPIKeyFallback: false` 时 fable 仍由 OAuth 供给 | `auth/model_rate_limit_test.go:191` `TestFableServedByOAuthWithoutAPIKeyFallback` |
 | `ModelMap` 是改写表而非白名单 | `auth/modelmap_test.go:7` `TestModelMapRewriteOnly` |
 | OAuth 忽略 `ModelMap`（默认行为） | `auth/model_map_default_test.go:12` `TestOAuthModelMapDefault` |
 | `SessionsHeld` 按 (token, provider) 计数 | `auth/sessions_held_test.go:13` `TestSessionsHeldCountsPerTokenPerProvider` |
@@ -922,7 +927,7 @@ clearExpiredQuotaLocked(now)
 - `auth/pool.go:594` — `Release`
 - `auth/pool.go:620` — `SessionsHeld`
 - `auth/pool.go:644` — `Unstick`
-- `auth/pool.go:680` — `oauthUsableLocked`（含 fable 绕行、模型族限流、组休眠）
+- `auth/pool.go:797` — `oauthUsableLocked`（模型族限流、组休眠；fable 绕行已移除）
 - `auth/pool.go:726` — `pickOAuthLocked`（最少加权用量优先）
 - `auth/pool.go:861` — `HasAPIKeyFor`（与两轮对齐）
 - `auth/pool.go:895` — `Pool.Health`（PoolHealth 聚合）
@@ -968,7 +973,7 @@ clearExpiredQuotaLocked(now)
 - `auth/types.go:767` — `MarkUsageLimitReached`
 - `auth/types.go:779` — `ModelScopeAnthropicFable`
 - `auth/types.go:786` — `AnthropicModelScope`
-- `auth/types.go:800` — `AnthropicModelRequiresAPIKey`
+- `auth/types.go:813` — `AnthropicModelRequiresAPIKey`（已非路由输入）
 - `auth/types.go:810` — `MarkModelRateLimited` / `auth/types.go:825` — `IsModelRateLimited`
 - `auth/types.go:847` — `MarkClientCancel`
 - `auth/types.go:883` — `MarkHardFailure`

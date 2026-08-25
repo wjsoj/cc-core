@@ -87,34 +87,89 @@ func TestClearQuotaClearsModelScopes(t *testing.T) {
 	}
 }
 
-// TestScheduleRoutesFableOnlyToAPIKey is the core end-to-end guard: every
-// Fable request bypasses OAuth, while the same OAuth remains available to all
-// included subscription models.
-func TestScheduleRoutesFableOnlyToAPIKey(t *testing.T) {
-	limited := mustOAuth(t, "limited", "anthropic", "g", 1)
-	limited.MarkModelRateLimited(ModelScopeAnthropicFable, time.Now().Add(time.Hour))
+// Until 2026-08-25 Anthropic sold Fable 5 through separately purchased usage
+// credits and rejected subscription OAuth with credits_required, so the
+// scheduler refused fable on OAuth outright. Fable is now permanently included
+// in the plans and the gate is gone. The tests below pin what replaced it.
+//
+// The distinction that survives, and the one that matters operationally: fable
+// still has its OWN quota window. A credential whose fable allotment is spent
+// must be skipped FOR FABLE ONLY and the traffic must land on an API key —
+// without the account being flagged account-wide, because every other model on
+// that credential is still perfectly serviceable.
 
-	// An OAuth-only pool cannot serve Fable at all.
-	p := NewPool([]*Auth{limited}, nil, time.Minute, false, "")
-	if _, got := p.AcquireMulti(context.Background(), "anthropic", "c1", []string{"g"}, "claude-fable-5", "sess-fable"); got != nil {
-		t.Fatalf("fable request must bypass OAuth, got %s", got.ID)
-	}
-
-	// An included model still uses the OAuth credential.
-	if _, got := p.AcquireMulti(context.Background(), "anthropic", "c2", []string{"g"}, "claude-opus-4-8", "sess-opus"); got == nil || got.ID != "limited" {
-		t.Fatalf("non-fable request must still use the credential, got %v", got)
-	}
-
-	// A healthy OAuth sibling is also skipped; the API key is selected.
+// TestFableUsesOAuthThenFallsBackWhenItsWindowIsSpent is the end-to-end guard
+// for the post-2026-08-25 routing: OAuth first, API key only once this
+// credential's fable window is actually spent.
+func TestFableUsesOAuthThenFallsBackWhenItsWindowIsSpent(t *testing.T) {
 	healthy := mustOAuth(t, "healthy", "anthropic", "g", 1)
 	key := &Auth{ID: "key", Kind: KindAPIKey, Provider: ProviderAnthropic, Group: "g"}
-	p2 := NewPool([]*Auth{limited, healthy}, []*Auth{key}, time.Minute, false, "")
-	if _, got := p2.AcquireMulti(context.Background(), "anthropic", "c3", []string{"g"}, "claude-fable-5", "sess-fable2"); got == nil || got.ID != "key" {
-		t.Fatalf("fable request should route to the API key, got %v", got)
+
+	// A plan-included fable request now takes the OAuth credential, not the key.
+	p := NewPool([]*Auth{healthy}, []*Auth{key}, time.Minute, false, "")
+	if _, got := p.AcquireMulti(context.Background(), "anthropic", "c1", []string{"g"}, "claude-fable-5", "sess-1"); got == nil || got.ID != "healthy" {
+		t.Fatalf("fable must route to OAuth now that it is plan-included, got %v", got)
+	}
+
+	// With every OAuth's fable window spent, the request falls back to the key.
+	spent := mustOAuth(t, "spent", "anthropic", "g", 1)
+	spent.MarkModelRateLimited(ModelScopeAnthropicFable, time.Now().Add(time.Hour))
+	p2 := NewPool([]*Auth{spent}, []*Auth{key}, time.Minute, false, "")
+	if _, got := p2.AcquireMulti(context.Background(), "anthropic", "c2", []string{"g"}, "claude-fable-5", "sess-2"); got == nil || got.ID != "key" {
+		t.Fatalf("a spent fable window must fall back to the API key, got %v", got)
+	}
+
+	// A credential with a spent fable window is still preferred over the key
+	// for every other model — the limit is scoped, not account-wide.
+	if _, got := p2.AcquireMulti(context.Background(), "anthropic", "c3", []string{"g"}, "claude-opus-4-8", "sess-3"); got == nil || got.ID != "spent" {
+		t.Fatalf("non-fable traffic must still use the OAuth credential, got %v", got)
+	}
+
+	// An OAuth sibling with allotment left beats the API key for fable.
+	p3 := NewPool([]*Auth{spent, healthy}, []*Auth{key}, time.Minute, false, "")
+	if _, got := p3.AcquireMulti(context.Background(), "anthropic", "c4", []string{"g"}, "claude-fable-5", "sess-4"); got == nil || got.ID != "healthy" {
+		t.Fatalf("fable should prefer an OAuth with allotment left, got %v", got)
 	}
 }
 
-func TestFableBreaksStickyOAuthAssignment(t *testing.T) {
+// TestFableWindowExhaustionIsNotAccountQuota is the invariant behind the
+// fallback above: exhausting fable must never set the account-wide quota flag.
+//
+// Getting this wrong is expensive in a way that is easy to miss — the
+// credential would vanish from the pool for EVERY model over a limit that
+// applies to one, and IsQuotaExceeded's cooldown would keep it dark long after
+// the traffic that could still be served on it had been shed elsewhere.
+func TestFableWindowExhaustionIsNotAccountQuota(t *testing.T) {
+	a := mustOAuth(t, "sub", "anthropic", "g", 1)
+	a.MarkModelRateLimited(ModelScopeAnthropicFable, time.Now().Add(time.Hour))
+
+	now := time.Now()
+	if a.IsQuotaExceeded(now) {
+		t.Fatal("a spent fable window must not raise the account-wide quota flag")
+	}
+	if !a.IsHealthy() {
+		t.Fatal("a spent fable window must leave the credential healthy")
+	}
+
+	p := NewPool([]*Auth{a}, nil, time.Minute, false, "")
+	p.mu.Lock()
+	fableUsable := p.oauthUsableLocked(a, now, "claude-fable-5")
+	opusUsable := p.oauthUsableLocked(a, now, "claude-opus-4-8")
+	p.mu.Unlock()
+	if fableUsable {
+		t.Error("credential must be skipped for fable while its window is spent")
+	}
+	if !opusUsable {
+		t.Error("credential must stay usable for every other model")
+	}
+}
+
+// TestFableKeepsStickyOAuthAssignment reverses a rule that only made sense
+// while fable was API-key-only: a fable turn used to BREAK an existing sticky
+// OAuth binding, because it could not be served there at all. It is now an
+// ordinary plan-included model, so the binding — and with it the account's
+// prompt cache — must survive a fable turn.
+func TestFableKeepsStickyOAuthAssignment(t *testing.T) {
 	oauth := mustOAuth(t, "oauth", "anthropic", "g", 2)
 	key := &Auth{ID: "key", Kind: KindAPIKey, Provider: ProviderAnthropic, Group: "g"}
 	p := NewPool([]*Auth{oauth}, []*Auth{key}, time.Minute, false, "")
@@ -123,12 +178,17 @@ func TestFableBreaksStickyOAuthAssignment(t *testing.T) {
 	if got := p.Acquire(context.Background(), ProviderAnthropic, token, "g", "claude-opus-5", session); got == nil || got.ID != "oauth" {
 		t.Fatalf("initial included model should stick to OAuth, got %v", got)
 	}
-	if got := p.Acquire(context.Background(), ProviderAnthropic, token, "g", "claude-fable-5", session); got == nil || got.ID != "key" {
-		t.Fatalf("fable must break the sticky OAuth route and use API key, got %v", got)
+	if got := p.Acquire(context.Background(), ProviderAnthropic, token, "g", "claude-fable-5", session); got == nil || got.ID != "oauth" {
+		t.Fatalf("fable must keep the sticky OAuth route, got %v", got)
 	}
 }
 
-func TestFableRespectsDisabledAPIKeyFallback(t *testing.T) {
+// TestFableServedByOAuthWithoutAPIKeyFallback: a client that opted out of
+// API-key billing used to get nil for every fable request, since OAuth was
+// closed to it. It now gets served from OAuth like any other model — and still
+// gets nil once that credential's fable window is spent, because the fallback
+// it declined is the only route left.
+func TestFableServedByOAuthWithoutAPIKeyFallback(t *testing.T) {
 	oauth := mustOAuth(t, "oauth", "anthropic", "g", 1)
 	key := &Auth{ID: "key", Kind: KindAPIKey, Provider: ProviderAnthropic, Group: "g"}
 	p := NewPool([]*Auth{oauth}, []*Auth{key}, time.Minute, false, "")
@@ -136,7 +196,14 @@ func TestFableRespectsDisabledAPIKeyFallback(t *testing.T) {
 	got := p.AcquireWithOptions(context.Background(), ProviderAnthropic, "client", "g", "claude-fable-5", "session", AcquireOptions{
 		AllowAPIKeyFallback: false,
 	})
-	if got != nil {
-		t.Fatalf("API-key opt-out must return nil rather than use OAuth, got %s", got.ID)
+	if got == nil || got.ID != "oauth" {
+		t.Fatalf("fable must be served from OAuth without needing the API-key opt-in, got %v", got)
+	}
+
+	oauth.MarkModelRateLimited(ModelScopeAnthropicFable, time.Now().Add(time.Hour))
+	if got := p.AcquireWithOptions(context.Background(), ProviderAnthropic, "client", "g", "claude-fable-5", "session2", AcquireOptions{
+		AllowAPIKeyFallback: false,
+	}); got != nil {
+		t.Fatalf("API-key opt-out must still hold once the fable window is spent, got %s", got.ID)
 	}
 }
