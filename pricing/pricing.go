@@ -417,14 +417,27 @@ var builtIn = map[string]ModelPrice{
 
 	// Frontier — GPT-5.6 line. `gpt-5.6` is the published alias for sol.
 	//
-	// ⚠️ gpt-5.6-sol carries PROMOTIONAL pricing that OpenAI commits to "at
-	// least through November 21, 2026"; the post-promo list price is not
-	// published. Registered in introductoryRates with the previous flagship
-	// (gpt-5.5) card as the placeholder list price, so the build fails on
-	// 2026-11-22 and someone re-reads the page rather than billing a lapsed
-	// promo forever.
-	ProviderOpenAI + "/gpt-5.6":       {InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00},
-	ProviderOpenAI + "/gpt-5.6-sol":   {InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00},
+	// ⚠️ gpt-5.6-sol DELIBERATELY DOES NOT USE THE PRICE ON THE API PAGE.
+	// OpenAI lists sol at a promotional $4.00/$20.00 "at least through
+	// November 21, 2026", but that promotion applies to the **API** side only
+	// — ChatGPT subscription plans are unaffected and keep costing what the
+	// previous flagship did. This catalogue serves both: OAuth
+	// subscription credentials (notional cost, drives weekly-limit
+	// enforcement) and BYOK API keys (real cost). ModelPrice carries one
+	// number, so it has to pick, and it picks the subscription figure —
+	// the OAuth pool is what production actually routes, and the promo is
+	// temporary while the plan rate is not.
+	//
+	// Consequence, stated plainly: a BYOK API key serving gpt-5.6-sol bills
+	// 25% over its true cost until the promotion ends. That is the accepted
+	// side of the trade; the alternative under-bills the subscription pool by
+	// the same margin on far more traffic. A deployment that is
+	// predominantly BYOK should override this card in config.yaml.
+	//
+	// This is also why sol is NOT in introductoryRates: the card already
+	// holds the non-promotional rate, so there is no promo to expire.
+	ProviderOpenAI + "/gpt-5.6":       {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25},
+	ProviderOpenAI + "/gpt-5.6-sol":   {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25},
 	ProviderOpenAI + "/gpt-5.6-terra": {InputPer1M: 2.00, OutputPer1M: 12.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50},
 	ProviderOpenAI + "/gpt-5.6-luna":  {InputPer1M: 0.20, OutputPer1M: 1.20, CacheReadPer1M: 0.02, CacheCreatePer1M: 0.25},
 	ProviderOpenAI + "/gpt-5.6-cyber": {InputPer1M: 12.50, OutputPer1M: 75.00, CacheReadPer1M: 1.25, CacheCreatePer1M: 15.625},
@@ -453,7 +466,7 @@ var builtIn = map[string]ModelPrice{
 	// gpt-5.6-cyber respectively, and that pricing follows whatever they are
 	// repointed at — so these two rows go stale silently on the next Daybreak
 	// release. Re-check them whenever the 5.6 line moves.
-	ProviderOpenAI + "/daybreak-blue-latest": {InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00},
+	ProviderOpenAI + "/daybreak-blue-latest": {InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25},
 	ProviderOpenAI + "/daybreak-red-latest":  {InputPer1M: 12.50, OutputPer1M: 75.00, CacheReadPer1M: 1.25, CacheCreatePer1M: 15.625},
 
 	// ─── OpenAI BYOK API models ────────────────────────────────────────

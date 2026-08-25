@@ -283,42 +283,42 @@ flowchart TD
 | `anthropic/claude-fable-5` | 10.00 | 50.00 | 1.00 | 12.50 | `:357` |
 | `anthropic/claude-sonnet-4-6` | 3.00 | 15.00 | 0.30 | 3.75 | `:363` |
 | `anthropic/claude-sonnet-5` ⚠️ | 2.00 | 10.00 | 0.20 | 2.50 | `:381` |
-| `openai/gpt-5.6` (sol 别名) ⚠️ | 4.00 | 20.00 | 0.40 | 5.00 | `:426` |
-| `openai/gpt-5.6-sol` ⚠️ | 4.00 | 20.00 | 0.40 | 5.00 | `:427` |
-| `openai/gpt-5.6-terra` | 2.00 | 12.00 | 0.20 | 2.50 | `:428` |
-| `openai/gpt-5.6-luna` | 0.20 | 1.20 | 0.02 | 0.25 | `:429` |
-| `openai/gpt-5.6-cyber` | 12.50 | 75.00 | 1.25 | 15.625 | `:430` |
-| `openai/gpt-5.5` | 5.00 | 30.00 | 0.50 | — | `:434` |
-| `openai/gpt-5.5-pro` | 30.00 | 180.00 | — | — | `:435` |
-| `openai/gpt-5.5-cyber` | 12.50 | 75.00 | 1.25 | — | `:436` |
-| `openai/gpt-5.4` | 2.50 | 15.00 | 0.25 | — | `:437` |
-| `openai/gpt-5.4-mini` | 0.75 | 4.50 | 0.075 | — | `:438` |
-| `openai/gpt-5.4-nano` | 0.20 | 1.25 | 0.02 | — | `:439` |
-| `openai/gpt-5.4-pro` | 30.00 | 180.00 | — | — | `:440` |
-| `openai/gpt-5.2` | 1.75 | 14.00 | 0.175 | — | `:441` |
-| `openai/gpt-5.2-pro` | 21.00 | 168.00 | — | — | `:442` |
-| `openai/gpt-5.1` | 1.25 | 10.00 | 0.125 | — | `:443` |
-| `openai/gpt-5.3-codex` | 1.75 | 14.00 | 0.175 | — | `:449` |
-| `openai/gpt-5.3-codex-spark` | 1.75 | 14.00 | 0.175 | — | `:450` |
-| `openai/daybreak-blue-latest` | 4.00 | 20.00 | 0.40 | 5.00 | `:456` |
-| `openai/daybreak-red-latest` | 12.50 | 75.00 | 1.25 | 15.625 | `:457` |
-| `openai/gpt-5` | 1.25 | 10.00 | 0.125 | — | `:460` |
-| `openai/gpt-5-mini` | 0.25 | 2.00 | 0.025 | — | `:461` |
-| `openai/gpt-5-nano` | 0.05 | 0.40 | 0.005 | — | `:462` |
-| `openai/gpt-5-pro` | 15.00 | 120.00 | — | — | `:463` |
-| `openai/gpt-5-search-api` | 1.25 | 10.00 | 0.125 | — | `:464` |
-| `openai/chat-latest` | 5.00 | 30.00 | 0.50 | — | `:465` |
-| `openai/gpt-4.1` | 2.00 | 8.00 | 0.50 | — | `:466` |
-| `openai/gpt-4.1-mini` | 0.40 | 1.60 | 0.10 | — | `:467` |
-| `openai/gpt-4.1-nano` | 0.10 | 0.40 | 0.025 | — | `:468` |
-| `openai/gpt-4o` | 2.50 | 10.00 | 1.25 | — | `:469` |
-| `openai/gpt-4o-mini` | 0.15 | 0.60 | 0.075 | — | `:470` |
-| `openai/o4-mini` | 1.10 | 4.40 | 0.275 | — | `:476` |
-| `openai/o3` | 2.00 | 8.00 | 0.50 | — | `:477` |
-| `openai/o3-mini` | 1.10 | 4.40 | 0.55 | — | `:478` |
-| `openai/o3-pro` | 20.00 | 80.00 | — | — | `:479` |
-| `openai/o1` | 15.00 | 60.00 | 7.50 | — | `:480` |
-| `openai/o1-pro` | 150.00 | 600.00 | — | — | `:481` |
+| `openai/gpt-5.6` (sol 别名) ⚠️ | 5.00 | 30.00 | 0.50 | 6.25 | `:439` |
+| `openai/gpt-5.6-sol` ⚠️ | 5.00 | 30.00 | 0.50 | 6.25 | `:440` |
+| `openai/gpt-5.6-terra` | 2.00 | 12.00 | 0.20 | 2.50 | `:441` |
+| `openai/gpt-5.6-luna` | 0.20 | 1.20 | 0.02 | 0.25 | `:442` |
+| `openai/gpt-5.6-cyber` | 12.50 | 75.00 | 1.25 | 15.625 | `:443` |
+| `openai/gpt-5.5` | 5.00 | 30.00 | 0.50 | — | `:447` |
+| `openai/gpt-5.5-pro` | 30.00 | 180.00 | — | — | `:448` |
+| `openai/gpt-5.5-cyber` | 12.50 | 75.00 | 1.25 | — | `:449` |
+| `openai/gpt-5.4` | 2.50 | 15.00 | 0.25 | — | `:450` |
+| `openai/gpt-5.4-mini` | 0.75 | 4.50 | 0.075 | — | `:451` |
+| `openai/gpt-5.4-nano` | 0.20 | 1.25 | 0.02 | — | `:452` |
+| `openai/gpt-5.4-pro` | 30.00 | 180.00 | — | — | `:453` |
+| `openai/gpt-5.2` | 1.75 | 14.00 | 0.175 | — | `:454` |
+| `openai/gpt-5.2-pro` | 21.00 | 168.00 | — | — | `:455` |
+| `openai/gpt-5.1` | 1.25 | 10.00 | 0.125 | — | `:456` |
+| `openai/gpt-5.3-codex` | 1.75 | 14.00 | 0.175 | — | `:462` |
+| `openai/gpt-5.3-codex-spark` | 1.75 | 14.00 | 0.175 | — | `:463` |
+| `openai/daybreak-blue-latest` | 5.00 | 30.00 | 0.50 | 6.25 | `:469` |
+| `openai/daybreak-red-latest` | 12.50 | 75.00 | 1.25 | 15.625 | `:470` |
+| `openai/gpt-5` | 1.25 | 10.00 | 0.125 | — | `:473` |
+| `openai/gpt-5-mini` | 0.25 | 2.00 | 0.025 | — | `:474` |
+| `openai/gpt-5-nano` | 0.05 | 0.40 | 0.005 | — | `:475` |
+| `openai/gpt-5-pro` | 15.00 | 120.00 | — | — | `:476` |
+| `openai/gpt-5-search-api` | 1.25 | 10.00 | 0.125 | — | `:477` |
+| `openai/chat-latest` | 5.00 | 30.00 | 0.50 | — | `:478` |
+| `openai/gpt-4.1` | 2.00 | 8.00 | 0.50 | — | `:479` |
+| `openai/gpt-4.1-mini` | 0.40 | 1.60 | 0.10 | — | `:480` |
+| `openai/gpt-4.1-nano` | 0.10 | 0.40 | 0.025 | — | `:481` |
+| `openai/gpt-4o` | 2.50 | 10.00 | 1.25 | — | `:482` |
+| `openai/gpt-4o-mini` | 0.15 | 0.60 | 0.075 | — | `:483` |
+| `openai/o4-mini` | 1.10 | 4.40 | 0.275 | — | `:489` |
+| `openai/o3` | 2.00 | 8.00 | 0.50 | — | `:490` |
+| `openai/o3-mini` | 1.10 | 4.40 | 0.55 | — | `:491` |
+| `openai/o3-pro` | 20.00 | 80.00 | — | — | `:492` |
+| `openai/o1` | 15.00 | 60.00 | 7.50 | — | `:493` |
+| `openai/o1-pro` | 150.00 | 600.00 | — | — | `:494` |
 
 「—」表示未设置（值为 0），即该模型的缓存写入不单独计价。
 
@@ -326,7 +326,11 @@ flowchart TD
 
 > 这条到期日不再靠人记：`TestIntroductoryRatesHaveNotLapsed` 会在 2026-09-01 当天开始失败，直到卡片被改成标价；`TestIntroductoryRatesAreBelowList` 反向兜底，防止引导价被误改到高于标价。新增任何限时折扣卡片时，往 `introductoryRates` 里加一行即可获得同样的保护。
 
-**⚠️ `gpt-5.6` / `gpt-5.6-sol` 同样是限时价**，OpenAI 承诺"至少到 2026-11-21"，但**没有公布回落后的标价**。`introductoryRates` 里为它登记了一个**占位标价**（上代旗舰 gpt-5.5 的卡片 + 5.6 线 1.25× 的缓存写入率），到期日设 2026-11-22。占位的用途只是让构建在那天失败、逼人回官网重读，**不是**对回落价格的断言 —— 测试红了就去查真实价格再填，别直接把占位值抄进卡片。
+**⚠️ `gpt-5.6` / `gpt-5.6-sol` / `daybreak-blue-latest` 是全表唯一故意偏离官网数值的卡片。** 官网把 sol 标为 $4.00/$20.00 的限时价（"至少到 2026-11-21"），但**那个促销只发生在 API 侧，ChatGPT 订阅计划不适用**，订阅侧仍按上代旗舰的价钱走。这份目录同时服务两种凭据 —— OAuth 订阅凭据（名义成本，驱动周限额）与 BYOK API key（真实成本）—— 而 `ModelPrice` 只有一个数字，必须二选一，**选的是订阅价**：生产实际路由的是 OAuth 池，而促销是暂时的、计划价不是。
+
+代价说清楚：促销期内，走 BYOK API key 的 sol 请求会**超收 25%**。这是这笔交易被接受的一侧；反过来选促销价，则会在流量大得多的订阅池上**少收 25%**。以 BYOK 为主的部署应当在 `config.yaml` 里覆盖这张卡。
+
+因为卡片本身就是非促销价，sol **不在** `introductoryRates` 里 —— 没有会到期的促销。`TestGPT56SolPricesTheSubscriptionPlanNotThePromo` 钉住这一点：日后有人照着官网重抄这张表时，它会拦下把卡片"改正"回促销价的那次提交。注意 terra / luna 没有这种双轨，它们的公布价两侧都是真价，**不要**跟着 sol 一起抬上去。
 
 #### OpenAI 卡片的三个坑
 
@@ -576,6 +580,7 @@ API：
 | Sonnet-5 引导价 | `pricing/pricing_test.go:63` `TestSonnet5IntroPrice` |
 | 引导价到期即构建失败 | `pricing/intro_expiry_test.go` `TestIntroductoryRatesHaveNotLapsed` / `TestIntroductoryRatesAreBelowList` |
 | OpenAI 全表对齐官网数值 | `pricing/pricing_test.go:294` `TestOpenAICatalogMatchesPublishedRates` |
+| sol 用订阅价而非 API 促销价 | `pricing/pricing_test.go:354` `TestGPT56SolPricesTheSubscriptionPlanNotThePromo` |
 | OpenAI SKU 不得继承短名字卡片 | `pricing/pricing_test.go:344` `TestOpenAISKUsDoNotInheritAShorterCard` |
 | OpenAI 日期变体仍回退到基础卡 | `pricing/pricing_test.go:364` `TestOpenAIDatedVariantsStillResolve` |
 | 用户配置覆盖 / 裸键归 Anthropic | `pricing/pricing_test.go:112`、`:124` |

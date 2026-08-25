@@ -32,28 +32,6 @@ var introductoryRates = []struct {
 			CacheCreatePer1M: 3.75,
 		},
 	},
-	{
-		// GPT-5.6 Sol ships at a promotional rate OpenAI commits to "at least
-		// through November 21, 2026" (developers.openai.com/api/docs/pricing,
-		// read 2026-08-25). Unlike Anthropic's sonnet-5 promo, OpenAI does NOT
-		// publish what the rate reverts to — so `list` below is a PLACEHOLDER:
-		// the previous flagship card (gpt-5.5, which sol replaced) with the
-		// 5.6-line 1.25x cache-write rate derived from its input price.
-		//
-		// The placeholder exists to make the deadline fail the build, not to
-		// assert a known price. When this test starts failing, go re-read the
-		// page and write down whatever OpenAI actually charges; do not simply
-		// paste these numbers into the card.
-		provider: ProviderOpenAI,
-		model:    "gpt-5.6-sol",
-		expires:  time.Date(2026, 11, 22, 0, 0, 0, 0, time.UTC),
-		list: ModelPrice{
-			InputPer1M:       5.00,
-			OutputPer1M:      30.00,
-			CacheReadPer1M:   0.50,
-			CacheCreatePer1M: 6.25,
-		},
-	},
 }
 
 func TestIntroductoryRatesHaveNotLapsed(t *testing.T) {

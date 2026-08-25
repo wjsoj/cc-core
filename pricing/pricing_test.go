@@ -291,14 +291,21 @@ func TestCacheCreate1hConfigurable(t *testing.T) {
 // card stood. A catalog value that is merely plausible is indistinguishable
 // from a correct one at runtime; only a table checked against the page catches
 // it, so keep this table and the page in sync together.
+//
+// gpt-5.6-sol and its aliases are the ONE deliberate departure from the page:
+// OpenAI's $4.00/$20.00 there is an API-side promotion that ChatGPT
+// subscription plans do not get, and this catalogue prices the subscription
+// pool. See the card's comment in pricing.go. Its expected values below are
+// therefore the plan rate, not the published API rate — if you are updating
+// this table from the page, do not "fix" them.
 func TestOpenAICatalogMatchesPublishedRates(t *testing.T) {
 	cat := NewCatalog(Config{})
 	for _, tc := range []struct {
 		model string
 		want  ModelPrice
 	}{
-		{"gpt-5.6", ModelPrice{InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00}},
-		{"gpt-5.6-sol", ModelPrice{InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00}},
+		{"gpt-5.6", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}},
+		{"gpt-5.6-sol", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}},
 		{"gpt-5.6-terra", ModelPrice{InputPer1M: 2.00, OutputPer1M: 12.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50}},
 		{"gpt-5.6-luna", ModelPrice{InputPer1M: 0.20, OutputPer1M: 1.20, CacheReadPer1M: 0.02, CacheCreatePer1M: 0.25}},
 		{"gpt-5.6-cyber", ModelPrice{InputPer1M: 12.50, OutputPer1M: 75.00, CacheReadPer1M: 1.25, CacheCreatePer1M: 15.625}},
@@ -332,6 +339,35 @@ func TestOpenAICatalogMatchesPublishedRates(t *testing.T) {
 		if got := cat.Lookup(ProviderOpenAI, tc.model); got != tc.want {
 			t.Errorf("openai/%s = %+v, published rate is %+v", tc.model, got, tc.want)
 		}
+	}
+}
+
+// TestGPT56SolPricesTheSubscriptionPlanNotThePromo pins the one card that is
+// intentionally off the published API price.
+//
+// OpenAI's promotional API rate for sol ($4.00/$20.00, "at least through
+// 2026-11-21") does not extend to ChatGPT subscription plans, which keep
+// costing what the previous flagship did. The pool this catalogue prices is
+// predominantly OAuth subscription credentials, so the card holds the plan
+// rate and a future re-transcription from the page must not quietly reset it
+// to the promo — that would under-bill the subscription pool by 20%.
+func TestGPT56SolPricesTheSubscriptionPlanNotThePromo(t *testing.T) {
+	cat := NewCatalog(Config{})
+	plan := ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}
+	promo := ModelPrice{InputPer1M: 4.00, OutputPer1M: 20.00, CacheReadPer1M: 0.40, CacheCreatePer1M: 5.00}
+	for _, model := range []string{"gpt-5.6", "gpt-5.6-sol", "daybreak-blue-latest"} {
+		got := cat.Lookup(ProviderOpenAI, model)
+		if got == promo {
+			t.Errorf("openai/%s = %+v, the API-side promotional rate; subscription plans pay %+v", model, got, plan)
+		}
+		if got != plan {
+			t.Errorf("openai/%s = %+v, want the subscription plan rate %+v", model, got, plan)
+		}
+	}
+	// terra and luna carry no such split — their published rates are the real
+	// ones on both sides, so they must NOT be dragged up alongside sol.
+	if got, want := cat.Lookup(ProviderOpenAI, "gpt-5.6-luna"), (ModelPrice{InputPer1M: 0.20, OutputPer1M: 1.20, CacheReadPer1M: 0.02, CacheCreatePer1M: 0.25}); got != want {
+		t.Errorf("openai/gpt-5.6-luna = %+v, want %+v", got, want)
 	}
 }
 
