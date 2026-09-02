@@ -193,6 +193,7 @@ func parseFile(path string, data []byte) (*Auth, error) {
 		MaxConcurrent:             maxConc,
 		FilePath:                  path,
 		Disabled:                  disabled,
+		LastQuotaHit:              parseQuotaHit(raw),
 		Group:                     NormalizeGroup(group),
 		AccountUUID:               accountUUID,
 		OrganizationUUID:          orgUUID,
@@ -292,6 +293,7 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 		BaseURL:         baseURL,
 		FilePath:        path,
 		Disabled:        disabled,
+		LastQuotaHit:    parseQuotaHit(raw),
 		Group:           NormalizeGroup(group),
 		ModelMap:        modelMap,
 		StripThinking:   stripThinking,
@@ -360,6 +362,7 @@ func parseCodexOAuthFile(path string, raw map[string]any, provider string) (*Aut
 		MaxConcurrent: maxConc,
 		FilePath:      path,
 		Disabled:      disabled,
+		LastQuotaHit:  parseQuotaHit(raw),
 		Group:         NormalizeGroup(group),
 	}, nil
 }
@@ -551,6 +554,17 @@ func saveAuth(a *Auth) error {
 		delete(raw, "claude_identity_mode")
 	}
 	raw["disabled"] = a.Disabled
+	// LastQuotaHit is the measurement quotaestimate anchors on ("what was the
+	// last full window worth"); it must outlive the process, or a restart
+	// erases the one number an operator wants to read after the fact.
+	if !a.LastQuotaHit.At.IsZero() {
+		raw["last_quota_hit"] = map[string]any{
+			"at":       a.LastQuotaHit.At.UTC().Format(time.RFC3339Nano),
+			"reset_at": a.LastQuotaHit.ResetAt.UTC().Format(time.RFC3339Nano),
+		}
+	} else {
+		delete(raw, "last_quota_hit")
+	}
 	if a.StripThinking {
 		raw["strip_thinking"] = true
 	} else {
@@ -850,4 +864,31 @@ func (a *Auth) refreshAnthropicLocked(ctx context.Context, useUTLS bool) error {
 		log.Infof("auth: refreshed %s (exp=%s)", a.ID, a.ExpiresAt.Format(time.RFC3339))
 	}
 	return nil
+}
+
+// parseQuotaHit reads the persisted last usage-limit rejection. Append-only
+// field: files without it (every file written before it existed) decode as
+// the zero QuotaHit, and a malformed value is ignored rather than failing
+// the credential load.
+func parseQuotaHit(raw map[string]any) QuotaHit {
+	obj, ok := raw["last_quota_hit"].(map[string]any)
+	if !ok {
+		return QuotaHit{}
+	}
+	parse := func(k string) time.Time {
+		s, _ := obj[k].(string)
+		if s == "" {
+			return time.Time{}
+		}
+		t, err := time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			return time.Time{}
+		}
+		return t
+	}
+	h := QuotaHit{At: parse("at"), ResetAt: parse("reset_at")}
+	if h.At.IsZero() || h.ResetAt.IsZero() {
+		return QuotaHit{}
+	}
+	return h
 }

@@ -121,6 +121,17 @@ type HealthReport struct {
 	QuotaResetAt        time.Time
 	QuarantineUntil     time.Time
 	QuarantineStrikes   int
+
+	// UsageLimit qualifies State == HealthQuota: true when the cooldown is
+	// the account's window actually filling (a usage-limit rejection with
+	// the upstream's own reset stamp — the one LastQuotaHit recorded), false
+	// when it is the pool's own escalating pause after a generic 429/401/403
+	// (ReportUpstreamError → MarkQuotaExceeded). Both park the credential
+	// and both are "quota" to routing; a panel that paints a 30-second
+	// throttle pause as "quota exhausted" is what this tells apart. The
+	// match is on the reset stamp, so a manual clear followed by a fresh
+	// bounce off the same window still reads as the usage limit.
+	UsageLimit bool
 }
 
 // Healthy reports whether the state is the fully-good one. Provided so callers
@@ -181,6 +192,7 @@ func (a *Auth) healthStateLocked(now time.Time) HealthReport {
 
 	case !a.QuotaExceededAt.IsZero():
 		r.State = HealthQuota
+		r.UsageLimit = sameQuotaWindow(a.LastQuotaHit.ResetAt, a.QuotaResetAt)
 		if a.QuotaResetAt.IsZero() {
 			r.Reason = "quota cooldown (no reset time reported)"
 		} else {

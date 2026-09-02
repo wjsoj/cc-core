@@ -366,23 +366,19 @@ var builtIn = map[string]ModelPrice{
 		CacheReadPer1M:   0.30,
 		CacheCreatePer1M: 3.75,
 	},
-	// claude-sonnet-5's LIST price is $3/$15 — the same as sonnet-4-6. The card
-	// below is the INTRODUCTORY price (2/3 of list: input $3→$2, output
-	// $15→$10, cache_read $0.30→$0.20, cache_write $3.75→$2.50, still
-	// Anthropic's standard 0.1×/1.25× cache ratios).
-	//
-	// ⚠️ EXPIRES 2026-08-31. From 2026-09-01 Anthropic bills list price; leaving
-	// this card as-is past that date undercharges every sonnet-5 request by 33%.
-	// On expiry, replace the four values with 3.00 / 15.00 / 0.30 / 3.75 and
-	// delete this notice (the card then matches sonnet-4-6 exactly).
+	// claude-sonnet-5 at LIST price ($3/$15, identical to sonnet-4-6). It
+	// launched at an introductory 2/3 of list that ran until 2026-08-31;
+	// intro_expiry_test.go failed the build on 2026-09-02 and this card was
+	// moved to list, so the sonnet-4-6 → sonnet-5 fold in
+	// DefaultClaudeOAuthModelMap is billing-neutral from here on.
 	//
 	// One undated entry; Lookup's prefix-fallback maps dated variants
 	// (claude-sonnet-5-2026…) here.
 	ProviderAnthropic + "/claude-sonnet-5": {
-		InputPer1M:       2.00,
-		OutputPer1M:      10.00,
-		CacheReadPer1M:   0.20,
-		CacheCreatePer1M: 2.50,
+		InputPer1M:       3.00,
+		OutputPer1M:      15.00,
+		CacheReadPer1M:   0.30,
+		CacheCreatePer1M: 3.75,
 	},
 
 	// ─── OpenAI / Codex ────────────────────────────────────────────────

@@ -282,7 +282,7 @@ flowchart TD
 | `anthropic/claude-opus-5` | 5.00 | 25.00 | 0.50 | 6.25 | `:347` |
 | `anthropic/claude-fable-5` | 10.00 | 50.00 | 1.00 | 12.50 | `:357` |
 | `anthropic/claude-sonnet-4-6` | 3.00 | 15.00 | 0.30 | 3.75 | `:363` |
-| `anthropic/claude-sonnet-5` ⚠️ | 2.00 | 10.00 | 0.20 | 2.50 | `:381` |
+| `anthropic/claude-sonnet-5` | 3.00 | 15.00 | 0.30 | 3.75 | `:381` |
 | `openai/gpt-5.6` (sol 别名) ⚠️ | 5.00 | 30.00 | 0.50 | 6.25 | `:439` |
 | `openai/gpt-5.6-sol` ⚠️ | 5.00 | 30.00 | 0.50 | 6.25 | `:440` |
 | `openai/gpt-5.6-terra` | 2.00 | 12.00 | 0.20 | 2.50 | `:441` |
@@ -322,7 +322,7 @@ flowchart TD
 
 「—」表示未设置（值为 0），即该模型的缓存写入不单独计价。
 
-**⚠️ `claude-sonnet-5` 是引导期价格，2026-08-31 到期**（`pricing/pricing.go:374-377`）。其**标价**与 sonnet-4-6 相同（3/15），当前卡片是标价的 2/3。自 2026-09-01 起 Anthropic 按标价出账；届时不改这张卡，每笔 sonnet-5 请求少收 33%。到期动作：把四个值改成 `3.00 / 15.00 / 0.30 / 3.75`，删掉该注释，并从 `pricing/intro_expiry_test.go` 的 `introductoryRates` 里移除这一条。
+**`claude-sonnet-5` 已按标价出账**（2026-09-02 起）。它的引导价 2.00/10.00/0.20/2.50 于 2026-08-31 到期，`pricing/intro_expiry_test.go` 在 09-02 让构建失败，卡片随即改为与 sonnet-4-6 相同的 3.00/15.00/0.30/3.75，`introductoryRates` 现为空。这也让 `DefaultClaudeOAuthModelMap` 的 sonnet 折叠从此计费中性。
 
 > 这条到期日不再靠人记：`TestIntroductoryRatesHaveNotLapsed` 会在 2026-09-01 当天开始失败，直到卡片被改成标价；`TestIntroductoryRatesAreBelowList` 反向兜底，防止引导价被误改到高于标价。新增任何限时折扣卡片时，往 `introductoryRates` 里加一行即可获得同样的保护。
 
@@ -360,7 +360,7 @@ Anthropic 公开阶梯（与 LiteLLM `cache_creation_input_token_cost_above_1hr`
 | --- | --- |
 | haiku-4-5 | 2.00 |
 | sonnet-4-6 | 6.00 |
-| sonnet-5（引导价） | 4.00 |
+| sonnet-5（标价，同 sonnet-4-6） | 6.00 |
 | opus-* | 10.00 |
 | fable-5 | 20.00 |
 
@@ -537,7 +537,7 @@ API：
 | `flushInt = 5s` | 拉长会加大崩溃丢失窗口；缩短会加大持锁 `json.Marshal` 对请求路径的停顿 |
 | `SetBucketLocation` | 只能在启动时设一次，**无并发保护**；改时区会改变 Daily/Hourly 键（ISO 周键不受影响，它固定 UTC） |
 | 任何 `builtIn` 价格卡 | 目录 **append-only**；漏加新模型 → 走 provider 默认或全局默认；OpenAI 卡缺 `CacheCreatePer1M` → 缓存写入按 **0** 计费 |
-| `claude-sonnet-5` 引导价 | **2026-08-31 到期**，逾期不改少收 33% |
+| `claude-sonnet-5` 引导价 | 已于 2026-08-31 到期并改为标价（09-02） |
 | 给任何卡设 `CacheCreate1hPer1M` | 这是**调价**：整目录 1.25×→2.00× 约抬高计费成本三分之一 |
 | `MonetaryScale = 8` | 改它会让钱包余额与账本行的历史值与新值不在同一量化格上；请求日志 UI 与服务端的算术比对容差也依赖它 |
 | 重新引入 usage 估算器 | `TestNoUsageEstimatorRemains` 会失败；历史数据见 `usage/billing_guard.go:53-79` |
@@ -676,7 +676,7 @@ go test ./pricing/ -run TestSonnet5IntroPrice -v
 | `pricing/pricing.go:274` | `defaultModelPrice`（3/15/0.30/3.75） |
 | `pricing/pricing.go:286` | `builtInProviderDefaults` |
 | `pricing/pricing.go:309` | `builtIn` 目录起点 |
-| `pricing/pricing.go:374` | sonnet-5 引导价到期告警 |
+| `pricing/pricing.go:374` | sonnet-5 标价说明（引导价已到期） |
 | `pricing/pricing.go:449` | `QuantizeUSD` |
 | `pricing/pricing.go:465` | `MonetaryScale = 8` |
 | `ratelimit/rpm.go:27` | `Window = time.Minute` |

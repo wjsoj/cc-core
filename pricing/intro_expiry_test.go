@@ -21,17 +21,9 @@ var introductoryRates = []struct {
 	// list is what the card must become on that day.
 	list ModelPrice
 }{
-	{
-		provider: ProviderAnthropic,
-		model:    "claude-sonnet-5",
-		expires:  time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
-		list: ModelPrice{
-			InputPer1M:       3.00,
-			OutputPer1M:      15.00,
-			CacheReadPer1M:   0.30,
-			CacheCreatePer1M: 3.75,
-		},
-	},
+	// Empty since 2026-09-02: claude-sonnet-5's introductory rate (2.00 /
+	// 10.00 / 0.20 / 2.50, expired 2026-09-01) was the last entry and its card
+	// now carries list price. Keep the slice — the next promo goes here.
 }
 
 func TestIntroductoryRatesHaveNotLapsed(t *testing.T) {

@@ -425,6 +425,7 @@ func (a *Auth) Snapshot() AuthInfo {
 		Disabled:            a.Disabled,
 		QuotaExceededAt:     a.QuotaExceededAt,
 		QuotaResetAt:        a.QuotaResetAt,
+		QuotaUsageLimit:     health.UsageLimit,
 		LastQuotaHit:        a.LastQuotaHit,
 		FilePath:            a.FilePath,
 		BaseURL:             a.BaseURL,
@@ -464,6 +465,10 @@ type AuthInfo struct {
 	Disabled        bool
 	QuotaExceededAt time.Time
 	QuotaResetAt    time.Time
+	// QuotaUsageLimit qualifies a live quota cooldown: true when it is the
+	// window filling, false when it is a throttle pause. See
+	// HealthReport.UsageLimit.
+	QuotaUsageLimit bool
 	// LastQuotaHit outlives the two fields above: see Auth.LastQuotaHit.
 	LastQuotaHit    QuotaHit
 	FilePath        string
@@ -787,10 +792,21 @@ func (a *Auth) MarkUsageLimitReached(resetAt time.Time) {
 	// manual "clear quota" can land a second 429 for the same window minutes
 	// later, and taking that one would shorten the observed run. Same window
 	// == same reset stamp (within a minute of jitter).
+	recorded := false
 	if a.LastQuotaHit.At.IsZero() || !sameQuotaWindow(a.LastQuotaHit.ResetAt, resetAt) {
 		a.LastQuotaHit = QuotaHit{At: now, ResetAt: resetAt}
+		recorded = true
 	}
+	persist := recorded && a.FilePath != ""
 	a.mu.Unlock()
+	// The measurement has to survive a restart — the operator reads it days
+	// later. saveAuth takes its own locks and rewrites the file atomically;
+	// off the caller's path because this runs inside the proxy's error
+	// handling and a disk write does not belong on a request's critical
+	// section. A lost write only costs the number, never a credential.
+	if persist {
+		go func() { _ = saveAuth(a) }()
+	}
 }
 
 // QuotaHit is one account-wide usage-limit rejection: when it landed and when

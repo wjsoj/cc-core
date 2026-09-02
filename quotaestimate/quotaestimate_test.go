@@ -3,6 +3,8 @@ package quotaestimate
 import (
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -431,5 +433,128 @@ func TestHitCacheDoesNotCacheLedgerErrors(t *testing.T) {
 	c.Weekly("a", hit, failing, now)
 	if calls != 2 {
 		t.Fatalf("a failed read must not be cached: %d", calls)
+	}
+}
+
+func TestFromCodexUsageReadsLengthFromThePayload(t *testing.T) {
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	info := &auth.CodexUsageInfo{RateLimit: &auth.CodexUsageRateLimit{
+		// A 7-day primary (ChatGPT retired the 5h one) at 62%, reset stamped.
+		PrimaryWindow: &auth.CodexUsageRateWindow{UsedPercent: 62, LimitWindowSeconds: 604800, ResetAt: now.Add(100 * time.Hour).Unix()},
+		// Secondary with only a relative reset.
+		SecondaryWindow: &auth.CodexUsageRateWindow{UsedPercent: 10, LimitWindowSeconds: 18000, ResetAfterSeconds: 3600},
+	}}
+	ws := FromCodexUsage(info, now)
+	if len(ws) != 2 {
+		t.Fatalf("%+v", ws)
+	}
+	if ws[0].Key != WindowCodexPrimary || ws[0].Length != SevenDayLength || !approx(ws[0].Utilization, 0.62, 1e-12) || !ws[0].ResetsAt.Equal(now.Add(100*time.Hour)) {
+		t.Fatalf("%+v", ws[0])
+	}
+	if ws[1].Key != WindowCodexSecondary || ws[1].Length != FiveHourLength || !ws[1].ResetsAt.Equal(now.Add(time.Hour)) {
+		t.Fatalf("%+v", ws[1])
+	}
+	// No length, no reset → dropped; nil snapshot → nil.
+	info.RateLimit.PrimaryWindow.LimitWindowSeconds = 0
+	info.RateLimit.SecondaryWindow = &auth.CodexUsageRateWindow{UsedPercent: 5, LimitWindowSeconds: 18000}
+	if ws := FromCodexUsage(info, now); len(ws) != 0 {
+		t.Fatalf("%+v", ws)
+	}
+	if FromCodexUsage(nil, now) != nil || FromCodexUsage(&auth.CodexUsageInfo{}, now) != nil {
+		t.Fatal("nil")
+	}
+}
+
+// The production case that motivated Codex support: a Pro account rejected
+// with usage_limit_reached, resets_in_seconds ≈ 4.79d. The 7-day window
+// therefore opened ≈ 2.21d before the hit, and the ledger rows in that span
+// are the whole weekly allotment — whether or not a wham/usage snapshot is
+// on hand.
+func TestForCodexCredentialAnchorsOnUsageLimitHit(t *testing.T) {
+	now := time.Date(2026, 9, 2, 8, 0, 0, 0, time.UTC)
+	hitAt := now.Add(-2 * time.Hour)
+	resetAt := hitAt.Add(413590 * time.Second)
+	hit := auth.QuotaHit{At: hitAt, ResetAt: resetAt}
+
+	// Offline: no snapshot.
+	ests := ForCodexCredential(nil, hit, constantRate(t), now)
+	if len(ests) != 1 || ests[0].Basis != BasisQuotaHit || ests[0].Window != WindowSevenDay {
+		t.Fatalf("%+v", ests)
+	}
+	wantHours := (SevenDayLength - 413590*time.Second).Hours()
+	if !approx(ests[0].ObservedHours, wantHours, 1e-6) || !approx(ests[0].FullWindow.CostUSD, wantHours, 1e-6) {
+		t.Fatalf("observed %v want %v", ests[0].ObservedHours, wantHours)
+	}
+
+	// With the snapshot: the primary window names the same reset and anchors
+	// on the hit; the probe's 100% is not used as a divisor.
+	info := &auth.CodexUsageInfo{RateLimit: &auth.CodexUsageRateLimit{LimitReached: true,
+		PrimaryWindow: &auth.CodexUsageRateWindow{UsedPercent: 100, LimitWindowSeconds: 604800, ResetAt: resetAt.Unix()}}}
+	ests = ForCodexCredential(info, hit, constantRate(t), now)
+	if len(ests) != 1 || ests[0].Window != WindowCodexPrimary || ests[0].Basis != BasisQuotaHit || !ests[0].ObservedTo.Equal(hitAt) {
+		t.Fatalf("%+v", ests)
+	}
+	if ForCodexCredential(nil, auth.QuotaHit{}, constantRate(t), now) != nil {
+		t.Fatal("nothing to say")
+	}
+}
+
+func TestHistoryRecordsOnlySettledHitsAndPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sub", "quota_history.json")
+	h, err := OpenHistory(path, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	mk := func(hitAt time.Time) Estimate {
+		w := Window{Key: WindowSevenDay, Length: SevenDayLength, ResetsAt: hitAt.Add(100 * time.Hour), Utilization: 1}
+		return Project(w, auth.QuotaHit{At: hitAt, ResetAt: w.ResetsAt}, constantRate(t), hitAt.Add(time.Hour))
+	}
+	// A projection is not a measurement.
+	proj := Project(Window{Key: WindowSevenDay, Length: SevenDayLength, ResetsAt: now.Add(100 * time.Hour), Utilization: 0.5}, auth.QuotaHit{}, constantRate(t), now)
+	if ch, err := h.Record("a", proj, now); ch || err != nil {
+		t.Fatalf("%v %v", ch, err)
+	}
+	// Four hits, keep 3, newest first.
+	var hits []time.Time
+	for i := 0; i < 4; i++ {
+		hitAt := now.Add(-time.Duration(30-7*i) * 24 * time.Hour)
+		hits = append(hits, hitAt)
+		if ch, err := h.Record("a", mk(hitAt), now); !ch || err != nil {
+			t.Fatalf("%v %v", ch, err)
+		}
+	}
+	got := h.For("a")
+	if len(got) != 3 || !got[0].HitAt.Equal(hits[3]) || !got[2].HitAt.Equal(hits[1]) {
+		t.Fatalf("%+v", got)
+	}
+	if !approx(got[0].Spend.CostUSD, 68, 1e-9) || !approx(got[0].ObservedHours, 68, 1e-9) {
+		t.Fatalf("%+v", got[0])
+	}
+	// Same window again with identical numbers: no change.
+	if ch, _ := h.Record("a", mk(hits[3]), now); ch {
+		t.Fatal("duplicate window must not rewrite")
+	}
+	// Reload from disk.
+	h2, err := OpenHistory(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h2.For("a"); len(got) != 3 || !got[0].HitAt.Equal(hits[3]) {
+		t.Fatalf("reload: %+v", got)
+	}
+	if err := h2.Forget("a"); err != nil || h2.For("a") != nil {
+		t.Fatal(err)
+	}
+	// Garbage file is an error, not a silent reset.
+	if err := os.WriteFile(path, []byte("{nope"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenHistory(path, 0); err == nil {
+		t.Fatal("malformed history must not be silently discarded")
+	}
+	var nilH *History
+	if ch, err := nilH.Record("a", mk(now), now); ch || err != nil || nilH.For("a") != nil {
+		t.Fatal("nil history is inert")
 	}
 }

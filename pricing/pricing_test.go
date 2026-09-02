@@ -57,14 +57,18 @@ func TestOpusTierCardsAreIdentical(t *testing.T) {
 	}
 }
 
-// TestSonnet5IntroPrice locks the introductory rate. It EXPIRES 2026-08-31 —
-// from 2026-09-01 the expected values become the sonnet-4-6 card
-// (3.00/15.00/0.30/3.75). Update both this test and the catalog together.
-func TestSonnet5IntroPrice(t *testing.T) {
+// TestSonnet5ListPrice pins sonnet-5 at list price. Its introductory rate
+// (2.00/10.00/0.20/2.50) expired 2026-08-31; intro_expiry_test.go caught the
+// lapse on 2026-09-02 and the card moved to the sonnet-4-6 values, which makes
+// the DefaultClaudeOAuthModelMap sonnet fold billing-neutral.
+func TestSonnet5ListPrice(t *testing.T) {
 	cat := NewCatalog(Config{})
-	want := ModelPrice{InputPer1M: 2.00, OutputPer1M: 10.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50}
+	want := ModelPrice{InputPer1M: 3.00, OutputPer1M: 15.00, CacheReadPer1M: 0.30, CacheCreatePer1M: 3.75}
 	if got := cat.Lookup("anthropic", "claude-sonnet-5"); got != want {
-		t.Fatalf("sonnet-5 price=%+v want %+v (intro rate through 2026-08-31)", got, want)
+		t.Fatalf("sonnet-5 price=%+v want list %+v", got, want)
+	}
+	if got := cat.Lookup("anthropic", "claude-sonnet-4-6"); got != want {
+		t.Fatalf("sonnet-4-6 → sonnet-5 fold is no longer billing-neutral: %+v vs %+v", got, want)
 	}
 }
 

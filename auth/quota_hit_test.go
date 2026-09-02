@@ -81,3 +81,38 @@ func TestGenericCooldownIsNotAQuotaHit(t *testing.T) {
 		t.Fatal("a model-scoped limit recorded an account-wide hit")
 	}
 }
+
+// A panel must be able to tell "the window filled" from "we are pausing
+// after a generic 429": both are HealthQuota, only the former is UsageLimit.
+func TestQuotaStateDistinguishesUsageLimitFromThrottlePause(t *testing.T) {
+	a := &Auth{ID: "x", Kind: KindOAuth, Provider: ProviderAnthropic}
+	a.MarkQuotaExceeded(time.Now().Add(30 * time.Second))
+	rep := a.HealthState()
+	if rep.State != HealthQuota || rep.UsageLimit {
+		t.Fatalf("throttle pause: %+v", rep)
+	}
+	if a.Snapshot().QuotaUsageLimit {
+		t.Fatal("snapshot")
+	}
+
+	b := &Auth{ID: "y", Kind: KindOAuth, Provider: ProviderAnthropic}
+	resetAt := time.Now().Add(100 * time.Hour)
+	b.MarkUsageLimitReached(resetAt)
+	if rep := b.HealthState(); rep.State != HealthQuota || !rep.UsageLimit {
+		t.Fatalf("usage limit: %+v", rep)
+	}
+	// Operator clears it, the next request bounces off the same window and
+	// comes back through the generic path with the upstream's reset stamp:
+	// still the usage limit.
+	b.ClearQuota()
+	b.MarkQuotaExceeded(resetAt.Add(10 * time.Second))
+	if rep := b.HealthState(); !rep.UsageLimit {
+		t.Fatalf("same window re-bounce: %+v", rep)
+	}
+	// A generic pause with an unrelated (short) reset is a throttle again.
+	b.ClearQuota()
+	b.MarkQuotaExceeded(time.Now().Add(time.Minute))
+	if rep := b.HealthState(); rep.UsageLimit {
+		t.Fatalf("throttle after a usage limit: %+v", rep)
+	}
+}
