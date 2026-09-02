@@ -80,3 +80,31 @@ func TestParseQuotaHitToleratesGarbage(t *testing.T) {
 		}
 	}
 }
+
+// A hit present in the file but not in memory (backfilled by hand, or the
+// process restarted and never re-read it) must survive saveAuth: the file is
+// the record, memory is only the latest observation.
+func TestSaveAuthKeepsFileHitWhenMemoryHasNone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "c.json")
+	seed := `{"type":"claude","access_token":"sk-ant-oat01-x","refresh_token":"sk-ant-ort01-x","last_quota_hit":{"at":"2026-09-02T07:37:00Z","reset_at":"2026-09-07T02:30:11Z"}}`
+	if err := os.WriteFile(path, []byte(seed), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := parseFile(path, []byte(seed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.LastQuotaHit = QuotaHit{} // simulate a process that never saw it
+	a.SetDisabled(true)
+	if err := saveAuth(a); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	b, err := parseFile(path, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.LastQuotaHit.At.IsZero() || !b.Disabled {
+		t.Fatalf("saveAuth erased the file's record: %+v disabled=%v", b.LastQuotaHit, b.Disabled)
+	}
+}

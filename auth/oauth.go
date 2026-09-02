@@ -557,13 +557,15 @@ func saveAuth(a *Auth) error {
 	// LastQuotaHit is the measurement quotaestimate anchors on ("what was the
 	// last full window worth"); it must outlive the process, or a restart
 	// erases the one number an operator wants to read after the fact.
+	// When memory holds no hit, whatever the file has is kept: it is a
+	// record, and a process that never saw the rejection (restarted since,
+	// or the value was backfilled by hand from the journal) must not erase
+	// it on the next token refresh.
 	if !a.LastQuotaHit.At.IsZero() {
 		raw["last_quota_hit"] = map[string]any{
 			"at":       a.LastQuotaHit.At.UTC().Format(time.RFC3339Nano),
 			"reset_at": a.LastQuotaHit.ResetAt.UTC().Format(time.RFC3339Nano),
 		}
-	} else {
-		delete(raw, "last_quota_hit")
 	}
 	if a.StripThinking {
 		raw["strip_thinking"] = true

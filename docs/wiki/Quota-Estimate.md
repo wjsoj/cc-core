@@ -63,7 +63,7 @@ fork 的 codex-usage 接口
 
 - **hit 必须命名同一个窗口才能当锚**（`hitAnchors`）。7d 窗口期间发生的一次 5h 拒绝，测的是 5h 窗口而不是 7d；上一周的拒绝哪怕是最近一次，也不是本周的测量。判断依据是 reset 戳是否一致（±5 分钟吸收 header 秒级取整 vs body 原始戳），不是"最近一次"。
 - **同一窗口只取第一次拒绝**（`auth.MarkUsageLimitReached` + `sameQuotaWindow`）。凭据被停后一次误入的在途请求、或运维点了"clear quota"后下一次弹回，都会给同一个窗口打第二个 429；取后者会把观测跨度缩短。同一窗口 == reset 戳相差 ≤1 分钟。
-- **`LastQuotaHit` 不进 routing，但会落盘**。`MarkUsageLimitReached` 记录后异步 `saveAuth`，写进凭据文件的 `last_quota_hit`（append-only 字段，老文件读作"从未满额"，坏值忽略），重启后 `parseFile` 读回。它是测量而非冷却：读回的凭据**不会**因此被停用。这个数是运维事后才来看的，所以进程内存不够。
+- **`LastQuotaHit` 不进 routing，但会落盘**。`MarkUsageLimitReached` 记录后异步 `saveAuth`，写进凭据文件的 `last_quota_hit`（append-only 字段，老文件读作"从未满额"，坏值忽略），重启后 `parseFile` 读回；内存里没有 hit 时 `saveAuth` **保留**文件里已有的值（记录不因进程没见过而被 token 刷新抹掉，也允许从 journal 手工回填）。它是测量而非冷却：读回的凭据**不会**因此被停用。这个数是运维事后才来看的，所以进程内存不够。
 
 ## 估算不是什么
 
