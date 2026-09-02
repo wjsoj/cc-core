@@ -35,6 +35,7 @@
 |---|---|
 | [requestlog —— 请求账本与 SQLite 索引](Requestlog) | Record 结构、增量 ingest 自愈、`agg_cube` 与三大陷阱 |
 | [计费、配额与网关闸门](Billing) | `usage` / `pricing` / `ratelimit` / `clienttoken` / `clientguard` / `advisor` |
+| [quotaestimate —— 订阅窗口额度反推](Quota-Estimate) | 从 `resets_at` 倒推窗口起点、用账本消费除以 utilization 得到整窗额度；被拒绝那一刻是无需放大的 100% 测量；`Auth.LastQuotaHit` |
 
 ### 传输层
 | 页面 | 内容 |
@@ -58,6 +59,7 @@
 | 别把凭据池状态回给客户端（含 Codex 的 101 与流内帧） | [downstream](Downstream) |
 | 改健康阈值 / 定价权重 | [约定与维护指南](Conventions) → 行为常量纪律（**必须配测试**） |
 | 排查管理面板统计慢 / 数字不对 | [requestlog](Requestlog) → `agg_cube` 与三大陷阱 |
+| 想知道一个订阅账号一周值多少钱 / 面板上的"周额度估算"怎么来的 | [quotaestimate](Quota-Estimate) → 三个不能省的判断 |
 | 发一个新版本给两个 fork | [发布流程](Release) |
 | 加一个新的 OAuth 凭据文件字段 | [auth 登录](Auth-Login-Codex) → 凭据文件格式（append-only） |
 | 中途切号报 `signature in thinking` | [传输层](Transports) → thinkingsig |

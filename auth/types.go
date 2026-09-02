@@ -159,6 +159,16 @@ type Auth struct {
 	QuotaExceededAt time.Time // zero = not flagged
 	QuotaResetAt    time.Time // when to try again (may be zero = manual reset)
 
+	// LastQuotaHit is the most recent account-wide usage-limit rejection
+	// (MarkUsageLimitReached), kept after the cooldown above expires or is
+	// cleared. QuotaExceededAt/QuotaResetAt answer "is it parked right now"
+	// and are wiped the moment the window reopens; this answers "when did the
+	// window last fill up, and how long was it", which is what an allotment
+	// estimate needs (quotaestimate). Never consulted by routing, never
+	// persisted — a restart forgets it, and the live-probe path in
+	// quotaestimate does not depend on it. Zero At = never hit.
+	LastQuotaHit QuotaHit
+
 	// ModelRateLimits scopes a cooldown to a subset of models instead of the
 	// whole credential. Key is a family scope (e.g. "anthropic:fable"), value
 	// is when that scope's cooldown expires. Unlike QuotaExceededAt this NEVER
@@ -415,6 +425,7 @@ func (a *Auth) Snapshot() AuthInfo {
 		Disabled:            a.Disabled,
 		QuotaExceededAt:     a.QuotaExceededAt,
 		QuotaResetAt:        a.QuotaResetAt,
+		LastQuotaHit:        a.LastQuotaHit,
 		FilePath:            a.FilePath,
 		BaseURL:             a.BaseURL,
 		Group:               a.Group,
@@ -453,6 +464,8 @@ type AuthInfo struct {
 	Disabled        bool
 	QuotaExceededAt time.Time
 	QuotaResetAt    time.Time
+	// LastQuotaHit outlives the two fields above: see Auth.LastQuotaHit.
+	LastQuotaHit    QuotaHit
 	FilePath        string
 	BaseURL         string
 	Group           string
@@ -766,9 +779,43 @@ func (a *Auth) MarkAuthRejection(reason string) int {
 // hard-failure for an account that's actually fine.
 func (a *Auth) MarkUsageLimitReached(resetAt time.Time) {
 	a.mu.Lock()
-	a.QuotaExceededAt = time.Now()
+	now := time.Now()
+	a.QuotaExceededAt = now
 	a.QuotaResetAt = resetAt
+	// Only the FIRST rejection of a window is the measurement: the pool keeps
+	// the credential parked until resetAt, but a stray in-flight request or a
+	// manual "clear quota" can land a second 429 for the same window minutes
+	// later, and taking that one would shorten the observed run. Same window
+	// == same reset stamp (within a minute of jitter).
+	if a.LastQuotaHit.At.IsZero() || !sameQuotaWindow(a.LastQuotaHit.ResetAt, resetAt) {
+		a.LastQuotaHit = QuotaHit{At: now, ResetAt: resetAt}
+	}
 	a.mu.Unlock()
+}
+
+// QuotaHit is one account-wide usage-limit rejection: when it landed and when
+// the upstream said the window reopens. Both stamps come from the upstream's
+// own clock (ResetAt) and ours (At); the difference is how much of the window
+// was still ahead when it filled, which is what lets a consumer work back to
+// the window's start without knowing when the account first spoke that week.
+type QuotaHit struct {
+	At      time.Time
+	ResetAt time.Time
+}
+
+// sameQuotaWindow reports whether two reset stamps name the same upstream
+// window. Anthropic's reset is the window's fixed end and is stable across
+// rejections of one window; a minute of slack absorbs clock rounding on the
+// header (epoch seconds) versus the body ("usage limit reached|<ts>").
+func sameQuotaWindow(a, b time.Time) bool {
+	if a.IsZero() || b.IsZero() {
+		return false
+	}
+	d := a.Sub(b)
+	if d < 0 {
+		d = -d
+	}
+	return d <= time.Minute
 }
 
 // ModelScopeAnthropicFable is the model-family scope for Anthropic's fable
