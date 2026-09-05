@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.8.102 — a ChatGPT subscription pays no Fast premium
+
+`ResolveOpenAI` billed a ChatGPT-subscription turn at the Fast (né priority)
+2x rate whenever the client had asked for it, on the reasoning that Codex OAuth
+reports `default` even for a Fast turn so the observation is not authoritative.
+
+Seven hours of production disagreed with both halves of that. 1567 subscription
+turns took the 2x branch: the upstream reported `default` 1565 times and `auto`
+70 times and `priority` zero times, and inside a single client token the
+priority turns ran at 19.06 tok/s against 22.79 for the same model with no tier
+— slower, not faster. $197 of upstream cost was invented, and because
+`billed_usd` derives from it, ~$10 of that reached customer wallets.
+
+The cause is not the observation, it is the price model. Fast and Flex are
+OpenAI **API price-page** tiers: an API key can buy faster service at 2x or
+cheaper at 0.5x. A ChatGPT Plus/Pro plan buys neither — the plan price is flat,
+priority routing is already part of it, and the upstream charges us the same
+either way. So on the `CodexOAuth` path the tier now never moves the bill in
+either direction. `Requested` and `Observed` are still reported, because the
+request log and the routing hint both read them.
+
+The API-key path is unchanged: requested tier bills, an observation may only
+lower it.
+
 ## v0.8.101 — gpt-6-astra, the Codex 0.153.4 fingerprint, and Fast/Priority billing
 
 Two changes landed together because neither is safe alone: the model is useless

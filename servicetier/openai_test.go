@@ -39,16 +39,45 @@ func TestResolveOpenAI(t *testing.T) {
 		want                string
 		down                bool
 	}{
-		{"fast", "default", true, "priority", false}, {"fast", "default", false, "default", true},
-		{"priority", "flex", true, "flex", true}, {"priority", "", false, "priority", false},
-		{"priority", "new-tier", false, "priority", false}, {"", "priority", false, "", false},
-		{"default", "flex", false, "flex", true}, {"flex", "priority", false, "flex", false},
-		{"auto", "priority", true, "auto", false},
+		// API-key path: the requested tier bills, and an observation may only
+		// lower it.
+		{"fast", "default", false, "default", true},
+		{"priority", "", false, "priority", false},
+		{"priority", "new-tier", false, "priority", false},
+		{"", "priority", false, "", false},
+		{"default", "flex", false, "flex", true},
+		{"flex", "priority", false, "flex", false},
+
+		// Subscription path: no tier ever bills, whatever was asked for and
+		// whatever came back. See ResolveOpenAI's comment — Fast and Flex are
+		// API price-page tiers and a ChatGPT plan buys neither.
+		{"fast", "default", true, "", false},
+		{"priority", "flex", true, "", false},
+		{"auto", "priority", true, "", false},
+		{"flex", "flex", true, "", false},
+		{"", "", true, "", false},
 	} {
 		got := ResolveOpenAI(tc.requested, tc.observed, tc.oauth)
 		if got.Billing != tc.want || got.Downgraded != tc.down {
 			t.Errorf("%+v => %+v", tc, got)
 		}
+	}
+}
+
+// The subscription path must still REPORT what was asked for and what came
+// back — the request log and the routing hint both read them. Only the bill is
+// unaffected, so a regression that silently blanked the whole Resolution would
+// otherwise look identical to this fix.
+func TestResolveOpenAISubscriptionStillReportsTiers(t *testing.T) {
+	got := ResolveOpenAI("fast", "default", true)
+	if got.Requested != Priority {
+		t.Errorf("Requested = %q, want %q (fast normalizes to priority)", got.Requested, Priority)
+	}
+	if got.Observed != "default" {
+		t.Errorf("Observed = %q, want \"default\"", got.Observed)
+	}
+	if got.Billing != "" {
+		t.Errorf("Billing = %q, want empty — a subscription pays no tier premium", got.Billing)
 	}
 }
 

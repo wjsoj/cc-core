@@ -49,9 +49,17 @@ func TestFastBillingResolutionAndOverrides(t *testing.T) {
 		opts CostOptions
 		want float64
 	}{
-		{CostOptions{ServiceTier: "priority", ResponseServiceTier: "default", CodexOAuth: true}, 30},
+		// CodexOAuth is a ChatGPT subscription: the plan price is flat, so no
+		// tier multiplier applies in either direction. Both of these used to
+		// bill 30 and 5 respectively, which invented an upstream cost the
+		// subscription never incurred.
+		{CostOptions{ServiceTier: "priority", ResponseServiceTier: "default", CodexOAuth: true}, 10},
+		{CostOptions{ServiceTier: "priority", ResponseServiceTier: "flex", CodexOAuth: true}, 10},
+		// API key: the configured Fast multiplier applies, and an observed
+		// downgrade still lowers the bill.
 		{CostOptions{ServiceTier: "priority", ResponseServiceTier: "default"}, 10},
-		{CostOptions{ServiceTier: "priority", ResponseServiceTier: "flex", CodexOAuth: true}, 5},
+		{CostOptions{ServiceTier: "priority"}, 30},
+		{CostOptions{ServiceTier: "priority", ResponseServiceTier: "flex"}, 5},
 		{CostOptions{ResponseServiceTier: "priority"}, 10},
 	} {
 		if got := cat.CostWithOptions("openai", "gpt-5.5-high", counts, tc.opts); got.CostUSD != tc.want {
