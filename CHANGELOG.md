@@ -1,5 +1,68 @@
 # Changelog
 
+## v0.8.101 — gpt-6-astra, the Codex 0.153.4 fingerprint, and Fast/Priority billing
+
+Two changes landed together because neither is safe alone: the model is useless
+without a price, and the price is unreachable without the version bump.
+
+**gpt-6-astra.** The model appeared in the upstream Codex catalog with no card
+here, so it billed at `builtInProviderDefaults[openai]` — 12.5% of published
+input, 20% of output, and nothing at all for cache writes. Its card is now the
+published rate ($10.00 in / $1.00 cached / $12.50 cache-write / $50.00 out,
+developers.openai.com/api/docs/pricing, verified 2026-09-05). No sol-style
+subscription markup: sol departs from the page because its page price is an
+API-only promotion, and astra has none. No bare `gpt-6` alias, because the
+prefix fallback would then capture every future `gpt-6-*` SKU at flagship rates.
+
+astra also joins `auth.CodexModelCatalog` on all four plans — justified by the
+capture's per-model `available_in_plans`, not by analogy with gpt-5.5 — and that
+file gained its first test.
+
+Two silent mis-classifications went with it. `codexResponsesLiteModel` guessed
+Responses-Lite from a `gpt-5.6` prefix, but the backend declares it per model
+(`use_responses_lite`), and astra is Lite: every astra turn without client tools
+would have had the `image_generation` built-in injected and 400ed. It is an
+explicit set now. `apicompat.isReasoningModel` likewise stopped at `gpt-5`, so a
+chat-completions client could forward `temperature` into a rejection.
+
+**Codex fingerprint 0.147.0 → 0.153.4**, from a live capture in
+`crack/codexv0.153.4/` (the CLI profile; the Desktop archive still governs
+Desktop). Version, User-Agent — both version segments *and* `Konsole/260401` →
+`260800` — and `x-codex-beta-features`, which converged with Desktop's
+`remote_compaction_v2`.
+
+`DefaultCodexProfile()` moved from Desktop to codex-tui. astra's
+`minimal_client_version` is `0.153.0` and Desktop self-reports `0.147.0`, so a
+Desktop identity cannot reach the flagship; Desktop cannot be bumped from a CLI
+capture, because its version, build number and terminal segment are three values
+the backend cross-validates. Re-visit when a Desktop capture ≥ 0.153.0 exists.
+
+`x-codex-routing-hint` is sent on the WebSocket handshake again. It was removed
+on the strength of the 0.135.0 and 0.147.0 captures; all three upgrades in the
+0.153.4 capture carry it, between `x-codex-turn-metadata` and
+`sec-websocket-extensions`. It is **not** defaulted to `tier=priority` despite
+every captured handshake showing that value — claiming a tier the request did
+not ask for is served as an upgrade and billed as standard.
+
+`x-codex-turn-metadata` grew from 8 fields to 15 (17 on a subagent connection).
+Three are not strings, so `Encode` needed a typed writer; `window_id` re-anchors
+on the thread rather than the session, which only a capture separating the two
+could show; `context_window_id` is derived to share the thread id's first four
+groups, as the real client's does.
+
+`codexws/capture_parity_test.go` now checks the synthesized handshake against
+the capture *file* rather than against constants copied out of it — the check
+that would have caught the routing-hint claim two releases earlier.
+
+**OpenAI Fast/Priority billing.** Normalize `fast` to `priority` across Chat
+translation, Codex HTTP and WS. `pricing.CostWithOptions` applies the
+service-tier rate before the host applies its customer multiplier, with
+credential-aware response downgrades. Standard `Cost` remains compatible.
+Request logs retain requested, observed and billed tiers in JSONL and SQLite.
+astra needs no entry in `openAIFastRatios`: its published Fast band is exactly
+2× standard, which is the generic fallback.
+
+
 ## v0.8.97 — codex: a session id the upstream prompt cache can hold on to
 
 The HTTP Codex path minted a fresh `session-id` per **request**. That header is

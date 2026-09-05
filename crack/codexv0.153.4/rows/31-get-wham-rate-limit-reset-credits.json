@@ -1,0 +1,69 @@
+{
+  "_note": "GET /backend-api/wham/rate-limit-reset-credits — credit reset schedule.",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "accept": "*/*",
+    "cookie": "<COOKIES_REDACTED>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "user-agent",
+    "authorization",
+    "chatgpt-account-id",
+    "accept",
+    "cookie",
+    "host",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:05 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "761",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "Set-Cookie": "<REDACTED>",
+    "cf-cache-status": "DYNAMIC",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "credits": [
+      {
+        "id": "RateLimitResetCredit_23f97e22ec548191a4b5b7b83edd9c7c",
+        "reset_type": "codex_rate_limits",
+        "is_supported_by_plan": true,
+        "status": "available",
+        "granted_at": "2026-09-04T05:41:07.316780Z",
+        "expires_at": "2026-10-04T05:41:07.316780Z",
+        "redeem_started_at": null,
+        "redeemed_at": null,
+        "profile_image_url": "https://openaiassets.blob.core.windows.net/$web/codex/codex-icon-200.png",
+        "profile_user_id": "Codex Team",
+        "title": "Full reset",
+        "description": "Thanks for using Codex! You've been granted one free rate limit reset."
+      }
+    ],
+    "available_count": 1,
+    "total_earned_count": 0,
+    "immediate_reset_purchase_eligible": false,
+    "history_enabled": false
+  }
+}

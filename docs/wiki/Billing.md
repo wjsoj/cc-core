@@ -36,6 +36,63 @@ flowchart TD
 
 ---
 
+## OpenAI Fast / Priority
+
+宿主在完成模型映射和档位策略后，对**实际发往上游的请求**调用
+`servicetier.NormalizeRequest`，将 `fast` 统一为 `priority`。
+HTTP 用 `servicetier.ObserveBody` 在响应清洗前采集档位；WS 用
+`servicetier.TurnTracker` 保存每轮的模型、请求档位和上游回报，随用量一起入结算队列。
+每轮省略 `service_tier` 都恢复普通价，不继承上一轮 Fast。
+
+```go
+priced := catalog.CostWithOptions("openai", model, counts, pricing.CostOptions{
+    ServiceTier: outboundTier,
+    ResponseServiceTier: observedTier,
+    CodexOAuth: isOAuth,
+})
+// 把 priced.CostUSD 交给宿主原有的钱包扣费接口，再应用一次用户/分组倍率。
+```
+
+| 模型 | Fast / 普通价 |
+| --- | --- |
+| GPT-5.5（含已登记日期版本） | 2.5 |
+| GPT-5.6、GPT-6-Astra 及无专用比例的模型 | 2 |
+| GPT-5-mini、GPT-5.1-codex-mini | 1.8 |
+| GPT-4.1、GPT-4.1-mini | 1.75 |
+| GPT-4o | 1.7 |
+| GPT-4o-mini | 5/3 |
+
+Flex 默认 0.5 倍。倍率同时作用于输入、输出、缓存读写。
+这是网关计价规则，不代表每个模型/账号都支持上游 Priority。
+API Key 的明确回报允许降低计费档位；上游未回报、未知或回报更贵的档位不会加价。
+Codex OAuth 常回报 `default`，该值不撤销请求中的 Priority；明确回报 `flex` 则按较低价结算。
+普通请求即使上游回报 Priority，也不自动加价。
+
+配置支持按模型覆盖倍率，Fast 必须大于 1；0、负数、非有限值和不大于 1 的 Fast
+倍率均回退到默认值。`models` 中的自定义普通价仍是倍率计算基数。
+
+```yaml
+pricing:
+  service_tiers:
+    openai/gpt-5.5:
+      fast_multiplier: 2.5
+      flex_multiplier: 0.5
+    openai/gpt-6-astra:
+      fast_multiplier: 2
+```
+
+GPT-6-Astra 普通卡来自 Sub2API 使用的
+[上游价格仓库提交 a342c7f](https://github.com/Wei-Shaw/model-price-repo/commit/a342c7f206b190c13e6f5728447f491d98b27aa7)：
+每百万 token 输入 $10、输出 $50、缓存读取 $1、缓存写入 $12.5。
+本次增加 Fast 档位计价，不扩展上下文长度附加价。
+`Catalog.Cost` 继续只算普通价；新宿主入口必须调用 `CostWithOptions`。
+
+请求日志新增 `requested_service_tier`、`upstream_service_tier`、`service_tier`，
+最后一个是结算档位。SQLite 在打开时自动迁移，历史记录默认空串；JSONL 导出/导入保留这些字段。
+空档位表示普通计价。Compact 沿用原字段白名单，若发送前删除了档位，则按普通请求处理。
+
+---
+
 ## usage.Counts 与权重
 
 `Counts` 全字段（`usage/usage.go:66-91`）：

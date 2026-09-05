@@ -1,0 +1,96 @@
+{
+  "_note": "POST /backend-api/ps/mcp — the plugin-store MCP channel the CLI opens at start (initialize, notifications/initialized, tools/list). The tools/list result is third-party plugin schemas, not fingerprint, so its long strings are elided.",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/ps/mcp",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "user-agent": "codex-mcp-client/0.153.4",
+    "x-openai-product-sku": "codex",
+    "originator": "codex-tui",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "accept": "text/event-stream, application/json",
+    "content-type": "application/json",
+    "cookie": "<COOKIES_REDACTED>",
+    "host": "chatgpt.com",
+    "content-length": "217",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "user-agent",
+    "x-openai-product-sku",
+    "originator",
+    "authorization",
+    "chatgpt-account-id",
+    "accept",
+    "content-type",
+    "cookie",
+    "host",
+    "content-length",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-06-18",
+      "capabilities": {
+        "elicitation": {
+          "form": {},
+          "url": {}
+        }
+      },
+      "clientInfo": {
+        "name": "codex-mcp-client",
+        "title": "Codex",
+        "version": "0.153.4"
+      }
+    }
+  },
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:05 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "269",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "result": {
+      "protocolVersion": "2025-06-18",
+      "capabilities": {
+        "resources": {
+          "subscribe": false,
+          "listChanged": false
+        },
+        "tools": {
+          "listChanged": false
+        },
+        "extensions": {
+          "io.modelcontextprotocol/ui": {}
+        }
+      },
+      "serverInfo": {
+        "name": "plugin-runtime",
+        "version": "0.1.0"
+      }
+    }
+  }
+}

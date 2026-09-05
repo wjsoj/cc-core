@@ -1,0 +1,90 @@
+{
+  "_note": "POST /backend-api/codex/analytics-events/events — the CLI's own telemetry batch. Kept for the header set and the event envelope shape.",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "content-type": "application/json",
+    "accept": "*/*",
+    "originator": "codex-tui",
+    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "cookie": "<COOKIES_REDACTED>",
+    "host": "chatgpt.com",
+    "content-length": "658",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "authorization",
+    "chatgpt-account-id",
+    "content-type",
+    "accept",
+    "originator",
+    "user-agent",
+    "cookie",
+    "host",
+    "content-length",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": {
+    "events": [
+      {
+        "event_type": "codex_thread_initialized",
+        "event_params": {
+          "thread_id": "<UUID>",
+          "session_id": "<UUID>",
+          "app_server_client": {
+            "product_client_id": "codex-tui",
+            "client_name": "codex-tui",
+            "client_version": "0.153.4",
+            "rpc_transport": "in_process",
+            "experimental_api_enabled": true
+          },
+          "runtime": {
+            "codex_rs_version": "0.153.4",
+            "runtime_os": "linux",
+            "runtime_os_version": "Rolling Release",
+            "runtime_arch": "x86_64"
+          },
+          "model": "gpt-5.6-sol",
+          "ephemeral": false,
+          "thread_source": "user",
+          "initialization_mode": "new",
+          "subagent_source": null,
+          "parent_thread_id": null,
+          "forked_from_thread_id": null,
+          "created_at": 1788579784
+        }
+      }
+    ]
+  },
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:05 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "88",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "Set-Cookie": "<REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "status": "ok",
+    "total_events": 1,
+    "accepted_events": 1,
+    "skipped_events": 0
+  }
+}

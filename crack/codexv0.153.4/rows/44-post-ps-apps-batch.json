@@ -1,0 +1,133 @@
+{
+  "_note": "POST /backend-api/ps/apps/batch — plugin-store sidecar.",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/ps/apps/batch",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "originator": "codex-tui",
+    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "oai-product-sku": "codex",
+    "content-type": "application/json",
+    "accept": "*/*",
+    "cookie": "<COOKIES_REDACTED>",
+    "host": "chatgpt.com",
+    "content-length": "221",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "originator",
+    "user-agent",
+    "authorization",
+    "chatgpt-account-id",
+    "oai-product-sku",
+    "content-type",
+    "accept",
+    "cookie",
+    "host",
+    "content-length",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": {
+    "app_ids": [
+      "connector_20205bf7d4e99a89d7154bb849718324",
+      "connector_openai_codex_document_control",
+      "connector_openai_hotline",
+      "connector_openai_plugin_management",
+      "connector_openai_safety_settings"
+    ],
+    "include_tools": false
+  },
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:05 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "1911",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "Set-Cookie": "<REDACTED>",
+    "cf-cache-status": "DYNAMIC",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "apps": [
+      {
+        "id": "connector_20205bf7d4e99a89d7154bb849718324",
+        "name": "Sites",
+        "description": "Build and deploy websites with Sites.",
+        "icon_url": "https://chatgpt.com/images/ecosystem/apps/appgarden/icon.png",
+        "icon_dark_url": "https://chatgpt.com/images/ecosystem/apps/appgarden/icon.png",
+        "distribution_channel": "ECOSYSTEM_DIRECTORY",
+        "status": "ENABLED",
+        "supported_auth_types": [],
+        "requires_link_params": false,
+        "developer": "OpenAI",
+        "tools": null
+      },
+      {
+        "id": "connector_openai_codex_document_control",
+        "name": "Codex Document Control",
+        "description": "Discover and control connected document sessions from Codex.",
+        "icon_url": null,
+        "icon_dark_url": null,
+        "distribution_channel": "ECOSYSTEM_DIRECTORY",
+        "status": "ENABLED",
+        "supported_auth_types": [],
+        "requires_link_params": false,
+        "developer": "OpenAI",
+        "tools": null
+      },
+      {
+        "id": "connector_openai_hotline",
+        "name": "Hotline",
+        "description": "Look up local helpline information for the user based on country inferred from the conversation. You must use this tool before providing a suicide or self-harm … <elided, 201 chars total>",
+        "icon_url": null,
+        "icon_dark_url": null,
+        "distribution_channel": "ECOSYSTEM_DIRECTORY",
+        "status": "ENABLED",
+        "supported_auth_types": [],
+        "requires_link_params": false,
+        "developer": "OpenAI",
+        "tools": null
+      },
+      {
+        "id": "connector_openai_plugin_management",
+        "name": "Plugin Management",
+        "description": "Manage plugins in ChatGPT.",
+        "icon_url": null,
+        "icon_dark_url": null,
+        "distribution_channel": "ECOSYSTEM_DIRECTORY",
+        "status": "ENABLED",
+        "supported_auth_types": [],
+        "requires_link_params": false,
+        "developer": "OpenAI",
+        "tools": null
+      },
+      {
+        "id": "connector_openai_safety_settings",
+        "name": "Safety Settings",
+        "description": "Read Parental Controls and Trusted Contact settings and approve parental-control changes.",
+        "icon_url": null,
+        "icon_dark_url": null,
+        "distribution_channel": "ECOSYSTEM_DIRECTORY",
+        "status": "ENABLED",
+        "supported_auth_types": [],
+        "requires_link_params": false,
+        "developer": "OpenAI",
+        "tools": null
+      }
+    ]
+  }
+}

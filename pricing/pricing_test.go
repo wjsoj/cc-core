@@ -302,12 +302,17 @@ func TestCacheCreate1hConfigurable(t *testing.T) {
 // pool. See the card's comment in pricing.go. Its expected values below are
 // therefore the plan rate, not the published API rate — if you are updating
 // this table from the page, do not "fix" them.
+//
+// gpt-6-astra is NOT such a departure. It is on the page at $10/$1/$12.50/$50
+// (verified 2026-09-05) with no promotion attached, so it takes those numbers
+// straight. Do not apply the sol markup to it by analogy.
 func TestOpenAICatalogMatchesPublishedRates(t *testing.T) {
 	cat := NewCatalog(Config{})
 	for _, tc := range []struct {
 		model string
 		want  ModelPrice
 	}{
+		{"gpt-6-astra", ModelPrice{InputPer1M: 10.00, OutputPer1M: 50.00, CacheReadPer1M: 1.00, CacheCreatePer1M: 12.50}},
 		{"gpt-5.6", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}},
 		{"gpt-5.6-sol", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}},
 		{"gpt-5.6-terra", ModelPrice{InputPer1M: 2.00, OutputPer1M: 12.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50}},
@@ -404,6 +409,7 @@ func TestOpenAISKUsDoNotInheritAShorterCard(t *testing.T) {
 func TestOpenAIDatedVariantsStillResolve(t *testing.T) {
 	cat := NewCatalog(Config{})
 	for _, tc := range []struct{ dated, base string }{
+		{"gpt-6-astra-2026-09-01", "gpt-6-astra"},
 		{"gpt-5.6-luna-2026-08-01", "gpt-5.6-luna"},
 		{"gpt-5.6-sol-2026-08-01", "gpt-5.6-sol"},
 		{"gpt-5.4-mini-2026-01-01", "gpt-5.4-mini"},

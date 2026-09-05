@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/wjsoj/cc-core/servicetier"
 )
 
 // The codex-tui (Rust terminal client) fingerprint, pinned to 0.147.0.
@@ -50,20 +52,34 @@ import (
 // holds only ids we legitimately own. They are still NOT set on the HTTP path,
 // where no capture shows them.
 //
+// The CLI constants below are pinned to a LIVE capture again as of 0.153.4
+// (crack/codexv0.153.4/, 2026-09-05) rather than to a source reading — 0.147.0
+// was bumped from the codex-rs tag because no CLI capture existed at the time.
+// Note the User-Agent's terminal segment moved too (Konsole/260401 →
+// Konsole/260800): a version bump is never a one-line edit here.
+//
+// This version floor is now load-bearing rather than cosmetic. The 0.153.4
+// model catalog gives gpt-6-astra minimal_client_version "0.153.0", so any
+// profile self-reporting below that cannot be routed to the current flagship —
+// which is why DefaultCodexProfile returns the CLI profile and not Desktop
+// (see mimicry/codex_identity.go).
+//
 // Bumping the version target requires re-verifying against real Codex traffic
 // or the codex-rs source at that tag; CodexCLIVersion must match the version
 // baked into CodexCLIUserAgent.
 const (
-	CodexCLIVersion   = "0.147.0"
-	CodexCLIUserAgent = "codex-tui/0.147.0 (Arch Linux Rolling Release; x86_64) Konsole/260401 (codex-tui; 0.147.0)"
+	CodexCLIVersion   = "0.153.4"
+	CodexCLIUserAgent = "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)"
 	CodexOriginator   = "codex-tui"
 
-	// CodexCLIBetaFeatures is the x-codex-beta-features value the TUI sent at
-	// 0.135.0 (crack/codexv0.135.0/rows/01). It has NOT been re-verified at
-	// 0.147.0 — the Desktop client at that version sends a different value
-	// (mimicry.CodexDesktopBetaFeatures), so this one is stale evidence and
-	// only applies to the CLI profile.
-	CodexCLIBetaFeatures = "terminal_resize_reflow"
+	// CodexCLIBetaFeatures is the x-codex-beta-features value the TUI sends.
+	// Re-verified at 0.153.4 against every handshake in
+	// crack/codexv0.153.4/rows/10-12: the TUI now sends the same value the
+	// Desktop client sent at 0.147.0, i.e. the two profiles' beta-features
+	// have CONVERGED. It was "terminal_resize_reflow" at 0.135.0, so this
+	// header does drift between releases and is not derivable — re-capture it
+	// on every bump rather than carrying it forward.
+	CodexCLIBetaFeatures = "remote_compaction_v2"
 
 	// CodexSessionIDHeader is the session id header name. It is spelled with a
 	// HYPHEN. cc-core previously sent "Session_id" — an underscore, which Go's
@@ -84,14 +100,15 @@ const (
 	// "Model not found gpt-5.6-luna-…" while the official CLI succeeds on the
 	// same account (openai/codex#31967).
 	//
-	// SCOPE — HTTP path only. This header used to be set on the WebSocket
-	// handshake too, on the strength of a reading of build_websocket_headers.
-	// No capture supports that: neither the 0.135.0 CLI upgrade nor the 0.147.0
-	// Desktop upgrade carries it (both send 18 headers, and the hint is not one
-	// of them), and CLIProxyAPI does not send it anywhere. codexws stopped
-	// setting it. The HTTP-path use stands because the source reading is
-	// uncontradicted there — we simply have no capture of a Codex client using
-	// the HTTP path at all, since both captured clients use the WebSocket.
+	// SCOPE — both paths. This header was removed from the WebSocket handshake
+	// once, because neither the 0.135.0 CLI capture nor the 0.147.0 Desktop
+	// capture carried it (both sent 18 headers and the hint was not among
+	// them). The 0.153.4 CLI capture falsifies that: all three upgrades in
+	// crack/codexv0.153.4/rows/10-12 carry it, positioned immediately after
+	// x-codex-turn-metadata and before sec-websocket-extensions, in the same
+	// "model={slug};tier={tier}" format the HTTP path uses. It is sent on both
+	// paths again. Do not re-derive its absence from the older captures — they
+	// are older, not contradictory.
 	CodexRoutingHintHeader = "x-codex-routing-hint"
 )
 
@@ -123,7 +140,7 @@ func CodexRoutingHint(model, serviceTier string) string {
 		return ""
 	}
 	hint := "model=" + model
-	switch strings.ToLower(strings.TrimSpace(serviceTier)) {
+	switch servicetier.Normalize(serviceTier) {
 	case CodexServiceTierPriority:
 		hint += ";tier=" + CodexServiceTierPriority
 	case CodexServiceTierFlex:
@@ -145,7 +162,7 @@ func CodexModelAndTier(body []byte) (model, serviceTier string) {
 	if json.Unmarshal(body, &b) != nil {
 		return "", ""
 	}
-	return b.Model, b.ServiceTier
+	return b.Model, servicetier.Normalize(b.ServiceTier)
 }
 
 // validHeaderValue reports whether s is safe to use as an HTTP header value:

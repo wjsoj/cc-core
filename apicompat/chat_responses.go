@@ -29,6 +29,8 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+
+	"github.com/wjsoj/cc-core/servicetier"
 )
 
 // minMaxOutputTokens is the floor applied when a Chat Completions max_tokens is
@@ -70,9 +72,14 @@ func ChatCompletionsToResponses(body []byte) ([]byte, error) {
 	if model != "" {
 		out["model"] = model
 	}
-	for _, k := range []string{"parallel_tool_calls", "previous_response_id", "metadata", "service_tier"} {
+	for _, k := range []string{"parallel_tool_calls", "previous_response_id", "metadata"} {
 		if v, ok := raw[k]; ok {
 			out[k] = v
+		}
+	}
+	if st, ok := raw["service_tier"].(string); ok {
+		if st = servicetier.Normalize(st); st != "" {
+			out["service_tier"] = st
 		}
 	}
 	// Reasoning models reject sampling parameters on Responses
@@ -132,9 +139,13 @@ func ChatCompletionsToResponses(body []byte) ([]byte, error) {
 }
 
 // isReasoningModel reports whether the model rejects sampling parameters on the
-// Responses API. The whole gpt-5 line is reasoning-only.
+// Responses API. The whole gpt-5 line is reasoning-only, and so is gpt-6:
+// gpt-6-astra ships supported_reasoning_levels low→ultra with a
+// default_reasoning_level of medium (crack/codexv0.153.4/rows/01), so a
+// chat-completions client that sets temperature must have it dropped here
+// rather than forwarded into a 400.
 func isReasoningModel(model string) bool {
-	return strings.HasPrefix(model, "gpt-5")
+	return strings.HasPrefix(model, "gpt-5") || strings.HasPrefix(model, "gpt-6")
 }
 
 // maxOutputTokens resolves the Chat Completions output cap onto Responses'

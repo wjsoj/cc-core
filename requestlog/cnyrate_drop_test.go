@@ -41,6 +41,9 @@ func TestDroppingTheRateKeepsEveryRow(t *testing.T) {
 		`ALTER TABLE req ADD COLUMN cny_rate REAL NOT NULL DEFAULT 0`,
 		`UPDATE req SET cny_rate = 7.1842`,
 		`DROP INDEX IF EXISTS idx_cube_ct`,
+		`ALTER TABLE req DROP COLUMN requested_service_tier`,
+		`ALTER TABLE req DROP COLUMN upstream_service_tier`,
+		`ALTER TABLE req DROP COLUMN service_tier`,
 		`PRAGMA user_version = 4`,
 	} {
 		if _, err := raw.Exec(stmt); err != nil {

@@ -584,6 +584,10 @@ ALTER TABLE req DROP COLUMN cny_rate;
 	`
 CREATE INDEX idx_cube_ct ON agg_cube(client_token, bday);
 `,
+	// OpenAI tier evidence must survive SQLite-only logging and exports.
+	`ALTER TABLE req ADD COLUMN requested_service_tier TEXT NOT NULL DEFAULT '';
+ALTER TABLE req ADD COLUMN upstream_service_tier TEXT NOT NULL DEFAULT '';
+ALTER TABLE req ADD COLUMN service_tier TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

@@ -1,0 +1,50 @@
+{
+  "_note": "GET /backend-api/ps/plugins/list — plugin-store sidecar (paged; the CLI long-polls this for the whole session).",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/ps/plugins/list?scope=GLOBAL&limit=200",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "originator": "codex-tui",
+    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "oai-product-sku": "codex",
+    "accept": "*/*",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "originator",
+    "user-agent",
+    "authorization",
+    "chatgpt-account-id",
+    "oai-product-sku",
+    "accept",
+    "host",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:03 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "1201289",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "X-Content-Type-Options": "nosniff",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<REDACTED>",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": null
+}

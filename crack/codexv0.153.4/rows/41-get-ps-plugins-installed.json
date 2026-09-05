@@ -1,0 +1,587 @@
+{
+  "_note": "GET /backend-api/ps/plugins/installed — plugin-store sidecar.",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/ps/plugins/installed?limit=200",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "originator": "codex_cli_rs",
+    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "oai-product-sku": "codex",
+    "accept": "*/*",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "originator",
+    "user-agent",
+    "authorization",
+    "chatgpt-account-id",
+    "oai-product-sku",
+    "accept",
+    "host",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:03 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "25734",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "X-Content-Type-Options": "nosniff",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<REDACTED>",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "plugins": [
+      {
+        "id": "plugin_connector_1p_ae06492f57648191bd558c9c45188734",
+        "name": "deep-research-work",
+        "created_at": "2026-07-31T20:50:53.452139Z",
+        "scope": "GLOBAL",
+        "workspace_id": null,
+        "creator_account_user_id": null,
+        "canonical_app_id": "connector_openai_deep_research_work",
+        "connector_id": "connector_openai_deep_research_work",
+        "discoverability": "LISTED",
+        "status": "ENABLED",
+        "installation_policy": "INSTALLED_BY_DEFAULT",
+        "disabled_reason": null,
+        "eligible_plan_types": null,
+        "installation_policy_source": "IMPLICIT_CANONICAL_APP",
+        "authentication_policy": "ON_USE",
+        "must_show_installation_interstitial": false,
+        "release": {
+          "id": "pluginrel_6a85ef9eccf48191807154b0f8bcb779",
+          "version": "0.1.14",
+          "display_name": "Deep Research",
+          "description": "Conduct cited, multi-pass research inside the current Work or Codex session.",
+          "requires_local_executor": false,
+          "keywords": [
+            "research",
+            "deep research",
+            "web research",
+            "evidence synthesis",
+            "citations",
+            "report"
+          ],
+          "bundle_download_url": null,
+          "app_ids": [
+            "connector_openai_deep_research_work"
+          ],
+          "app_manifest": {
+            "apps": {
+              "deep-research-work": {
+                "id": "connector_openai_deep_research_work",
+                "required": true
+              }
+            }
+          },
+          "interface": {
+            "short_description": "Deep research",
+            "long_description": "Investigate complex questions through broad discovery, targeted follow-up, source reconciliation, and evidence-backed synthesis within your current Work or Code… <elided, 210 chars total>",
+            "developer_name": "OpenAI",
+            "category": "Education & Research",
+            "plugin_category_id": "education & research",
+            "capabilities": [
+              "Interactive",
+              "Read",
+              "Write"
+            ],
+            "website_url": "https://openai.com/",
+            "privacy_policy_url": "https://openai.com/policies/privacy-policy/",
+            "terms_of_service_url": "https://openai.com/policies/terms-of-use/",
+            "brand_color": "#4F46E5",
+            "default_prompt": "Create an investment memo analyzing a company’s diversification beyond its core business. Research the evidence for each bet.",
+            "default_prompts": [
+              "Create an investment memo analyzing a company’s diversification beyond its core business. Research the evidence for each bet.",
+              "What does the evidence actually say about a popular health or wellness claim? Help me separate credible findings from hype.",
+              "Help me understand a major historical turning point. Why did it happen, and where do historians disagree?"
+            ],
+            "composer_icon_url": "https://files.openai.com/content?id=file_00000000515c81f7b649ad86fc158b79&cdn=1&cp=pi&ma=31881600&ts=0&p=pi&cid=8&sig=a378d2807f3300a17d38591201195ae0fa7e519702… <elided, 186 chars total>",
+            "composer_icon_dark_url": null,
+            "logo_url": "https://files.openai.com/content?id=file_00000000515c81f7b649ad86fc158b79&cdn=1&cp=pi&ma=31881600&ts=0&p=pi&cid=8&sig=a378d2807f3300a17d38591201195ae0fa7e519702… <elided, 186 chars total>",
+            "logo_url_dark": "https://files.openai.com/content?id=file_00000000515c81f7b649ad86fc158b79&cdn=1&cp=pi&ma=31881600&ts=0&p=pi&cid=8&sig=a378d2807f3300a17d38591201195ae0fa7e519702… <elided, 186 chars total>",
+            "screenshot_urls": []
+          },
+          "skills": [],
+          "app_templates": []
+        },
+        "installed_at": null,
+        "creator_name": "OpenAI",
+        "enabled": true,
+        "disabled_skill_names": []
+      },
+      {
+        "id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+        "name": "openai-templates",
+        "created_at": "2026-07-09T04:55:46.563534Z",
+        "scope": "GLOBAL",
+        "workspace_id": null,
+        "creator_account_user_id": null,
+        "canonical_app_id": "connector_openai_default_templates",
+        "connector_id": "connector_openai_default_templates",
+        "discoverability": "LISTED",
+        "status": "ENABLED",
+        "installation_policy": "INSTALLED_BY_DEFAULT",
+        "disabled_reason": null,
+        "eligible_plan_types": null,
+        "installation_policy_source": "IMPLICIT_CANONICAL_APP",
+        "authentication_policy": "ON_USE",
+        "must_show_installation_interstitial": false,
+        "release": {
+          "id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+          "version": "0.1.1",
+          "display_name": "Default templates",
+          "description": "OpenAI default document, presentation, and spreadsheet templates.",
+          "requires_local_executor": false,
+          "keywords": [
+            "artifact",
+            "template",
+            "document",
+            "presentation",
+            "spreadsheet"
+          ],
+          "bundle_download_url": null,
+          "app_ids": [
+            "connector_openai_default_templates"
+          ],
+          "app_manifest": {
+            "apps": {
+              "default_templates": {
+                "id": "connector_openai_default_templates",
+                "required": true
+              }
+            }
+          },
+          "interface": {
+            "short_description": "Default templates for documents, spreadsheets, and presentations",
+            "long_description": "Create documents, presentations, and spreadsheets from OpenAI-provided reference templates.",
+            "developer_name": "OpenAI",
+            "category": "Productivity",
+            "plugin_category_id": "productivity",
+            "capabilities": [
+              "Interactive",
+              "Write"
+            ],
+            "website_url": "https://openai.com/",
+            "privacy_policy_url": "https://openai.com/policies/row-privacy-policy/",
+            "terms_of_service_url": "https://openai.com/policies/row-terms-of-use/",
+            "brand_color": "#10A37F",
+            "default_prompt": "Create a document using the Minimal Letterhead template",
+            "default_prompts": [
+              "Create a document using the Minimal Letterhead template",
+              "Create an Analytics Dashboard spreadsheet using the Analytics Dashboard template",
+              "Create a planning presentation with the Team Alignment template"
+            ],
+            "composer_icon_url": "https://files.openai.com/content?id=file_000000003ff881f7a0f373c6706ad6c4&cdn=1&cp=pi&ma=32054400&ts=0&p=pi&cid=8&sig=31691355d47842d6c69192acd5fc1b96e37419dd2e… <elided, 186 chars total>",
+            "composer_icon_dark_url": null,
+            "logo_url": "https://files.openai.com/content?id=file_000000006f0881f7920f68ea73090c9e&cdn=1&cp=pi&ma=30931200&ts=0&p=pi&cid=8&sig=e148b243e9b564cdd436c55acf99dcf76c498bc037… <elided, 186 chars total>",
+            "logo_url_dark": null,
+            "screenshot_urls": []
+          },
+          "skills": [
+            {
+              "name": "artifact-template-analytics-dashboard",
+              "description": "Create a spreadsheet using the Analytics Dashboard template and its retained reference file. Use when the user selects or names Analytics Dashboard. Monitor acq… <elided, 241 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbd081918551b9ff949b0dcd",
+              "interface": {
+                "display_name": "Analytics Dashboard",
+                "short_description": "Create spreadsheets with the Analytics Dashboard template",
+                "brand_color": null,
+                "default_prompt": "Create a new spreadsheet with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000c8a481f7b63f7f5534324155&cdn=1&cp=pi&ma=30499200&ts=0&p=pi&cid=8&sig=57b4642a2868a8bd71bd38f0f67b7aae70bf67a3ae… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-business-review",
+              "description": "Create a presentation using the Business Review template and its retained reference file. Use when the user selects or names Business Review. Review business pe… <elided, 239 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbdc8191a3080f71992db75f",
+              "interface": {
+                "display_name": "Business Review",
+                "short_description": "Create presentations with the Business Review template",
+                "brand_color": null,
+                "default_prompt": "Create a new presentation with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_0000000001cc81f7aac6fc3f6a67dbcd&cdn=1&cp=pi&ma=30412800&ts=0&p=pi&cid=8&sig=bfc00776026eec9d5aa94085f15d5ee441ada0dc5e… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-design-report",
+              "description": "Create a document using the Design Report template and its retained reference file. Use when the user selects or names Design Report. Produce design reports wit… <elided, 242 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbe08191918c70c8437a0f90",
+              "interface": {
+                "display_name": "Design Report",
+                "short_description": "Create documents with the Design Report template",
+                "brand_color": null,
+                "default_prompt": "Create a new document with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000949881f78e0f2706b51af3f1&cdn=1&cp=pi&ma=32659200&ts=0&p=pi&cid=8&sig=4a5d649aced462b9a9276aa457821e84ce1f7216e1… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-experiment-analysis",
+              "description": "Create a document using the Experiment Analysis template and its retained reference file. Use when the user selects or names Experiment Analysis. Analyze experi… <elided, 249 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbe88191a5da52bf989269b8",
+              "interface": {
+                "display_name": "Experiment Analysis",
+                "short_description": "Create documents with the Experiment Analysis template",
+                "brand_color": null,
+                "default_prompt": "Create a new document with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000d3f081f786643e4e053af3ca&cdn=1&cp=pi&ma=32745600&ts=0&p=pi&cid=8&sig=5e56102ea2b25afe554322881a293666a3cfd800f4… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-financial-budget",
+              "description": "Create a spreadsheet using the Financial Budget template and its retained reference file. Use when the user selects or names Financial Budget. Model actuals, bu… <elided, 236 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbec8191ab9fb1dfa916b101",
+              "interface": {
+                "display_name": "Financial Budget",
+                "short_description": "Create spreadsheets with the Financial Budget template",
+                "brand_color": null,
+                "default_prompt": "Create a new spreadsheet with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000f22881f7ae66cf344a823c5c&cdn=1&cp=pi&ma=32659200&ts=0&p=pi&cid=8&sig=5181f29963cd0243c14c2dd7f4d8d587847c217e3f… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-investment-committee-memo",
+              "description": "Create a document using the Investment Committee Memo template and its retained reference file. Use when the user selects or names Investment Committee Memo. Pr… <elided, 277 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbf08191b1e46e0069bf9d39",
+              "interface": {
+                "display_name": "Investment Committee Memo",
+                "short_description": "Create documents with the Investment Committee Memo template",
+                "brand_color": null,
+                "default_prompt": "Create a new document with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_0000000056f881f79cd20f90a560c787&cdn=1&cp=pi&ma=31708800&ts=0&p=pi&cid=8&sig=bf379774c425adbb7aeefd9ecc286c299cb41f09fd… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-legal-memorandum",
+              "description": "Create a document using the Legal Memorandum template and its retained reference file. Use when the user selects or names Legal Memorandum. Draft legal memorand… <elided, 233 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbf4819196907b35a4560c72",
+              "interface": {
+                "display_name": "Legal Memorandum",
+                "short_description": "Create documents with the Legal Memorandum template",
+                "brand_color": null,
+                "default_prompt": "Create a new document with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000186c81f79efe259f14e6787c&cdn=1&cp=pi&ma=32745600&ts=0&p=pi&cid=8&sig=5b841d124f5f82fd22a5aa456217e812d7d00d9ba4… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-market-trends-report",
+              "description": "Create a presentation using the Market Trends Report template and its retained reference file. Use when the user selects or names Market Trends Report. Communic… <elided, 252 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbf88191b625517e4a40d184",
+              "interface": {
+                "display_name": "Market Trends Report",
+                "short_description": "Create presentations with the Market Trends Report template",
+                "brand_color": null,
+                "default_prompt": "Create a new presentation with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_0000000085e481f7a1dd4d3cf4c4ce1a&cdn=1&cp=pi&ma=30931200&ts=0&p=pi&cid=8&sig=dd9aa9116d80c78d6fb4c5d47ffa46b53059bcc916… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-minimal-letterhead",
+              "description": "Create a document using the Minimal Letterhead template and its retained reference file. Use when the user selects or names Minimal Letterhead. Write profession… <elided, 265 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdbfc819182515502a73c32fc",
+              "interface": {
+                "display_name": "Minimal Letterhead",
+                "short_description": "Create documents with the Minimal Letterhead template",
+                "brand_color": null,
+                "default_prompt": "Create a new document with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000709881f7bde64aae6d298e4e&cdn=1&cp=pi&ma=32054400&ts=0&p=pi&cid=8&sig=0db1f7e716ee3545cfc7319f7c77ac66f58a890420… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-operating-calendar",
+              "description": "Create a spreadsheet using the Operating Calendar template and its retained reference file. Use when the user selects or names Operating Calendar. Plan annual a… <elided, 246 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc0081919445bd6adfeee9ba",
+              "interface": {
+                "display_name": "Operating Calendar",
+                "short_description": "Create spreadsheets with the Operating Calendar template",
+                "brand_color": null,
+                "default_prompt": "Create a new spreadsheet with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000886481f7aebd3121578b6071&cdn=1&cp=pi&ma=30326400&ts=0&p=pi&cid=8&sig=f5a35e9116b997c04688aab2eb82a729673afbb184… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-operating-review",
+              "description": "Create a presentation using the Operating Review template and its retained reference file. Use when the user selects or names Operating Review. Run weekly opera… <elided, 245 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc048191b1dd87c6d0bb3190",
+              "interface": {
+                "display_name": "Operating Review",
+                "short_description": "Create presentations with the Operating Review template",
+                "brand_color": null,
+                "default_prompt": "Create a new presentation with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000d8bc81f7987aeb512edb9040&cdn=1&cp=pi&ma=32313600&ts=0&p=pi&cid=8&sig=36869621fa039ec13fa42bacb1ba457a2b1b60a6bb… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-project-kickoff",
+              "description": "Create a presentation using the Project Kickoff template and its retained reference file. Use when the user selects or names Project Kickoff. Align teams on pro… <elided, 227 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc0c819183f2aba3389112f3",
+              "interface": {
+                "display_name": "Project Kickoff",
+                "short_description": "Create presentations with the Project Kickoff template",
+                "brand_color": null,
+                "default_prompt": "Create a new presentation with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_0000000024d881f7897c3a860e274640&cdn=1&cp=pi&ma=31449600&ts=0&p=pi&cid=8&sig=2b2544413c6f1c5ac5f8db3827a512c1caf9e329c8… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-project-tracker",
+              "description": "Create a spreadsheet using the Project Tracker template and its retained reference file. Use when the user selects or names Project Tracker. Manage workstreams,… <elided, 236 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc108191855d2449b7e3b59e",
+              "interface": {
+                "display_name": "Project Tracker",
+                "short_description": "Create spreadsheets with the Project Tracker template",
+                "brand_color": null,
+                "default_prompt": "Create a new spreadsheet with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000f68881f789e44afdff3aa1e6&cdn=1&cp=pi&ma=30240000&ts=0&p=pi&cid=8&sig=91c4561a2806b53baa54bb3fbfee9fbfcb1e2b6ee0… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-sales-pipeline",
+              "description": "Create a spreadsheet using the Sales Pipeline template and its retained reference file. Use when the user selects or names Sales Pipeline. Track opportunities, … <elided, 236 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc148191b504023513d219ca",
+              "interface": {
+                "display_name": "Sales Pipeline",
+                "short_description": "Create spreadsheets with the Sales Pipeline template",
+                "brand_color": null,
+                "default_prompt": "Create a new spreadsheet with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000080c81f794529c4385c333e5&cdn=1&cp=pi&ma=31190400&ts=0&p=pi&cid=8&sig=ea5eb28c3d53113d66a50b4233eb4098d66844d829… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-simple-dark-mode",
+              "description": "Create a presentation using the Simple Dark Mode template and its retained reference file. Use when the user selects or names Simple Dark Mode. Create clean dar… <elided, 240 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc188191ac80335d6d2609f2",
+              "interface": {
+                "display_name": "Simple Dark Mode",
+                "short_description": "Create presentations with the Simple Dark Mode template",
+                "brand_color": null,
+                "default_prompt": "Create a new presentation with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000cfac81f7adfdb8fa43e2ad00&cdn=1&cp=pi&ma=32054400&ts=0&p=pi&cid=8&sig=269156d0d38a1cc3f67399e75c5140a3b1a1ac0a31… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-simple-light-mode",
+              "description": "Create a presentation using the Simple Light Mode template and its retained reference file. Use when the user selects or names Simple Light Mode. Create clean l… <elided, 247 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc1c81918b1d571866753f69",
+              "interface": {
+                "display_name": "Simple Light Mode",
+                "short_description": "Create presentations with the Simple Light Mode template",
+                "brand_color": null,
+                "default_prompt": "Create a new presentation with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000ada081f7a40366e6d3851968&cdn=1&cp=pi&ma=31017600&ts=0&p=pi&cid=8&sig=0c7d239da9bf715598e748982846e10d97cd9a9f54… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-strategy-memorandum",
+              "description": "Create a document using the Strategy Memorandum template and its retained reference file. Use when the user selects or names Strategy Memorandum. Present strate… <elided, 239 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc208191b851e518f7d802bb",
+              "interface": {
+                "display_name": "Strategy Memorandum",
+                "short_description": "Create documents with the Strategy Memorandum template",
+                "brand_color": null,
+                "default_prompt": "Create a new document with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000128481f7ac0869c6ed172d13&cdn=1&cp=pi&ma=32659200&ts=0&p=pi&cid=8&sig=623a77bfe690deda9629b89f8ac146854ca3c338d9… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-system-design",
+              "description": "Create a document using the System Design template and its retained reference file. Use when the user selects or names System Design. Document system architectu… <elided, 250 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc2481918c654b7fa5b8a772",
+              "interface": {
+                "display_name": "System Design",
+                "short_description": "Create documents with the System Design template",
+                "brand_color": null,
+                "default_prompt": "Create a new document with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_000000008d1481f7805f22f9fd442ff1&cdn=1&cp=pi&ma=32486400&ts=0&p=pi&cid=8&sig=49389d13fafc7f971c61f16ae38479e0f363049a6c… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-team-alignment",
+              "description": "Create a presentation using the Team Alignment template and its retained reference file. Use when the user selects or names Team Alignment. Facilitate team offs… <elided, 239 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc288191a9c1edc952010f81",
+              "interface": {
+                "display_name": "Team Alignment",
+                "short_description": "Create presentations with the Team Alignment template",
+                "brand_color": null,
+                "default_prompt": "Create a new presentation with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_00000000f64481f7bb5a1f0434154609&cdn=1&cp=pi&ma=31708800&ts=0&p=pi&cid=8&sig=3b781e7f4720a58b6677b994da876a8427001d4a98… <elided, 186 chars total>"
+              }
+            },
+            {
+              "name": "artifact-template-three-statement-forecast",
+              "description": "Create a spreadsheet using the Three-Statement Forecast template and its retained reference file. Use when the user selects or names Three-Statement Forecast. B… <elided, 286 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a6ced4fdc2c8191ab4516ba7697f480",
+              "interface": {
+                "display_name": "Three-Statement Forecast",
+                "short_description": "Create spreadsheets with the Three-Statement Forecast template",
+                "brand_color": null,
+                "default_prompt": "Create a new spreadsheet with this template.",
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": "https://files.openai.com/content?id=file_000000004ccc81f7ab4839df1eb2658f&cdn=1&cp=pi&ma=31363200&ts=0&p=pi&cid=8&sig=adfd75861d9da0657b3b19a78e194d737518fcaea6… <elided, 186 chars total>"
+              }
+            }
+          ],
+          "app_templates": []
+        },
+        "installed_at": null,
+        "creator_name": "OpenAI",
+        "enabled": true,
+        "disabled_skill_names": []
+      },
+      {
+        "id": "plugin_connector_1p_b3438d6beb9081918fba3625bc988128",
+        "name": "plugin-management",
+        "created_at": "2026-08-13T23:12:07.399763Z",
+        "scope": "GLOBAL",
+        "workspace_id": null,
+        "creator_account_user_id": null,
+        "canonical_app_id": "connector_openai_plugin_management",
+        "connector_id": "connector_openai_plugin_management",
+        "discoverability": "LISTED",
+        "status": "ENABLED",
+        "installation_policy": "INSTALLED_BY_DEFAULT",
+        "disabled_reason": null,
+        "eligible_plan_types": null,
+        "installation_policy_source": "IMPLICIT_CANONICAL_APP",
+        "authentication_policy": "ON_USE",
+        "must_show_installation_interstitial": false,
+        "release": {
+          "id": "pluginrel_6a7e9f7d0ef08191b97b213bb9e118ef",
+          "version": "0.1.0",
+          "display_name": "Plugin Management",
+          "description": "Discover relevant plugins and manage app connections, permissions, and dependencies.",
+          "requires_local_executor": false,
+          "keywords": [
+            "plugins",
+            "plugin discovery",
+            "plugin management",
+            "app integrations",
+            "connections",
+            "permissions",
+            "dependencies",
+            "settings"
+          ],
+          "bundle_download_url": null,
+          "app_ids": [
+            "connector_openai_plugin_management"
+          ],
+          "app_manifest": {
+            "apps": {
+              "plugin_management": {
+                "id": "connector_openai_plugin_management",
+                "required": true
+              }
+            }
+          },
+          "interface": {
+            "short_description": "Discover and manage plugins",
+            "long_description": "Find relevant integrations for external apps and services, suggest useful plugins, and manage plugin permissions, dependencies, and connections.",
+            "developer_name": "OpenAI",
+            "category": "Productivity",
+            "plugin_category_id": "productivity",
+            "capabilities": [
+              "Interactive",
+              "Read",
+              "Write"
+            ],
+            "website_url": "https://openai.com/",
+            "privacy_policy_url": "https://openai.com/policies/row-privacy-policy/",
+            "terms_of_service_url": "https://openai.com/policies/row-terms-of-use/",
+            "brand_color": "#0F766E",
+            "default_prompt": "Find a plugin that can help with my task",
+            "default_prompts": [
+              "Find a plugin that can help with my task",
+              "Show the permissions for one of my plugins",
+              "Check which apps a plugin needs"
+            ],
+            "composer_icon_url": "https://files.openai.com/content?id=file_00000000a62081f7b4f6043a2177fec0&cdn=1&cp=pi&ma=30153600&ts=0&p=pi&cid=8&sig=43e8b2d92a5cfecaab0a18729af00e44c0e72ca6e6… <elided, 186 chars total>",
+            "composer_icon_dark_url": null,
+            "logo_url": "https://files.openai.com/content?id=file_00000000493c81f791eead7add4bd1d0&cdn=1&cp=pi&ma=30412800&ts=0&p=pi&cid=8&sig=14d22c8206d3ce6eaf3452748b348b8bc1dcbb23d8… <elided, 186 chars total>",
+            "logo_url_dark": null,
+            "screenshot_urls": []
+          },
+          "skills": [
+            {
+              "name": "plugin-management",
+              "description": "Discover and suggest relevant plugins, inspect app permissions and dependencies, and manage plugin connections or removal. Use when the user asks about plugins … <elided, 290 chars total>",
+              "plugin_release_skill_id": "pluginrsk_6a7e9f7d68608191bca9945146cbe6f1",
+              "interface": {
+                "display_name": "plugin-management",
+                "short_description": "Discover and suggest relevant plugins, inspect app permissions and dependencies, and manage plugin connections or removal. Use when the user asks about plugins … <elided, 290 chars total>",
+                "brand_color": null,
+                "default_prompt": null,
+                "iconography": null,
+                "icon_small_url": null,
+                "icon_large_url": null
+              }
+            }
+          ],
+          "app_templates": []
+        },
+        "installed_at": null,
+        "creator_name": "OpenAI",
+        "enabled": true,
+        "disabled_skill_names": []
+      }
+    ],
+    "pagination": {
+      "limit": 200,
+      "next_page_token": null
+    }
+  }
+}

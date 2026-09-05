@@ -122,7 +122,7 @@ func (s *Store) storeQuery(f Filter) (*Result, error) {
 	rows, err := s.db.Query(`SELECT ts, client, client_token, provider, auth_id, auth_label,
 			auth_kind, model, input, output, cache_read, cache_create, cache_create_1h,
 			cost_usd, billed_usd, multiplier, status, duration_ms, stream, path,
-			attempts, error, user_id, audit
+			attempts, error, user_id, audit, requested_service_tier, upstream_service_tier, service_tier
 		FROM req WHERE `+where+`
 		ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?`, entArgs...)
 	if err != nil {
@@ -378,7 +378,7 @@ func scanRecord(rows scannable) (Record, error) {
 		&r.AuthLabel, &r.AuthKind, &r.Model, &r.Input, &r.Output, &r.CacheRead,
 		&r.CacheCreate, &r.CacheCreate1h, &r.CostUSD, &r.BilledUSD, &r.Multiplier,
 		&r.Status, &r.DurationMs, &stream, &r.Path, &r.Attempts, &r.Error,
-		&r.UserID, &audit)
+		&r.UserID, &audit, &r.RequestedServiceTier, &r.UpstreamServiceTier, &r.ServiceTier)
 	if err != nil {
 		return r, err
 	}

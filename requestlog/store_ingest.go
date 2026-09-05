@@ -217,8 +217,8 @@ const insertReq = `INSERT OR IGNORE INTO req (
 	ts, day, bday, client, client_token, provider, auth_id, auth_label, auth_kind,
 	model, input, output, cache_read, cache_create, cache_create_1h,
 	cost_usd, billed_usd, multiplier, status, duration_ms, stream,
-	path, attempts, error, attempt_only, user_id, audit, src_file, src_off
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	path, attempts, error, attempt_only, user_id, audit, src_file, src_off, requested_service_tier, upstream_service_tier, service_tier
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // ingestFile folds the records in path[from:] into req and returns how many
 // rows were added and the byte offset just past the last complete line.
@@ -359,7 +359,7 @@ func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff i
 		r.CostUSD, r.BilledUSD, r.Multiplier,
 		r.Status, r.DurationMs, boolToInt(r.Stream),
 		r.Path, r.Attempts, r.Error, boolToInt(r.AttemptOnly),
-		r.UserID, audit, srcFile, srcOff,
+		r.UserID, audit, srcFile, srcOff, r.RequestedServiceTier, r.UpstreamServiceTier, r.ServiceTier,
 	)
 	return err
 }

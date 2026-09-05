@@ -106,9 +106,10 @@ func (p ModelPrice) Cost(c usage.Counts) float64 {
 // Config is the user-supplied catalog override shape. Mirrors how
 // CPA-Claude's config.yaml `pricing:` section is structured.
 type Config struct {
-	Default          ModelPrice            `yaml:"default" json:"default"`
-	ProviderDefaults map[string]ModelPrice `yaml:"provider_defaults" json:"provider_defaults"`
-	Models           map[string]ModelPrice `yaml:"models" json:"models"`
+	Default          ModelPrice                  `yaml:"default" json:"default"`
+	ProviderDefaults map[string]ModelPrice       `yaml:"provider_defaults" json:"provider_defaults"`
+	Models           map[string]ModelPrice       `yaml:"models" json:"models"`
+	ServiceTiers     map[string]ServiceTierPrice `yaml:"service_tiers,omitempty" json:"service_tiers,omitempty"`
 }
 
 // Catalog resolves (provider, model) to a price card, with four-level
@@ -116,6 +117,7 @@ type Config struct {
 type Catalog struct {
 	defaultPrice     ModelPrice
 	providerDefaults map[string]ModelPrice
+	serviceTiers     map[string]ServiceTierPrice
 	models           map[string]ModelPrice // key = "provider/model" (lowercase)
 }
 
@@ -124,6 +126,7 @@ type Catalog struct {
 func NewCatalog(c Config) *Catalog {
 	cat := &Catalog{
 		defaultPrice:     defaultModelPrice(),
+		serviceTiers:     make(map[string]ServiceTierPrice, len(c.ServiceTiers)),
 		providerDefaults: make(map[string]ModelPrice),
 		models:           make(map[string]ModelPrice, len(builtIn)+len(c.Models)),
 	}
@@ -139,6 +142,9 @@ func NewCatalog(c Config) *Catalog {
 	}
 	for k, v := range c.Models {
 		cat.models[normalizeModelKey(k)] = v
+	}
+	for k, v := range c.ServiceTiers {
+		cat.serviceTiers[normalizeModelKey(k)] = v
 	}
 	if nonZero(c.Default) {
 		cat.defaultPrice = c.Default
@@ -186,16 +192,7 @@ func StripContextModeSuffix(model string) string {
 // is treated as Anthropic for backward compatibility with legacy callers.
 func (c *Catalog) Lookup(provider, model string) ModelPrice {
 	prov := canonicalProvider(provider)
-	m := strings.ToLower(strings.TrimSpace(model))
-	// Strip a trailing "(value)" thinking suffix — CLIProxyAPI's convention
-	// for encoding reasoning effort in the model name. "gpt-5.3-codex(high)"
-	// bills the same as "gpt-5.3-codex".
-	if strings.HasSuffix(m, ")") {
-		if i := strings.LastIndex(m, "("); i > 0 {
-			m = strings.TrimSpace(m[:i])
-		}
-	}
-	m = StripContextModeSuffix(m)
+	m := normalizeLookupModel(model)
 	if m != "" {
 		full := prov + "/" + m
 		if p, ok := c.models[full]; ok {
@@ -213,6 +210,20 @@ func (c *Catalog) Lookup(provider, model string) ModelPrice {
 		return p
 	}
 	return c.defaultPrice
+}
+
+func normalizeLookupModel(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	// Strip a trailing "(value)" thinking suffix — CLIProxyAPI's convention
+	// for encoding reasoning effort in the model name. "gpt-5.3-codex(high)"
+	// bills the same as "gpt-5.3-codex".
+	if strings.HasSuffix(m, ")") {
+		if i := strings.LastIndex(m, "("); i > 0 {
+			m = strings.TrimSpace(m[:i])
+		}
+	}
+	m = StripContextModeSuffix(m)
+	return m
 }
 
 // Cost is a convenience shortcut — Lookup(provider, model).Cost(counts).
@@ -396,20 +407,59 @@ var builtIn = map[string]ModelPrice{
 	//    is what "priority" was renamed to on 2026-07-30) and, for the 5.4+
 	//    frontier line, a second price band that kicks in at **272K context
 	//    length**: above it every rate roughly doubles (gpt-5.6-sol 4→8 in,
-	//    20→30 out). ModelPrice carries one band, so a >272K request bills at
-	//    the short-context rate and under-charges. See the long-context table
-	//    in the source page before assuming a card is wrong.
+	//    20→30 out; gpt-6-astra 10→20 in, 50→75 out, i.e. 2× input and 1.5×
+	//    output). ModelPrice carries one band, so a >272K request bills at
+	//    the short-context rate and under-charges. astra is now the largest
+	//    dollar instance of that: the capture in crack/codexv0.153.4 gives it
+	//    context_window 272000 / max_context_window 872000, so it is a model
+	//    that genuinely crosses the band, where gpt-5.5 is 272000/272000 and
+	//    cannot. (The page states astra's second band but never names the
+	//    threshold that triggers it; 272K is inferred from the capture, not
+	//    quoted from the page.) See the long-context table in the source page
+	//    before assuming a card is wrong.
 	//
-	// 2. Cache WRITES are a 5.6-line-only concept. OpenAI publishes
-	//    `cache writes` for gpt-5.6-{sol,terra,luna,cyber} only, at a clean
-	//    1.25× input; every older card leaves CacheCreatePer1M zero, which is
-	//    correct — those models bill cached reads and nothing else.
+	// 2. Cache WRITES are published for the GPT-6 line and the 5.6 line, both
+	//    at a clean 1.25× input (gpt-6-astra 10.00→12.50, gpt-5.6-sol
+	//    5.00→6.25). Everything gpt-5.5 and older leaves CacheCreatePer1M
+	//    zero, which is correct — those models bill cached reads and nothing
+	//    else. This used to read "a 5.6-line-only concept"; GPT-6 falsified
+	//    that, so do not zero a new frontier card's cache-write rate on the
+	//    strength of the old wording.
 	//
 	// 3. Lookup's prefix fallback trims on "-", so a MISSING card is not a
 	//    zero bill, it is the nearest shorter name's bill. That is how
 	//    gpt-5.4-nano used to bill at the gpt-5.4 card (12.5× over) and
 	//    gpt-5.5-pro at the gpt-5.5 card (6× under). Every published SKU below
 	//    gets its own row precisely so the fallback never has to guess.
+
+	// Frontier — GPT-6 line. Published 2026-09-05 at
+	// developers.openai.com/api/docs/pricing(.md) and on the model card at
+	// developers.openai.com/api/docs/models/gpt-6-astra, standard tier, short
+	// context: $10.00 in / $1.00 cached / $12.50 cache-write / $50.00 out.
+	//
+	// Three things this card is deliberately NOT doing:
+	//
+	//   * No sol-style markup. gpt-5.6-sol departs from the page because its
+	//     page price is an API-side promotion ChatGPT plans do not receive
+	//     (see the ⚠️ below). No promotion is published for astra, so it takes
+	//     the page numbers straight and is NOT in introductoryRates.
+	//   * No bare `gpt-6` alias row. Lookup's prefix fallback trims on "-", so
+	//     a "gpt-6" card would silently capture every future gpt-6-<variant>
+	//     at the flagship price — exactly what
+	//     TestOpenAISKUsDoNotInheritAShorterCard forbids. The published SKU
+	//     list has exactly one gpt-6* entry and no bare alias, and the
+	//     0.153.4 Codex catalog has no such slug either.
+	//   * No assumption that output is 6× input. The rest of the frontier line
+	//     holds that ratio; astra's published output is 5× input. It is not a
+	//     transcription slip — do not "fix" it.
+	//
+	// Left unpriced on purpose: gpt-reserve (visibility "hide" in the 0.153.4
+	// catalog, supported_in_api true, no row on the pricing page at all) and
+	// codex-auto-review. Both land on builtInProviderDefaults[openai] today.
+	// Giving them a guessed card would be worse than the fallback, because a
+	// guess looks verified; they need a published rate or an operational
+	// confirmation of what they alias.
+	ProviderOpenAI + "/gpt-6-astra": {InputPer1M: 10.00, OutputPer1M: 50.00, CacheReadPer1M: 1.00, CacheCreatePer1M: 12.50},
 
 	// Frontier — GPT-5.6 line. `gpt-5.6` is the published alias for sol.
 	//

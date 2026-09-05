@@ -114,6 +114,9 @@ func sampleRecords(base time.Time) []Record {
 			r.Provider = "openai"
 			r.Model = "gpt-5.6-sol"
 			r.AuthID = "codex-1.json"
+			r.RequestedServiceTier = "priority"
+			r.UpstreamServiceTier = "default"
+			r.ServiceTier = "priority"
 		}),
 		// SaaS attribution + audit payload.
 		mk(9*time.Minute, func(r *Record) {

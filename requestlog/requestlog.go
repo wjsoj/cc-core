@@ -41,10 +41,14 @@ type Record struct {
 	AuthLabel   string    `json:"auth_label,omitempty"`
 	AuthKind    string    `json:"auth_kind"` // "oauth" or "apikey"
 	Model       string    `json:"model"`
-	Input       int64     `json:"input_tokens"`
-	Output      int64     `json:"output_tokens"`
-	CacheRead   int64     `json:"cache_read_tokens"`
-	CacheCreate int64     `json:"cache_create_tokens"`
+	// Final outbound, observed upstream, and billable OpenAI service tiers.
+	RequestedServiceTier string `json:"requested_service_tier,omitempty"`
+	UpstreamServiceTier  string `json:"upstream_service_tier,omitempty"`
+	ServiceTier          string `json:"service_tier,omitempty"`
+	Input                int64  `json:"input_tokens"`
+	Output               int64  `json:"output_tokens"`
+	CacheRead            int64  `json:"cache_read_tokens"`
+	CacheCreate          int64  `json:"cache_create_tokens"`
 	// CacheCreate1h is the 1-hour-TTL SUBSET of CacheCreate (Anthropic's
 	// `usage.cache_creation.ephemeral_1h_input_tokens`). Omitted when the
 	// upstream reports no breakdown, so older rows and non-Anthropic providers

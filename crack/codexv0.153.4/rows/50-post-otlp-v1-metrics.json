@@ -1,0 +1,55 @@
+{
+  "_note": "POST https://ab.chatgpt.com/otlp/v1/metrics — OTLP metrics sidecar.",
+  "method": "POST",
+  "url": "https://ab.chatgpt.com/otlp/v1/metrics",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "content-type": "application/json",
+    "statsig-api-key": "client-MkRuleRQBd6qakfnDYqJVR9JuXcY57Ljly3vi5JVUIO",
+    "user-agent": "OTel-OTLP-Exporter-Rust/0.31.0",
+    "content-length": "1070763",
+    "accept": "*/*",
+    "host": "ab.chatgpt.com",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "content-type",
+    "statsig-api-key",
+    "user-agent",
+    "content-length",
+    "accept",
+    "host",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": null,
+  "status": 202,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:44:03 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "16",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "x-frame-options": "SAMEORIGIN",
+    "permissions-policy": "interest-cohort=()",
+    "x-content-type-options": "nosniff",
+    "x-response-time": "449 ms",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-origin": "*",
+    "x-envoy-decorator-operation": "rust-log-event-canary.default.svc.cluster.local:3005/*",
+    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+    "via": "1.1 google",
+    "cf-cache-status": "DYNAMIC",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "set-cookie": "<REDACTED>",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "success": true
+  }
+}

@@ -110,7 +110,7 @@ func TestRewriteCodexClientFrameRebindsEveryClientID(t *testing.T) {
 	}
 
 	// The embedded turn-metadata string must have been rewritten too.
-	var embedded map[string]string
+	var embedded map[string]any
 	if err := json.Unmarshal([]byte(f.ClientMetadata["x-codex-turn-metadata"]), &embedded); err != nil {
 		t.Fatalf("embedded turn metadata is not valid JSON: %v", err)
 	}
@@ -439,7 +439,7 @@ func TestSynthesizedClientMetadataMatchesCapturedShape(t *testing.T) {
 			t.Errorf("synthesized client_metadata is missing %q", k)
 		}
 	}
-	var md map[string]string
+	var md map[string]any
 	if err := json.Unmarshal([]byte(f.ClientMetadata["x-codex-turn-metadata"]), &md); err != nil {
 		t.Fatalf("embedded metadata invalid: %v", err)
 	}
@@ -718,7 +718,7 @@ func TestRewriteCodexClientFrameCompletesPartialMetadata(t *testing.T) {
 		t.Errorf("session_id = %q", f.ClientMetadata["session_id"])
 	}
 	// An empty turn_id may only pair with prewarm.
-	var md map[string]string
+	var md map[string]any
 	if err := json.Unmarshal([]byte(f.ClientMetadata["x-codex-turn-metadata"]), &md); err != nil {
 		t.Fatal(err)
 	}
@@ -749,7 +749,7 @@ func TestRewriteCodexClientFramePreservesForeignMetadataKeys(t *testing.T) {
 	if f.ClientMetadata["some-client-key"] != "keep-me" {
 		t.Error("an unrecognized client key was dropped")
 	}
-	var md map[string]string
+	var md map[string]any
 	if err := json.Unmarshal([]byte(f.ClientMetadata["x-codex-turn-metadata"]), &md); err != nil {
 		t.Fatal(err)
 	}

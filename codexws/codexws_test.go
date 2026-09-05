@@ -28,11 +28,11 @@ func TestBuildUpstreamHeaders(t *testing.T) {
 	want := map[string]string{
 		"chatgpt-account-id":    "acct-123",
 		"authorization":         "Bearer tok-abc",
-		"user-agent":            mimicry.CodexDesktopUserAgent,
-		"originator":            mimicry.CodexDesktopOriginator,
+		"user-agent":            mimicry.CodexCLIUserAgent,
+		"originator":            mimicry.CodexOriginator,
 		"openai-beta":           CodexOpenAIBetaWS,
-		"version":               mimicry.CodexDesktopVersion,
-		"x-codex-beta-features": mimicry.CodexDesktopBetaFeatures,
+		"version":               mimicry.CodexCLIVersion,
+		"x-codex-beta-features": mimicry.CodexCLIBetaFeatures,
 		"x-client-request-id":   "sess-xyz",
 		"session-id":            "sess-xyz",
 		"thread-id":             "sess-xyz",
@@ -68,6 +68,17 @@ func TestBuildUpstreamHeaders(t *testing.T) {
 		`"request_kind":"prewarm"`,
 		`"thread_source":"user"`,
 		`"sandbox":"seccomp"`,
+		// 0.153.4 additions. The three unquoted fragments are the point of
+		// the typed writer: window_number is a JSON number and the review /
+		// repl flags are JSON booleans, and quoting any of them would be a
+		// one-character tell.
+		`"agent_name":"`,
+		`"window_number":0`,
+		`"context_window_id":"`,
+		`"sandbox_mode":"workspace-write"`,
+		`"auto_review_enabled":true`,
+		`"node_repl_auto_review_required":false`,
+		`"node_repl_disabled":false`,
 	} {
 		if !strings.Contains(md, frag) {
 			t.Errorf("turn metadata missing %s: %s", frag, md)
@@ -76,14 +87,21 @@ func TestBuildUpstreamHeaders(t *testing.T) {
 	if strings.Contains(md, `"installation_id":""`) {
 		t.Error("installation_id must be derived from the account, never empty")
 	}
-	// The handshake variant must NOT carry the turn-only workspace field.
-	if strings.Contains(md, "workspace") {
+	// The handshake variant must NOT carry the turn-only `workspaces` map —
+	// the cwd / git-remote / commit / dirty state a proxy cannot forge, which
+	// is why this header was omitted entirely before 0.147.0. Matched on the
+	// KEY, not the substring: 0.153.4 legitimately sends
+	// "sandbox_mode":"workspace-write", which a bare Contains("workspace")
+	// would flag.
+	if strings.Contains(md, `"workspaces"`) {
 		t.Errorf("handshake metadata must not carry workspace state: %s", md)
 	}
 
-	// Contradicted by both captures: no routing hint on the upgrade.
-	if _, ok := h[mimicry.CodexRoutingHintHeader]; ok {
-		t.Error("x-codex-routing-hint must not be sent on the WS handshake")
+	// crack/codexv0.153.4/rows/10-12 carry the hint on every upgrade. It used
+	// to be asserted ABSENT here on the strength of the 0.135.0 and 0.147.0
+	// captures; those were older, not contradictory.
+	if got := hdr(h, mimicry.CodexRoutingHintHeader); got != "model=gpt-5.6-sol;tier=priority" {
+		t.Errorf("x-codex-routing-hint = %q, want model=gpt-5.6-sol;tier=priority", got)
 	}
 
 	// The gorilla dialer owns these; setting them here breaks the handshake.

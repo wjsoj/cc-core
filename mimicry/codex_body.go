@@ -8,7 +8,7 @@ package mimicry
 //
 // This is the request-body counterpart to mimicry/codex.go's header mimicry:
 // codex.go pins the upstream request headers (Originator / User-Agent /
-// Version / OpenAI-Beta / Chatgpt-Account-Id) to codex-tui/0.144.4, while this
+// Version / OpenAI-Beta / Chatgpt-Account-Id) to codex-tui/0.153.4, while this
 // file normalizes the request body shape. The two are complementary halves of
 // the same Codex-CLI emulation. Behavior is modeled on CLIProxyAPI's codex
 // translator/executor and sub2api's compact-request normalizer — see the
@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"net/url"
 	"strings"
+
+	"github.com/wjsoj/cc-core/servicetier"
 )
 
 // JoinCodexAPIKeyUpstreamURL joins an API-key credential's BaseURL with an
@@ -147,9 +149,15 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 		delete(raw, k)
 	}
 
-	// service_tier: backend only honors "priority"; anything else 400s.
-	if st, ok := raw["service_tier"].(string); ok && st != "priority" {
-		delete(raw, "service_tier")
+	// Keep recognized service tiers, canonicalizing the client alias fast.
+	// Shared with pricing so forwarding and charging agree on the tier.
+	if value, exists := raw["service_tier"]; exists {
+		st, _ := value.(string)
+		if normalized := servicetier.Normalize(st); normalized != "" {
+			raw["service_tier"] = normalized
+		} else {
+			delete(raw, "service_tier")
+		}
 	}
 
 	// Input may be a plain string on SDKs that use the convenience shape.
@@ -330,14 +338,43 @@ func StripThinkingSuffix(model string) string {
 	return model[:i]
 }
 
-// codexResponsesLiteModel reports whether baseModel runs the ChatGPT backend's
-// "Responses-Lite" mode (X-OpenAI-Internal-Codex-Responses-Lite), currently the
-// gpt-5.6 family (sol/terra/luna). That mode is strict about the request shape:
-// it requires parallel_tool_calls=false and only accepts function / custom /
-// client-executed-search tools — it rejects server built-ins like
-// image_generation. Callers use this to avoid injecting anything the Lite path
-// would 400 on. See crack/codexv0.135.0/SPEC.md §5.
+// codexResponsesLiteModels lists the models the ChatGPT backend runs in
+// "Responses-Lite" mode (X-OpenAI-Internal-Codex-Responses-Lite). That mode is
+// strict about the request shape: it requires parallel_tool_calls=false and
+// only accepts function / custom / client-executed-search tools — it rejects
+// server built-ins like image_generation. Callers use this to avoid injecting
+// anything the Lite path would 400 on. See crack/codexv0.135.0/SPEC.md §5.
+//
+// This is an explicit SET, not a version prefix, because the backend declares
+// it per model: `use_responses_lite` in GET /backend-api/codex/models. The
+// 0.153.4 catalog (crack/codexv0.153.4/rows/01-get-codex-models.json) sets it
+// true for gpt-6-astra, gpt-reserve, all three gpt-5.6 models and
+// codex-auto-review, and false for gpt-5.5, gpt-5.4-mini and
+// gpt-5.3-codex-spark. The old `HasPrefix(baseModel, "gpt-5.6")` matched that
+// only by accident of the catalog at the time; it would have injected the
+// image_generation built-in into every gpt-6-astra request and taken a 400 on
+// every turn the client sent no tools of its own.
+//
+// Keep this in step with `use_responses_lite` on the next capture — a new
+// frontier model is far more likely to be Lite than not, but guessing from the
+// name is what this set exists to stop.
+var codexResponsesLiteModels = map[string]bool{
+	"gpt-6-astra":       true,
+	"gpt-reserve":       true,
+	"gpt-5.6-sol":       true,
+	"gpt-5.6-terra":     true,
+	"gpt-5.6-luna":      true,
+	"codex-auto-review": true,
+}
+
+// codexResponsesLiteModel reports whether baseModel runs in Responses-Lite mode.
 func codexResponsesLiteModel(baseModel string) bool {
+	if codexResponsesLiteModels[baseModel] {
+		return true
+	}
+	// Dated / sub-variant spellings of a listed slug (gpt-5.6-sol-2026-08-01)
+	// inherit its mode; a bare-family prefix is kept for gpt-5.6 because the
+	// whole published family is Lite and new members keep appearing.
 	return strings.HasPrefix(baseModel, "gpt-5.6")
 }
 

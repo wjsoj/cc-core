@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wjsoj/cc-core/servicetier"
 )
 
 // Codex WebSocket client-frame rebinding.
@@ -194,6 +196,11 @@ func RewriteCodexClientFrame(frame []byte, id CodexFrameIdentity) ([]byte, error
 		return frame, nil
 	}
 
+	trimmed, _, err = servicetier.NormalizeRequest(trimmed)
+	if err != nil {
+		return frame, err
+	}
+
 	meta, found := extractCodexClientMetadata(trimmed)
 	if !found {
 		out, aerr := appendCodexClientMetadata(trimmed, norm)
@@ -317,16 +324,7 @@ func overwriteCodexClientMetadata(frame []byte, meta map[string]any, id CodexFra
 	// non-identity fields the client declared (request_kind, thread_source,
 	// sandbox, code_mode_tool_names …) — those describe the CLIENT's turn and
 	// are not ours to invent.
-	md := CodexTurnMetadata{
-		InstallationID: id.InstallationID,
-		SessionID:      id.SessionID,
-		ThreadID:       id.ThreadID,
-		TurnID:         turnID,
-		WindowID:       id.WindowID(),
-		RequestKind:    CodexRequestKindTurn,
-		ThreadSource:   "user",
-		Sandbox:        "seccomp",
-	}
+	md := newCodexFrameMetadata(id, turnID, CodexRequestKindTurn)
 	if embedded := decodeEmbeddedTurnMetadata(meta); embedded != nil {
 		if v := metaString(embedded, "request_kind"); v != "" {
 			md.RequestKind = v
@@ -337,6 +335,34 @@ func overwriteCodexClientMetadata(frame []byte, meta map[string]any, id CodexFra
 		if v := metaString(embedded, "sandbox"); v != "" {
 			md.Sandbox = v
 		}
+		// 0.153.4 fields. Same rule as the three above: they describe the
+		// CLIENT's turn, so carry over whatever it declared and fall back to
+		// the handshake defaults otherwise. agent_name matters most — the
+		// client knows its own working directory and we do not, so its value
+		// is strictly better than CodexDefaultAgentName.
+		if v := metaString(embedded, "agent_name"); v != "" {
+			md.AgentName = v
+		}
+		if v := metaString(embedded, "sandbox_mode"); v != "" {
+			md.SandboxMode = v
+		}
+		if v, ok := metaInt(embedded, "window_number"); ok {
+			md.WindowNumber = v
+		}
+		if v, ok := metaBool(embedded, "auto_review_enabled"); ok {
+			md.AutoReviewEnabled = v
+		}
+		if v, ok := metaBool(embedded, "node_repl_auto_review_required"); ok {
+			md.NodeReplAutoReviewRequired = v
+		}
+		if v, ok := metaBool(embedded, "node_repl_disabled"); ok {
+			md.NodeReplDisabled = v
+		}
+		// context_window_id is an IDENTITY value, so it is re-derived from our
+		// thread id rather than carried — carrying the client's would leak a
+		// downstream id upstream and break its documented relationship to
+		// thread_id. The subagent pair is dropped for the same reason
+		// codexws does not send it: we are not a subagent.
 	} else if turnID == "" {
 		// No turn id and nothing declaring otherwise: prewarm is the only
 		// request_kind the captures ever pair with an empty turn_id.
@@ -601,8 +627,8 @@ func matchBrace(frame []byte, start int) (int, bool) {
 // appendCodexClientMetadata adds a synthesized client_metadata to a frame that
 // has none, as the LAST key — which is where every captured frame puts it.
 //
-// The synthesized object carries all EIGHT keys the captures show, not just the
-// ones we happen to derive: a client_metadata missing two keys is its own
+// The synthesized object carries every key the captures show, not just the ones
+// we happen to derive: a client_metadata missing two keys is its own
 // fingerprint. It declares request_kind "prewarm" with an empty turn_id,
 // because that is the only combination the captures pair together — the turn
 // variant always has a non-empty turn_id and three extra fields
@@ -614,16 +640,7 @@ func appendCodexClientMetadata(frame []byte, id CodexFrameIdentity) ([]byte, err
 	if end < 0 {
 		return frame, errors.New("mimicry: frame is not a JSON object")
 	}
-	md := CodexTurnMetadata{
-		InstallationID: id.InstallationID,
-		SessionID:      id.SessionID,
-		ThreadID:       id.ThreadID,
-		TurnID:         "",
-		WindowID:       id.WindowID(),
-		RequestKind:    CodexRequestKindPrewarm,
-		ThreadSource:   "user",
-		Sandbox:        "seccomp",
-	}
+	md := newCodexFrameMetadata(id, "", CodexRequestKindPrewarm)
 	meta := map[string]any{
 		"session_id":              id.SessionID,
 		"thread_id":               id.ThreadID,
@@ -696,4 +713,52 @@ func uuidV7Timestamp(s string) (time.Time, bool) {
 		ms = ms<<4 | v
 	}
 	return time.UnixMilli(ms), true
+}
+
+// newCodexFrameMetadata builds the in-band client_metadata for one frame from
+// the connection identity, so the frame and the handshake cannot drift apart.
+// It is the same 15-field 0.153.4 shape NewCodexHandshakeMetadata produces,
+// differing only in request_kind and turn_id.
+//
+// CAVEAT — the turn variant at 0.153.4 is EXTRAPOLATED. crack/codexv0.153.4
+// contains handshakes only: whistle's get-data API returns no WebSocket frames,
+// so no 0.153.4 `response.create` body was observed. The field set here is the
+// handshake variant's, which is what the 0.147.0 capture showed the two
+// variants share; if a frame capture ever lands and shows the turn variant
+// carrying different keys, this is the function to correct.
+func newCodexFrameMetadata(id CodexFrameIdentity, turnID, requestKind string) CodexTurnMetadata {
+	return CodexTurnMetadata{
+		InstallationID:  id.InstallationID,
+		SessionID:       id.SessionID,
+		ThreadID:        id.ThreadID,
+		AgentName:       CodexDefaultAgentName,
+		TurnID:          turnID,
+		WindowID:        id.WindowID(),
+		WindowNumber:    0,
+		ContextWindowID: CodexContextWindowIDFor(id.ThreadID),
+		RequestKind:     requestKind,
+		ThreadSource:    "user",
+		Sandbox:         "seccomp",
+		SandboxMode:     CodexSandboxModeWorkspaceWrite,
+
+		AutoReviewEnabled: true,
+	}
+}
+
+// metaInt / metaBool are the typed companions to metaString. A JSON number
+// arrives as float64 and a JSON bool as bool; without these the 0.153.4 fields
+// would be silently dropped and re-defaulted on every rewrite.
+func metaInt(m map[string]any, key string) (int, bool) {
+	switch v := m[key].(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	}
+	return 0, false
+}
+
+func metaBool(m map[string]any, key string) (bool, bool) {
+	v, ok := m[key].(bool)
+	return v, ok
 }

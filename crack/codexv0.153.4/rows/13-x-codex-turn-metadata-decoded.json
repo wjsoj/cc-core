@@ -1,0 +1,73 @@
+{
+  "_note": "x-codex-turn-metadata decoded, one entry per handshake variant in this capture. Field ORDER in the source string is significant and is preserved here. Deltas vs codexapp0.147.0, which emitted only installation_id, session_id, thread_id, turn_id, window_id, request_kind, thread_source, sandbox: agent_name is new after thread_id; window_number and context_window_id are new after window_id; sandbox_mode, auto_review_enabled, node_repl_auto_review_required and node_repl_disabled are new after sandbox. A subagent connection inserts parent_thread_id and subagent_kind after request_kind. agent_name was literally \"/root\" here — it is the client's working directory, so a proxy has no honest value for it; kept unmasked only because it is not a secret.",
+  "variants": {
+    "user": {
+      "source_row": "10-ws-handshake-codex-responses.json",
+      "x-codex-routing-hint": "model=gpt-5.6-sol;tier=priority",
+      "x-openai-subagent": null,
+      "decoded": {
+        "installation_id": "<INSTALLATION_ID>",
+        "session_id": "<UUID>",
+        "thread_id": "<UUID>",
+        "agent_name": "/root",
+        "turn_id": "",
+        "window_id": "<UUID>:0",
+        "window_number": 0,
+        "context_window_id": "<UUID_4>",
+        "request_kind": "prewarm",
+        "thread_source": "user",
+        "sandbox": "seccomp",
+        "sandbox_mode": "workspace-write",
+        "auto_review_enabled": true,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false
+      }
+    },
+    "system": {
+      "source_row": "11-ws-handshake-system-thread.json",
+      "x-codex-routing-hint": "model=gpt-5.6-luna;tier=priority",
+      "x-openai-subagent": null,
+      "decoded": {
+        "installation_id": "<INSTALLATION_ID>",
+        "session_id": "<UUID_5>",
+        "thread_id": "<UUID_5>",
+        "agent_name": "/root",
+        "turn_id": "",
+        "window_id": "<UUID_5>:0",
+        "window_number": 0,
+        "context_window_id": "<UUID_6>",
+        "request_kind": "prewarm",
+        "thread_source": "system",
+        "sandbox": "seccomp",
+        "sandbox_mode": "read-only",
+        "auto_review_enabled": false,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false
+      }
+    },
+    "guardian": {
+      "source_row": "12-ws-handshake-subagent-guardian.json",
+      "x-codex-routing-hint": "model=codex-auto-review;tier=priority",
+      "x-openai-subagent": "guardian",
+      "decoded": {
+        "installation_id": "<INSTALLATION_ID>",
+        "session_id": "<UUID>",
+        "thread_id": "<UUID_2>",
+        "agent_name": "/root",
+        "turn_id": "",
+        "window_id": "<UUID_2>:0",
+        "window_number": 0,
+        "context_window_id": "<UUID_3>",
+        "request_kind": "prewarm",
+        "parent_thread_id": "<UUID>",
+        "subagent_kind": "guardian",
+        "thread_source": "guardian_review",
+        "sandbox": "seccomp",
+        "sandbox_mode": "read-only",
+        "auto_review_enabled": false,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false
+      }
+    }
+  }
+}

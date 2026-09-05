@@ -19,14 +19,39 @@ package auth
 // client catalog (mirrors sub2api's openai DefaultModels — the three tiers ARE
 // the model variants, there is no -high/-codex sub-variant). They follow gpt-5.5's
 // tier placement: exposed on plus/pro/team, withheld from free.
+//
+// gpt-6-astra was added from the live codex-tui/0.153.4 Pro capture
+// (crack/codexv0.153.4/rows/01-get-codex-models.json, 2026-09-05). Its plan
+// placement does NOT follow gpt-5.5 by analogy: each model row in that response
+// carries its own `available_in_plans`, and astra's lists free, plus, pro, team,
+// go and business — the same list every listed model carries. That field is
+// genuinely discriminating (codex-auto-review's omits free/free_workspace), so
+// it is the backend's own declaration rather than an artifact of which token
+// fetched it, and astra goes on all four tiers, free included. It leads each
+// slice because it is priority 1 upstream and the forks emit /v1/models in
+// slice order.
+//
+// Two things that capture shows and this map deliberately does NOT follow:
+//
+//   - gpt-reserve and codex-auto-review are both visibility "hide" — the vendor
+//     CLI never lists or selects them. This map feeds a customer-facing
+//     /v1/models, so advertising a model no real Codex client offers is a
+//     divergence with no upside. They are still PRICED where a rate exists,
+//     because pricing is consulted whenever a request names a model, whether or
+//     not we advertised it.
+//   - The live Pro catalog no longer contains gpt-5.2, gpt-5.3-codex or gpt-5.4,
+//     which this map still lists. Pruning them is a separate, riskier change
+//     (it breaks any customer pinning one) and must not ride along with an add.
 var CodexModelCatalog = map[string][]string{
 	CodexPlanFree: {
+		"gpt-6-astra",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.4",
 		"gpt-5.4-mini",
 	},
 	CodexPlanPlus: {
+		"gpt-6-astra",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.3-codex-spark",
@@ -38,6 +63,7 @@ var CodexModelCatalog = map[string][]string{
 		"gpt-5.6-luna",
 	},
 	CodexPlanPro: {
+		"gpt-6-astra",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.3-codex-spark",
@@ -49,6 +75,7 @@ var CodexModelCatalog = map[string][]string{
 		"gpt-5.6-luna",
 	},
 	CodexPlanTeam: {
+		"gpt-6-astra",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.4",

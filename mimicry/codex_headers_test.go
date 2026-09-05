@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// Real Codex sets OpenAI-Beta only on the WebSocket handshake. At 0.147.0 the
-// string "responses=experimental" does not exist anywhere in codex-rs, so
+// Real Codex sets OpenAI-Beta only on the WebSocket handshake. Through 0.153.4
+// the string "responses=experimental" does not exist anywhere in codex-rs, so
 // emitting it on the HTTP path is a value no genuine client sends.
 func TestApplyCodexCLIHeadersSendsNoLegacyBeta(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "https://chatgpt.com/backend-api/codex/responses", nil)
@@ -17,15 +17,19 @@ func TestApplyCodexCLIHeadersSendsNoLegacyBeta(t *testing.T) {
 	if got := req.Header.Get("OpenAI-Beta"); got != "" {
 		t.Errorf("OpenAI-Beta = %q; the HTTP path must send none", got)
 	}
-	// The default identity is Codex Desktop, not codex-tui.
-	if got := req.Header.Get("User-Agent"); got != CodexDesktopUserAgent {
-		t.Errorf("User-Agent = %q, want %q", got, CodexDesktopUserAgent)
+	// The default identity is codex-tui as of 2026-09-05 (it was Codex Desktop
+	// until gpt-6-astra's 0.153.0 floor forced the flip — see
+	// DefaultCodexProfile). Assert through the profile rather than a named
+	// constant so this test follows the default instead of pinning it twice.
+	def := DefaultCodexProfile()
+	if got := req.Header.Get("User-Agent"); got != def.UserAgent {
+		t.Errorf("User-Agent = %q, want the default profile's %q", got, def.UserAgent)
 	}
-	if got := req.Header.Get("Version"); got != CodexDesktopVersion {
-		t.Errorf("Version = %q, want %q", got, CodexDesktopVersion)
+	if got := req.Header.Get("Version"); got != def.Version {
+		t.Errorf("Version = %q, want the default profile's %q", got, def.Version)
 	}
-	if got := req.Header.Get("Originator"); got != CodexDesktopOriginator {
-		t.Errorf("Originator = %q, want %q", got, CodexDesktopOriginator)
+	if got := req.Header.Get("Originator"); got != def.Originator {
+		t.Errorf("Originator = %q, want the default profile's %q", got, def.Originator)
 	}
 }
 

@@ -27,6 +27,19 @@ const (
 //
 // sec-websocket-extensions is last because the genuine client appends it at
 // the application layer rather than letting its WS library emit it.
+//
+// x-codex-routing-hint was added from crack/codexv0.153.4/rows/10-12, which
+// carry it on every upgrade, immediately after x-codex-turn-metadata. It is
+// emitted only when the caller supplies a model, so this slice can be one name
+// longer than what actually goes on the wire; the order conn skips names it
+// does not find, and the invariant is that whatever IS emitted appears in this
+// relative order.
+//
+// Two further names appear in that position on a SUBAGENT upgrade, between
+// x-codex-turn-metadata and x-codex-routing-hint: x-codex-parent-thread-id and
+// x-openai-subagent (crack/codexv0.153.4/rows/12). They are deliberately absent
+// here — cc-core never presents as a subagent, and a header that announces one
+// without the matching thread topology behind it is worse than its absence.
 var handshakeHeaderOrder = []string{
 	"Host",
 	"Connection",
@@ -45,6 +58,7 @@ var handshakeHeaderOrder = []string{
 	"thread-id",
 	"x-codex-window-id",
 	"x-codex-turn-metadata",
+	"x-codex-routing-hint",
 	"sec-websocket-extensions",
 }
 
@@ -84,6 +98,16 @@ type UpstreamHeaderOptions struct {
 	InstallationID string
 	BetaValue      string                      // defaults to CodexOpenAIBetaWS
 	Profile        *mimicry.CodexClientProfile // nil => mimicry.DefaultCodexProfile()
+
+	// Model is the upstream model slug for x-codex-routing-hint. Empty means
+	// the header is omitted — which no genuine 0.153.4 client does, so callers
+	// on the WebSocket path should always pass the model they are about to put
+	// in the frame. Passing a DIFFERENT one than the body carries is worse
+	// than passing none.
+	Model string
+	// ServiceTier is emitted only when set. Empty means the hint carries the
+	// model alone — see the note where the header is written.
+	ServiceTier string
 }
 
 // BuildUpstreamHeadersWithOptions returns the WebSocket-handshake headers for
@@ -103,11 +127,12 @@ type UpstreamHeaderOptions struct {
 // handshake variant contains only ids we legitimately own. Omitting five
 // headers every genuine client sends is now the larger tell.
 //
-// NOTE: x-codex-routing-hint is deliberately NOT set on the handshake. It used
-// to be, on the strength of a reading of codex-rs's build_websocket_headers,
-// but neither capture shows it on an upgrade — 0.135.0 and 0.147.0 both send
-// 18 headers and the hint is not among them. It remains on the HTTP path
-// (mimicry.ApplyCodexCLIHeaders), where the source reading is uncontradicted.
+// x-codex-routing-hint IS set on the handshake, when a Model is supplied. It
+// was removed once because neither the 0.135.0 nor the 0.147.0 capture carried
+// it on an upgrade; crack/codexv0.153.4/rows/10-12 carry it on all three, right
+// after x-codex-turn-metadata, in the same "model={slug};tier={tier}" form the
+// HTTP path uses. The older captures were older, not contradictory — do not
+// re-derive its absence from them.
 func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header {
 	beta := opts.BetaValue
 	if beta == "" {
@@ -181,17 +206,30 @@ func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header {
 		md := mimicry.NewCodexHandshakeMetadata(installationID, sessionID, threadID)
 		set("x-codex-turn-metadata", md.Encode())
 	}
+	if opts.Model != "" {
+		// ServiceTier is passed through, NOT defaulted to priority.
+		//
+		// Every handshake in crack/codexv0.153.4 carries tier=priority, so
+		// defaulting to it looks like the better fingerprint. It is the worse
+		// bill: pricing.CostWithOptions charges the Fast multiplier off the
+		// tier the request actually asked for, so a hint that claims priority
+		// on a request we bill at standard rates asks the backend for a paid
+		// upgrade nobody is paying for. The captured client sent priority
+		// because that account genuinely requested it.
+		//
+		// Callers that want the captured shape pass ServiceTier explicitly.
+		set(mimicry.CodexRoutingHintHeader, mimicry.CodexRoutingHint(opts.Model, opts.ServiceTier))
+	}
 	return h
 }
 
 // BuildUpstreamHeaders keeps the original positional signature — both forks
 // call it that way — and now delegates to BuildUpstreamHeadersWithOptions.
 //
-// model and serviceTier are accepted and IGNORED. They only ever fed
-// x-codex-routing-hint on the handshake, and no captured handshake carries
-// that header (see the note on BuildUpstreamHeadersWithOptions). Callers that
-// still pass them are not broken, they simply no longer have an effect here;
-// the hint is still applied on the HTTP path by mimicry.ApplyCodexCLIHeaders.
+// model and serviceTier feed x-codex-routing-hint again. They were accepted and
+// ignored for as long as the handshake was believed not to carry that header;
+// crack/codexv0.153.4 shows it does, so they are forwarded once more. A caller
+// still passing "" for model gets no hint — which no genuine client does.
 //
 // This form derives the installation id from accountID. That is enough to
 // avoid emitting an empty one, but it anchors on the ChatGPT account UUID while
@@ -203,12 +241,13 @@ func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header {
 // An empty accountID leaves the installation id empty, which no genuine client
 // ever sends; callers on that path must supply Identity.
 func BuildUpstreamHeaders(accessToken, accountID, sessionID, betaValue, model, serviceTier string) http.Header {
-	_, _ = model, serviceTier
 	return BuildUpstreamHeadersWithOptions(UpstreamHeaderOptions{
 		AccessToken: accessToken,
 		AccountID:   accountID,
 		SessionID:   sessionID,
 		BetaValue:   betaValue,
+		Model:       model,
+		ServiceTier: serviceTier,
 	})
 }
 

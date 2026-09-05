@@ -1,0 +1,135 @@
+{
+  "_note": "GET /backend-api/wham/usage — the quota probe cc-core's auth/codex_usage.go parses.",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/wham/usage",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "accept": "*/*",
+    "cookie": "<COOKIES_REDACTED>",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "user-agent",
+    "authorization",
+    "chatgpt-account-id",
+    "accept",
+    "cookie",
+    "host",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:05 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "2127",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "Set-Cookie": "<REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "user_id": "<OPAQUE_ID>",
+    "account_id": "<ACCOUNT_UUID>",
+    "email": "<EMAIL>",
+    "plan_type": "pro",
+    "rate_limit": {
+      "allowed": true,
+      "limit_reached": false,
+      "primary_window": {
+        "used_percent": 17,
+        "limit_window_seconds": 604800,
+        "reset_after_seconds": 282635,
+        "reset_at": 1788862420
+      },
+      "secondary_window": null
+    },
+    "code_review_rate_limit": null,
+    "additional_rate_limits": [
+      {
+        "limit_name": "GPT-5.3-Codex-Spark",
+        "metered_feature": "codex_bengalfox",
+        "rate_limit": {
+          "allowed": true,
+          "limit_reached": false,
+          "primary_window": {
+            "used_percent": 0,
+            "limit_window_seconds": 18000,
+            "reset_after_seconds": 18000,
+            "reset_at": 1788597785
+          },
+          "secondary_window": {
+            "used_percent": 0,
+            "limit_window_seconds": 604800,
+            "reset_after_seconds": 604800,
+            "reset_at": 1789184585
+          }
+        },
+        "normal_model_slug": null
+      },
+      {
+        "limit_name": "gpt-reserve",
+        "metered_feature": "base_model_inference",
+        "rate_limit": {
+          "allowed": true,
+          "limit_reached": false,
+          "primary_window": {
+            "used_percent": 0,
+            "limit_window_seconds": 604800,
+            "reset_after_seconds": 604800,
+            "reset_at": 1789184585
+          },
+          "secondary_window": null
+        },
+        "normal_model_slug": "gpt-5.6-luna"
+      }
+    ],
+    "model_usage": {
+      "gpt-6-astra": {
+        "available": true,
+        "available_at": null,
+        "credits_would_enable": false
+      }
+    },
+    "credits": {
+      "has_credits": false,
+      "unlimited": false,
+      "overage_limit_reached": false,
+      "balance": "0",
+      "approx_local_messages": [
+        0,
+        0
+      ],
+      "approx_cloud_messages": [
+        0,
+        0
+      ]
+    },
+    "spend_control": {
+      "reached": false,
+      "individual_limit": null
+    },
+    "rate_limit_reached_type": null,
+    "promo": null,
+    "rate_limit_reset_credits": {
+      "available_count": 1,
+      "applicable_available_count": 0
+    }
+  }
+}

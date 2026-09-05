@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -122,12 +123,32 @@ var codexTUIClientProfile = CodexClientProfile{
 // DefaultCodexProfile returns the identity cc-core presents upstream by
 // default. Both forks get this without opting in, so changing it is a
 // behaviour change for production traffic on both at once.
-func DefaultCodexProfile() CodexClientProfile { return codexDesktopClientProfile }
+//
+// It returns the codex-tui (CLI) profile as of 2026-09-05. It used to return
+// Desktop, and the flip was forced rather than preferred:
+//
+//  1. The 0.153.4 model catalog gates gpt-6-astra behind
+//     minimal_client_version "0.153.0". The Desktop profile self-reports
+//     0.147.0-alpha.6.6, below that floor, so a Desktop-identified request
+//     cannot be routed to the current flagship at all.
+//  2. Desktop cannot simply be bumped to clear the floor. Its version, its
+//     build number (26.803.81509) and its terminal segment are three
+//     independent values the backend cross-validates against the originator
+//     and the UA, and no Desktop capture newer than 0.147.0 exists. Inventing
+//     a Desktop 0.153.x triple would be a worse fingerprint than presenting a
+//     real CLI one — the repo rule is that constants match crack/, and only
+//     the CLI has fresh ground truth (crack/codexv0.153.4/).
+//
+// So the choice was: present a stale-but-real Desktop that cannot reach astra,
+// or a current-and-real CLI that can. Re-visit if a Desktop capture at or above
+// 0.153.0 is taken — Desktop is the more common client and was the default for
+// that reason.
+func DefaultCodexProfile() CodexClientProfile { return codexTUIClientProfile }
 
 // NOTE ON PER-ACCOUNT VARIATION — deliberately NOT done here.
 //
 // Every account routed through the proxy currently advertises the same
-// synthetic machine ("Arch Linux Rolling Release; x86_64" / "Konsole/260403"),
+// synthetic machine ("Arch Linux Rolling Release; x86_64" / "Konsole/260800"),
 // which is the same "many users, one rare machine" signal auth.HostProfile
 // exists to defuse on the Anthropic side. Wiring HostProfile into the Codex UA
 // would require inventing an os_type/os_version pair per distro and a
@@ -239,6 +260,30 @@ const (
 	CodexRequestKindTurn = "turn"
 )
 
+// CodexDefaultAgentName is the `agent_name` value emitted when the downstream
+// client did not declare one.
+//
+// It is the client's working directory. A proxy cannot know the real one, and
+// every connection in crack/codexv0.153.4 carried "/root" — a plausible value
+// for the server and container hosts most subscription Codex traffic runs on.
+//
+// This is uniform across accounts on purpose, for the same reason the synthetic
+// User-Agent is (see the per-account-variation note above): inventing a
+// per-account directory tree is a guess no capture backs, and a wrong-shaped
+// guess is a worse fingerprint than a real value shared by many accounts. It is
+// also a real gap — recorded in crack/codexv0.153.4/README.md — and the right
+// fix is carrying the DOWNSTREAM client's own agent_name through, which
+// RewriteCodexClientFrame does whenever the client sends one.
+const CodexDefaultAgentName = "/root"
+
+// Codex sandbox_mode values carried in x-codex-turn-metadata. The capture pairs
+// workspace-write with thread_source "user" and read-only with "system" /
+// "guardian_review".
+const (
+	CodexSandboxModeWorkspaceWrite = "workspace-write"
+	CodexSandboxModeReadOnly       = "read-only"
+)
+
 // CodexTurnMetadata is the x-codex-turn-metadata payload.
 //
 // The 0.135.0 CLI capture carried a `workspaces` map here holding the user's
@@ -248,68 +293,164 @@ const (
 // `workspace_kind` string on the turn variant only), leaving nothing in the
 // handshake variant that a proxy cannot legitimately synthesize. That is why
 // the header is emitted now.
+//
+// 0.153.4 grew the payload from 8 fields to 15 (17 on a subagent connection).
+// Three of the new ones are NOT strings — WindowNumber is a JSON number and the
+// three review/repl flags are JSON booleans — which is why Encode writes typed
+// values rather than another run of writeJSONPair. Emitting `"window_number":"0"`
+// would be a one-character tell.
 type CodexTurnMetadata struct {
 	InstallationID string
 	SessionID      string
 	ThreadID       string
+	AgentName      string
 	TurnID         string
 	WindowID       string
-	RequestKind    string
-	ThreadSource   string
-	Sandbox        string
+	WindowNumber   int
+	// ContextWindowID is a UUIDv7 sharing thread_id's first four groups; see
+	// CodexContextWindowIDFor.
+	ContextWindowID string
+	RequestKind     string
+
+	// ParentThreadID and SubagentKind appear together, between request_kind
+	// and thread_source, and ONLY on a subagent connection. Both empty means
+	// neither key is emitted — a plain thread sends 15 keys, not 17 with two
+	// empty strings.
+	ParentThreadID string
+	SubagentKind   string
+
+	ThreadSource string
+	Sandbox      string
+	SandboxMode  string
+
+	AutoReviewEnabled          bool
+	NodeReplAutoReviewRequired bool
+	NodeReplDisabled           bool
 }
 
 // NewCodexHandshakeMetadata builds the handshake ("prewarm") variant for one
 // session. threadID defaults to sessionID, which is what a brand-new thread
-// sends in both captures.
+// sends in every capture.
+//
+// The defaults describe the ordinary user thread of
+// crack/codexv0.153.4/rows/10: workspace-write, auto-review on, neither
+// node_repl flag set. The system-initiated and subagent variants (rows 11 and
+// 12) differ, so a caller that knows it is neither should adjust the returned
+// struct rather than expect this to guess.
 func NewCodexHandshakeMetadata(installationID, sessionID, threadID string) CodexTurnMetadata {
 	if threadID == "" {
 		threadID = sessionID
 	}
 	return CodexTurnMetadata{
-		InstallationID: installationID,
-		SessionID:      sessionID,
-		ThreadID:       threadID,
-		TurnID:         "",
-		WindowID:       CodexWindowID(sessionID),
-		RequestKind:    CodexRequestKindPrewarm,
-		ThreadSource:   "user",
-		Sandbox:        "seccomp",
+		InstallationID:  installationID,
+		SessionID:       sessionID,
+		ThreadID:        threadID,
+		AgentName:       CodexDefaultAgentName,
+		TurnID:          "",
+		WindowID:        CodexWindowID(threadID),
+		WindowNumber:    0,
+		ContextWindowID: CodexContextWindowIDFor(threadID),
+		RequestKind:     CodexRequestKindPrewarm,
+		ThreadSource:    "user",
+		Sandbox:         "seccomp",
+		SandboxMode:     CodexSandboxModeWorkspaceWrite,
+
+		AutoReviewEnabled:          true,
+		NodeReplAutoReviewRequired: false,
+		NodeReplDisabled:           false,
 	}
 }
 
-// CodexWindowID renders the x-codex-window-id value: the session id, a colon,
-// and the window index. A proxy serves one logical window per session, so the
-// index is always 0 — matching every handshake in both captures.
-func CodexWindowID(sessionID string) string {
-	if sessionID == "" {
+// CodexWindowID renders the x-codex-window-id value: the id, a colon, and the
+// window index. A proxy serves one logical window per thread, so the index is
+// always 0 — matching every handshake in every capture.
+//
+// It is anchored on the THREAD id, not the session id. The two are equal on a
+// fresh thread, which is why the earlier session-anchored derivation looked
+// right; crack/codexv0.153.4/rows/12 separates them (session 01a06fa9-a7f8-…,
+// thread 01a06fa9-a85e-…) and the window id there follows the thread.
+func CodexWindowID(threadID string) string {
+	if threadID == "" {
 		return ""
 	}
-	return sessionID + ":0"
+	return threadID + ":0"
+}
+
+// CodexContextWindowIDFor derives the `context_window_id` for a thread.
+//
+// It is not an independent id: in all three handshakes of
+// crack/codexv0.153.4 it is a UUIDv7 sharing thread_id's first FOUR groups and
+// differing only in the trailing 12 hex digits — the real client mints it from
+// the same timestamp and random-high bits as the thread. Reproducing that
+// relationship matters, because an unrelated UUID here is a structural
+// mismatch a single comparison finds.
+//
+// The trailing group is derived from the thread id rather than randomised, so
+// one thread keeps one context window across reconnects.
+func CodexContextWindowIDFor(threadID string) string {
+	if len(threadID) != 36 {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("codex-context-window\x00" + threadID))
+	return threadID[:24] + hex.EncodeToString(sum[:6])
 }
 
 // Encode renders the metadata as the compact JSON string that goes in the
 // header value.
 //
 // Key ORDER is part of the captured shape, so this writes the fields
-// positionally instead of marshalling a map (which Go would sort). The order
-// is verbatim from crack/codexapp0.147.0/rows/10-ws-handshake-codex-responses.json:
-// installation_id, session_id, thread_id, turn_id, window_id, request_kind,
-// thread_source, sandbox. turn_id is emitted even when empty — the genuine
-// handshake sends `"turn_id":""`, not an absent key.
+// positionally instead of marshalling a map (which Go would sort). The order is
+// verbatim from crack/codexv0.153.4/rows/13-x-codex-turn-metadata-decoded.json:
+//
+//	installation_id, session_id, thread_id, agent_name, turn_id, window_id,
+//	window_number, context_window_id, request_kind,
+//	[parent_thread_id, subagent_kind,]
+//	thread_source, sandbox, sandbox_mode,
+//	auto_review_enabled, node_repl_auto_review_required, node_repl_disabled
+//
+// turn_id is emitted even when empty — the genuine handshake sends
+// `"turn_id":""`, not an absent key. The subagent pair is the opposite: absent
+// entirely on a plain thread rather than present-and-empty.
+//
+// window_number is a NUMBER and the three trailing flags are BOOLEANS. Writing
+// them through writeJSONPair would quote them, which is why they go through
+// writeJSONRaw.
 func (m CodexTurnMetadata) Encode() string {
 	var sb strings.Builder
 	sb.WriteByte('{')
 	writeJSONPair(&sb, "installation_id", m.InstallationID, true)
 	writeJSONPair(&sb, "session_id", m.SessionID, false)
 	writeJSONPair(&sb, "thread_id", m.ThreadID, false)
+	writeJSONPair(&sb, "agent_name", m.AgentName, false)
 	writeJSONPair(&sb, "turn_id", m.TurnID, false)
 	writeJSONPair(&sb, "window_id", m.WindowID, false)
+	writeJSONRaw(&sb, "window_number", strconv.Itoa(m.WindowNumber))
+	writeJSONPair(&sb, "context_window_id", m.ContextWindowID, false)
 	writeJSONPair(&sb, "request_kind", m.RequestKind, false)
+	// Emitted as a pair or not at all — a plain thread sends neither key.
+	if m.ParentThreadID != "" || m.SubagentKind != "" {
+		writeJSONPair(&sb, "parent_thread_id", m.ParentThreadID, false)
+		writeJSONPair(&sb, "subagent_kind", m.SubagentKind, false)
+	}
 	writeJSONPair(&sb, "thread_source", m.ThreadSource, false)
 	writeJSONPair(&sb, "sandbox", m.Sandbox, false)
+	writeJSONPair(&sb, "sandbox_mode", m.SandboxMode, false)
+	writeJSONRaw(&sb, "auto_review_enabled", strconv.FormatBool(m.AutoReviewEnabled))
+	writeJSONRaw(&sb, "node_repl_auto_review_required", strconv.FormatBool(m.NodeReplAutoReviewRequired))
+	writeJSONRaw(&sb, "node_repl_disabled", strconv.FormatBool(m.NodeReplDisabled))
 	sb.WriteByte('}')
 	return sb.String()
+}
+
+// writeJSONRaw writes a key whose value is already a JSON literal — a number or
+// a boolean. The key is still marshalled; only the value is written verbatim,
+// and every caller supplies it from strconv, never from user input.
+func writeJSONRaw(sb *strings.Builder, key, literal string) {
+	sb.WriteByte(',')
+	k, _ := json.Marshal(key)
+	sb.Write(k)
+	sb.WriteByte(':')
+	sb.WriteString(literal)
 }
 
 func writeJSONPair(sb *strings.Builder, key, value string, first bool) {

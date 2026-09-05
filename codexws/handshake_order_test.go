@@ -25,6 +25,29 @@ func (c *fakeConn) Close() error                { return nil }
 
 // Go writes request headers alphabetically. This asserts we replay them in the
 // order a genuine Codex client uses instead.
+// assertCapturedOrder checks that the emitted names are a SUBSEQUENCE of
+// handshakeHeaderOrder — i.e. every header sent appears in the captured
+// relative position — rather than requiring the two to be equal.
+//
+// They stopped being equal when x-codex-routing-hint joined the order: it is
+// emitted only when the caller supplies a model, so a hint-less handshake is
+// one name shorter. Requiring equality would either forbid that case or force
+// a fake model into every fixture.
+func assertCapturedOrder(t *testing.T, names []string) {
+	t.Helper()
+	i := 0
+	for _, name := range names {
+		for i < len(handshakeHeaderOrder) && handshakeHeaderOrder[i] != name {
+			i++
+		}
+		if i == len(handshakeHeaderOrder) {
+			t.Fatalf("header %q is out of the captured order, or not in it at all; got %v, captured order %v",
+				name, names, handshakeHeaderOrder)
+		}
+		i++
+	}
+}
+
 func TestHandshakeOrderConnReordersHeaders(t *testing.T) {
 	raw := "GET /backend-api/codex/responses HTTP/1.1\r\n" +
 		"Host: chatgpt.com\r\n" +
@@ -44,6 +67,7 @@ func TestHandshakeOrderConnReordersHeaders(t *testing.T) {
 		"x-client-request-id: s\r\n" +
 		"x-codex-beta-features: f\r\n" +
 		"x-codex-turn-metadata: {}\r\n" +
+		"x-codex-routing-hint: model=gpt-5.6-sol;tier=priority\r\n" +
 		"x-codex-window-id: s:0\r\n" +
 		"\r\n"
 
@@ -57,16 +81,7 @@ func TestHandshakeOrderConnReordersHeaders(t *testing.T) {
 	if !strings.HasPrefix(got, "GET /backend-api/codex/responses HTTP/1.1\r\n") {
 		t.Fatalf("request line was altered: %q", got)
 	}
-	names := headerNames(got)
-	want := handshakeHeaderOrder
-	if len(names) != len(want) {
-		t.Fatalf("got %d headers %v, want %d %v", len(names), names, len(want), want)
-	}
-	for i := range want {
-		if names[i] != want[i] {
-			t.Errorf("header %d = %q, want %q (full order: %v)", i, names[i], want[i], names)
-		}
-	}
+	assertCapturedOrder(t, headerNames(got))
 	// Name casing must be rewritten to the captured spelling — this is what
 	// turns gorilla's "Sec-WebSocket-Extensions" into the lowercase form.
 	if !strings.Contains(got, "sec-websocket-extensions: permessage-deflate\r\n") {
@@ -92,7 +107,7 @@ func TestHandshakeOrderConnAgainstRealRequestWrite(t *testing.T) {
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,
-		Header:     BuildUpstreamHeaders("tok", "acct", "sess", "", "", ""),
+		Header:     BuildUpstreamHeaders("tok", "acct", "sess", "", "gpt-5.6-sol", "priority"),
 		Host:       u.Host,
 	}
 	// The four headers gorilla owns, written the way gorilla writes them.
@@ -137,14 +152,12 @@ func TestHandshakeOrderConnAgainstRealRequestWrite(t *testing.T) {
 	}
 
 	names := headerNames(out)
+	assertCapturedOrder(t, names)
+	// This end-to-end case passes a real model, so the routing hint IS emitted
+	// and the emitted set should be the whole captured order.
 	if len(names) != len(handshakeHeaderOrder) {
 		t.Fatalf("got %d headers %v, want the full captured set %v",
 			len(names), names, handshakeHeaderOrder)
-	}
-	for i, want := range handshakeHeaderOrder {
-		if names[i] != want {
-			t.Fatalf("header %d = %q, want %q\nfull: %v", i, names[i], want, names)
-		}
 	}
 	// Sanity: this order is genuinely different from what Go emits unaided.
 	sorted := append([]string(nil), names...)

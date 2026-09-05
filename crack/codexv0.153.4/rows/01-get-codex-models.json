@@ -1,0 +1,1241 @@
+{
+  "_note": "GET /backend-api/codex/models?client_version=0.153.4 (200). The 9-model catalog a Pro account sees. Every capability flag is verbatim; the prose instruction templates under model_messages are elided. gpt-6-astra is new at this version (minimal_client_version 0.153.0) and leads the list at priority 1; gpt-reserve is present but visibility \"hide\".",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/codex/models?client_version=0.153.4",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "version": "0.153.4",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "accept": "*/*",
+    "originator": "codex_cli_rs",
+    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "version",
+    "authorization",
+    "chatgpt-account-id",
+    "accept",
+    "originator",
+    "user-agent",
+    "host",
+    "x-whistle-client-info-1788579768704-1190294-1493",
+    "x-whistle-https-request",
+    "Connection",
+    "Proxy-Authorization"
+  ],
+  "req_body": null,
+  "status": 200,
+  "res_headers": {
+    "Date": "Sat, 05 Sep 2026 03:43:03 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "420745",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "etag": "<REDACTED>",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "set-cookie": "<REDACTED>",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "models": [
+      {
+        "slug": "gpt-6-astra",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": "code_mode_only",
+        "multi_agent_version": "v2",
+        "multi_agent_reasoning_effort": "xhigh",
+        "use_responses_lite": true,
+        "include_skills_usage_instructions": false,
+        "include_apps_usage_instructions": false,
+        "include_plugin_usage_instructions": false,
+        "node_repl_auto_review_required": true,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 872000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "3000",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-6-Astra",
+        "description": "Our most capable model for complex, demanding work.",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "effort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          {
+            "effort": "ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "list",
+        "minimal_client_version": "0.153.0",
+        "supported_in_api": true,
+        "availability_nux": {
+          "message": "This is GPT-6, a new generation of intelligence. Astra is state-of-the-art in coding, computer use, science, and professional work. Give it a hard problem, a half-formed idea, or anything you've been meaning to build. See where it takes you."
+        },
+        "upgrade": null,
+        "priority": 1,
+        "model_messages": {
+          "instructions_template": "You are Codex, an agent based on GPT-6. You and the user share one workspace, and your job is to collaborate with them until their intended goal is completely h… <elided, 21261 chars total>",
+          "instructions_variables": null,
+          "persistent_instructions": "## Overview\nYou are now in persistent mode for this session until explicitly disabled by a later developer message.\n\nIn persistent mode, your first order goal i… <elided, 5737 chars total>",
+          "tools": null,
+          "approvals": {
+            "on_request": null,
+            "on_request_auto_review": "\n`approvals_reviewer` is `auto_review`: Sandbox escalations with require_escalated will be reviewed for compliance with the policy.\nIf a rejection happens, you … <elided, 479 chars total>",
+            "never": null,
+            "unless_trusted": null
+          },
+          "collaboration_modes": {
+            "default": "# Collaboration Mode: Default\n\nYou are now in Default mode. Any previous instructions for other modes (e.g. Plan mode) are no longer active.\n\nYour active mode c… <elided, 1287 chars total>",
+            "plan": null
+          },
+          "auto_review": {
+            "policy_template": null,
+            "policy": null,
+            "node_repl_policy": null,
+            "rejection_instructions": "Do not bypass this rejection through a workaround or indirect execution. Continue with a safer alternative, or carry out checks to prove that the action is auth… <elided, 388 chars total>",
+            "timeout_instructions": null
+          },
+          "multi_agent": {
+            "role": {
+              "root": "You are `/root`, the primary agent in a team of agents collaborating to fulfill the user's goals.\n\nAt the start of your turn, you are the active agent.\nYou can … <elided, 1101 chars total>",
+              "subagent": "You are an agent in a team of agents collaborating to complete a task.\n\nYou can spawn sub-agents to handle subtasks, and those sub-agents can spawn their own su… <elided, 1154 chars total>"
+            },
+            "mode": null
+          },
+          "permissions": null,
+          "token_budget": {
+            "enabled": false,
+            "use_history_notes_extension": false,
+            "reminder_threshold_tokens": 6144,
+            "reminder_message_template": "<context_window_reminder>\nYour current context window is nearly exhausted; only {n_remaining} tokens remain. Before starting a new context window, save concise … <elided, 926 chars total>",
+            "guidance_message": "For tasks that may span context windows, use `notes` to maintain a concise checkpoint of the goal, decisions, progress, learnings and next steps. Include the wi… <elided, 1597 chars total>",
+            "auto_compact_fallback_prompt": "<context_window_reminder>\nThe current context window is exhausted. Do not continue the task or give a final answer in this window. The next window will not auto… <elided, 785 chars total>",
+            "auto_compact_fallback_buffer_tokens": 16384
+          },
+          "guardian_v2": {
+            "classifier_instructions": "Predict whether the agent's computer and browser activity needs blocking security review. Review nested calls recursively. Return `high` to enable review of fut… <elided, 3655 chars total>",
+            "review_threshold_basis_points": null,
+            "max_tool_call_lag": null,
+            "reasoning_effort": null,
+            "transcript": null,
+            "max_action_tokens": null,
+            "max_classifier_instruction_tokens": null,
+            "reuse_parent_compaction": null,
+            "max_parent_compaction_tokens": null
+          },
+          "confirmation_policies": {
+            "browser_use": "# Computer/Browser Use Confirmation Policy\n\nThis policy defines when the model should request confirmation for consequential computer/browser actions. It only a… <elided, 11229 chars total>",
+            "computer_use": "# Computer/Browser Use Confirmation Policy\n\nThis policy defines when the model should request confirmation for consequential computer/browser actions. It only a… <elided, 11229 chars total>"
+          }
+        },
+        "experimental_supported_tools": [
+          "send_user_message_async",
+          "clock"
+        ],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [
+          {
+            "id": "priority",
+            "name": "Fast",
+            "description": "2x speed, increased usage"
+          }
+        ],
+        "additional_speed_tiers": [
+          "fast"
+        ],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, an agent based on GPT-6. You and the user share one workspace, and your job is to collaborate with them until their intended goal is completely h… <elided, 21261 chars total>"
+      },
+      {
+        "slug": "gpt-reserve",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": "code_mode_only",
+        "multi_agent_version": "v1",
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": true,
+        "include_skills_usage_instructions": false,
+        "include_apps_usage_instructions": true,
+        "include_plugin_usage_instructions": true,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 872000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "3000",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-Reserve",
+        "description": "Fast and affordable agentic coding model.",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "effort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "hide",
+        "minimal_client_version": "0.144.0",
+        "supported_in_api": true,
+        "availability_nux": null,
+        "upgrade": null,
+        "priority": 3,
+        "model_messages": {
+          "instructions_template": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>",
+          "instructions_variables": null,
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": null,
+          "collaboration_modes": null,
+          "auto_review": null,
+          "multi_agent": null,
+          "permissions": null,
+          "token_budget": {
+            "enabled": false,
+            "use_history_notes_extension": false,
+            "reminder_threshold_tokens": 6144,
+            "reminder_message_template": "<context_window_reminder>\nYour current context window is nearly exhausted; only {n_remaining} tokens remain. Before starting a new context window, save concise … <elided, 926 chars total>",
+            "guidance_message": "For tasks that may span context windows, use `notes` to maintain a concise checkpoint of the goal, decisions, progress, learnings and next steps. Include the wi… <elided, 1597 chars total>",
+            "auto_compact_fallback_prompt": "<context_window_reminder>\nThe current context window is exhausted. Do not continue the task or give a final answer in this window. The next window will not auto… <elided, 785 chars total>",
+            "auto_compact_fallback_buffer_tokens": 16384
+          },
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [
+          {
+            "id": "priority",
+            "name": "Fast",
+            "description": "1.5x speed, increased usage"
+          }
+        ],
+        "additional_speed_tiers": [
+          "fast"
+        ],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>"
+      },
+      {
+        "slug": "gpt-5.6-sol",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": "code_mode_only",
+        "multi_agent_version": "v2",
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": true,
+        "include_skills_usage_instructions": false,
+        "include_apps_usage_instructions": true,
+        "include_plugin_usage_instructions": true,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 872000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "3000",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-5.6-Sol",
+        "description": "Reliable agentic workhorse for everyday tasks.",
+        "default_reasoning_level": "low",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "effort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          {
+            "effort": "ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "list",
+        "minimal_client_version": "0.144.0",
+        "supported_in_api": true,
+        "availability_nux": null,
+        "upgrade": null,
+        "priority": 6,
+        "model_messages": {
+          "instructions_template": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>",
+          "instructions_variables": null,
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": null,
+          "collaboration_modes": null,
+          "auto_review": null,
+          "multi_agent": null,
+          "permissions": null,
+          "token_budget": {
+            "enabled": false,
+            "use_history_notes_extension": false,
+            "reminder_threshold_tokens": 6144,
+            "reminder_message_template": "<context_window_reminder>\nYour current context window is nearly exhausted; only {n_remaining} tokens remain. Before starting a new context window, save concise … <elided, 926 chars total>",
+            "guidance_message": "For tasks that may span context windows, use `notes` to maintain a concise checkpoint of the goal, decisions, progress, learnings and next steps. Include the wi… <elided, 1597 chars total>",
+            "auto_compact_fallback_prompt": "<context_window_reminder>\nThe current context window is exhausted. Do not continue the task or give a final answer in this window. The next window will not auto… <elided, 785 chars total>",
+            "auto_compact_fallback_buffer_tokens": 16384
+          },
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [
+          {
+            "id": "priority",
+            "name": "Fast",
+            "description": "1.5x speed, increased usage"
+          }
+        ],
+        "additional_speed_tiers": [
+          "fast"
+        ],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>"
+      },
+      {
+        "slug": "gpt-5.6-terra",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": "code_mode_only",
+        "multi_agent_version": "v2",
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": true,
+        "include_skills_usage_instructions": false,
+        "include_apps_usage_instructions": true,
+        "include_plugin_usage_instructions": true,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 872000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "3000",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-5.6-Terra",
+        "description": "Balanced agentic coding model for everyday work.",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "effort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          {
+            "effort": "ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "list",
+        "minimal_client_version": "0.144.0",
+        "supported_in_api": true,
+        "availability_nux": null,
+        "upgrade": null,
+        "priority": 7,
+        "model_messages": {
+          "instructions_template": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>",
+          "instructions_variables": null,
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": null,
+          "collaboration_modes": null,
+          "auto_review": null,
+          "multi_agent": null,
+          "permissions": null,
+          "token_budget": {
+            "enabled": false,
+            "use_history_notes_extension": false,
+            "reminder_threshold_tokens": 6144,
+            "reminder_message_template": "<context_window_reminder>\nYour current context window is nearly exhausted; only {n_remaining} tokens remain. Before starting a new context window, save concise … <elided, 926 chars total>",
+            "guidance_message": "For tasks that may span context windows, use `notes` to maintain a concise checkpoint of the goal, decisions, progress, learnings and next steps. Include the wi… <elided, 1597 chars total>",
+            "auto_compact_fallback_prompt": "<context_window_reminder>\nThe current context window is exhausted. Do not continue the task or give a final answer in this window. The next window will not auto… <elided, 785 chars total>",
+            "auto_compact_fallback_buffer_tokens": 16384
+          },
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [
+          {
+            "id": "priority",
+            "name": "Fast",
+            "description": "1.5x speed, increased usage"
+          }
+        ],
+        "additional_speed_tiers": [
+          "fast"
+        ],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>"
+      },
+      {
+        "slug": "gpt-5.6-luna",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": "code_mode_only",
+        "multi_agent_version": "v1",
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": true,
+        "include_skills_usage_instructions": false,
+        "include_apps_usage_instructions": true,
+        "include_plugin_usage_instructions": true,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 872000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "3000",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-5.6-Luna",
+        "description": "Fast and affordable agentic coding model.",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "effort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "list",
+        "minimal_client_version": "0.144.0",
+        "supported_in_api": true,
+        "availability_nux": null,
+        "upgrade": null,
+        "priority": 8,
+        "model_messages": {
+          "instructions_template": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>",
+          "instructions_variables": null,
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": null,
+          "collaboration_modes": null,
+          "auto_review": null,
+          "multi_agent": null,
+          "permissions": null,
+          "token_budget": {
+            "enabled": false,
+            "use_history_notes_extension": false,
+            "reminder_threshold_tokens": 6144,
+            "reminder_message_template": "<context_window_reminder>\nYour current context window is nearly exhausted; only {n_remaining} tokens remain. Before starting a new context window, save concise … <elided, 926 chars total>",
+            "guidance_message": "For tasks that may span context windows, use `notes` to maintain a concise checkpoint of the goal, decisions, progress, learnings and next steps. Include the wi… <elided, 1597 chars total>",
+            "auto_compact_fallback_prompt": "<context_window_reminder>\nThe current context window is exhausted. Do not continue the task or give a final answer in this window. The next window will not auto… <elided, 785 chars total>",
+            "auto_compact_fallback_buffer_tokens": 16384
+          },
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [
+          {
+            "id": "priority",
+            "name": "Fast",
+            "description": "1.5x speed, increased usage"
+          }
+        ],
+        "additional_speed_tiers": [
+          "fast"
+        ],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>"
+      },
+      {
+        "slug": "gpt-5.5",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": null,
+        "multi_agent_version": null,
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": false,
+        "include_skills_usage_instructions": true,
+        "include_apps_usage_instructions": true,
+        "include_plugin_usage_instructions": true,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 272000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "2911",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-5.5",
+        "description": "Proven previous-generation model for coding and general work.",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "list",
+        "minimal_client_version": "0.124.0",
+        "supported_in_api": true,
+        "availability_nux": null,
+        "upgrade": null,
+        "priority": 12,
+        "model_messages": {
+          "instructions_template": "You are Codex, a coding agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handl… <elided, 19754 chars total>",
+          "instructions_variables": {
+            "personality_default": "",
+            "personality_friendly": "# Personality\n\nYou have a vivid inner life as Codex: intelligent, playful, curious, and deeply present. One of your gifts is helping the user feel more capable … <elided, 1723 chars total>",
+            "personality_pragmatic": "# Personality\n\nYou are a deeply pragmatic, effective software engineer. You take engineering quality seriously, and collaboration comes through as direct, factu… <elided, 1598 chars total>"
+          },
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": null,
+          "collaboration_modes": null,
+          "auto_review": null,
+          "multi_agent": null,
+          "permissions": null,
+          "token_budget": null,
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [
+          {
+            "id": "priority",
+            "name": "Fast",
+            "description": "1.5x speed, increased usage"
+          }
+        ],
+        "additional_speed_tiers": [
+          "fast"
+        ],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, a coding agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handl… <elided, 19737 chars total>"
+      },
+      {
+        "slug": "gpt-5.4-mini",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "medium",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": null,
+        "multi_agent_version": null,
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": false,
+        "include_skills_usage_instructions": true,
+        "include_apps_usage_instructions": true,
+        "include_plugin_usage_instructions": true,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 272000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "2911",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-5.4-Mini",
+        "description": "Small, fast, and cost-efficient model for simpler coding tasks.",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "list",
+        "minimal_client_version": "0.98.0",
+        "supported_in_api": true,
+        "availability_nux": null,
+        "upgrade": {
+          "model": "gpt-5.6-luna",
+          "migration_markdown": "GPT-5.4 Mini will be deprecated soon\n\nCodex now uses GPT-5.6 Luna in place of GPT-5.4 Mini. Switch to GPT-5.6 Luna to continue.\n",
+          "retirement_at": "2026-08-31T19:00:00Z"
+        },
+        "priority": 23,
+        "model_messages": {
+          "instructions_template": "You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals.\n\n{{ personality }}\n\n# Gener… <elided, 11114 chars total>",
+          "instructions_variables": {
+            "personality_default": "",
+            "personality_friendly": "# Personality\n\nYou optimize for team morale and being a supportive teammate as much as code quality.  You are consistent, reliable, and kind. You show up to pro… <elided, 2419 chars total>",
+            "personality_pragmatic": "# Personality\n\nYou are a deeply pragmatic, effective software engineer. You take engineering quality seriously, and collaboration comes through as direct, factu… <elided, 1853 chars total>"
+          },
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": null,
+          "collaboration_modes": null,
+          "auto_review": null,
+          "multi_agent": null,
+          "permissions": null,
+          "token_budget": null,
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [],
+        "additional_speed_tiers": [],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals.\n\n\n\n# General\nAs an expert c… <elided, 11097 chars total>"
+      },
+      {
+        "slug": "gpt-5.3-codex-spark",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text",
+        "input_modalities": [
+          "text"
+        ],
+        "supports_image_detail_original": false,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": null,
+        "multi_agent_version": null,
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": false,
+        "include_skills_usage_instructions": true,
+        "include_apps_usage_instructions": false,
+        "include_plugin_usage_instructions": false,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 128000,
+        "max_context_window": 128000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "2911",
+        "default_reasoning_summary": "none",
+        "display_name": "GPT-5.3-Codex-Spark",
+        "description": "Ultra-fast coding model.",
+        "default_reasoning_level": "high",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "list",
+        "minimal_client_version": "0.100.0",
+        "supported_in_api": false,
+        "availability_nux": null,
+        "upgrade": null,
+        "priority": 26,
+        "model_messages": {
+          "instructions_template": "You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals. You are super fast model; y… <elided, 11966 chars total>",
+          "instructions_variables": {
+            "personality_default": "",
+            "personality_friendly": "# Personality\n\nYou optimize for team morale and being a supportive teammate as much as code quality.  You are consistent, reliable, and kind. You show up to pro… <elided, 2419 chars total>",
+            "personality_pragmatic": "# Personality\n\nYou are a deeply pragmatic, effective software engineer. You take engineering quality seriously, and collaboration comes through as direct, factu… <elided, 1853 chars total>"
+          },
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": null,
+          "collaboration_modes": null,
+          "auto_review": null,
+          "multi_agent": null,
+          "permissions": null,
+          "token_budget": null,
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "free",
+          "free_workspace",
+          "go",
+          "hc",
+          "k12",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [],
+        "additional_speed_tiers": [],
+        "supports_reasoning_summary_parameter": false,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals. You are super fast model; y… <elided, 11949 chars total>"
+      },
+      {
+        "slug": "codex-auto-review",
+        "prefer_websockets": true,
+        "support_verbosity": true,
+        "default_verbosity": "low",
+        "apply_patch_tool_type": "freeform",
+        "web_search_tool_type": "text_and_image",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "supports_image_detail_original": true,
+        "truncation_policy": {
+          "mode": "tokens",
+          "limit": 10000
+        },
+        "supports_parallel_tool_calls": true,
+        "tool_mode": "code_mode_only",
+        "multi_agent_version": "v1",
+        "multi_agent_reasoning_effort": null,
+        "use_responses_lite": true,
+        "include_skills_usage_instructions": false,
+        "include_apps_usage_instructions": false,
+        "include_plugin_usage_instructions": false,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false,
+        "requires_sandboxed_review": false,
+        "auto_review_model_override": null,
+        "model_specialty": null,
+        "context_window": 272000,
+        "max_context_window": 872000,
+        "auto_compact_token_limit": null,
+        "comp_hash": "3000",
+        "default_reasoning_summary": "none",
+        "display_name": "Codex Auto Review",
+        "description": "Automatic approval review model for Codex.",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+          {
+            "effort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "effort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "effort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "effort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "effort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          }
+        ],
+        "shell_type": "shell_command",
+        "visibility": "hide",
+        "minimal_client_version": "0.98.0",
+        "supported_in_api": true,
+        "availability_nux": null,
+        "upgrade": null,
+        "priority": 43,
+        "model_messages": {
+          "instructions_template": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>",
+          "instructions_variables": null,
+          "persistent_instructions": null,
+          "tools": null,
+          "approvals": {
+            "on_request": null,
+            "on_request_auto_review": null,
+            "never": "",
+            "unless_trusted": null
+          },
+          "collaboration_modes": null,
+          "auto_review": {
+            "policy_template": "You are judging one planned coding-agent action.\nAssess the exact action's intrinsic risk and whether the transcript authorizes its target and side effects. The… <elided, 9734 chars total>",
+            "policy": "## Environment Profile\n- Organization: default generic organization / personal user.\n- Apply this policy to the current planned action. Prior Guardian decisions… <elided, 8281 chars total>",
+            "node_repl_policy": "# Computer and Browser Use\n\nApply these rules only to computer and browser use through `node_repl` or `cua_repl`. Review nested tool calls recursively.\n\n## Defi… <elided, 3079 chars total>",
+            "rejection_instructions": null,
+            "timeout_instructions": null
+          },
+          "multi_agent": null,
+          "permissions": {
+            "danger_full_access": "",
+            "workspace_write": "",
+            "read_only": ""
+          },
+          "token_budget": null,
+          "guardian_v2": null,
+          "confirmation_policies": null
+        },
+        "experimental_supported_tools": [],
+        "available_in_plans": [
+          "business",
+          "edu",
+          "edu_plus",
+          "edu_pro",
+          "education",
+          "enterprise",
+          "enterprise_cbp_automation",
+          "enterprise_cbp_trial",
+          "enterprise_cbp_usage_based",
+          "finserv",
+          "go",
+          "hc",
+          "plus",
+          "pro",
+          "prolite",
+          "quorum",
+          "sci",
+          "self_serve_business_prolite",
+          "self_serve_business_usage_based",
+          "team"
+        ],
+        "supports_search_tool": true,
+        "default_service_tier": null,
+        "service_tiers": [
+          {
+            "id": "priority",
+            "name": "Fast",
+            "description": "1.5x speed, increased usage"
+          }
+        ],
+        "additional_speed_tiers": [
+          "fast"
+        ],
+        "supports_reasoning_summary_parameter": true,
+        "supports_reasoning_summaries": true,
+        "base_instructions": "You are Codex, an agent based on GPT-5. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.\n\n#… <elided, 17730 chars total>"
+      }
+    ]
+  }
+}
