@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.8.103 — the model list a Codex client actually reads
+
+A Codex client pointed at a third-party gateway does not populate its model
+picker from the plain OpenAI `/v1/models` listing. It refreshes from
+`GET {base_url}/models?client_version=<ver>` in custom-provider mode, or
+`GET /backend-api/codex/models` in chatgpt_base_url mode, and both want the
+ChatGPT backend's own manifest shape — `{"models":[{slug, display_name,
+minimal_client_version, supported_reasoning_levels, context_window, …}]}`,
+not `{"object":"list","data":[{"id":…}]}`.
+
+Answering with the OpenAI list does not fail loudly. The client cannot parse it,
+silently falls back to the model set compiled into that build, and the user
+never sees anything the gateway added after their CLI shipped. That is exactly
+why gpt-6-astra stayed invisible after it was added to the catalog and priced.
+
+`auth/codex_manifest.go` adds:
+
+- `CodexModelsRequest` — the discriminator. Presence of `client_version` is the
+  signal, not its value; CLIProxyAPI keys on presence alone and exercises a bare
+  `?client_version` in its own tests.
+- `FetchCodexModelsManifest` — proxies the real manifest from upstream with an
+  OAuth credential, returning the body verbatim. Verbatim because the payload is
+  ~400 KB of capability flags and instruction templates on a schema the backend
+  revises without notice; decoding it into a struct would drop precisely the
+  fields the client needs. This is sub2api's approach and it is self-maintaining
+  — a model the backend adds tomorrow appears with no code change here.
+- `SynthesizeCodexModelsManifest` — the fallback for deployments with no OAuth
+  credential to borrow, built from `CodexModelCatalog` plus transcribed
+  structural specs. Omits the instruction templates on purpose: only the real
+  backend can author those, and a client that does not get them falls back to
+  its own, which is the correct degradation.
+- `FilterCodexManifest` — honours each entry's `minimal_client_version`, because
+  upstream filters by the account's plan but not by the caller's version, and
+  trims xhigh/max/ultra for pre-0.144 clients that refuse to render a model
+  advertising an effort they do not know.
+- `CodexManifestCache` — per-version singleflight and TTL, and a failed refresh
+  serves the stale body rather than an empty picker. Catalogs change on the
+  order of weeks; stale always beats empty here.
+
+`mimicry` gains `CodexModelsOriginator` / `CodexModelsUserAgent`. The models
+fetch is a different client component from the turn: the capture shows it going
+out as `codex_cli_rs` with a User-Agent that drops the trailing
+`(codex-tui; <ver>)` parenthetical the WebSocket upgrade carries. The UA is
+derived from `CodexCLIUserAgent` so a version bump cannot move one and leave the
+other behind.
+
 ## v0.8.102 — a ChatGPT subscription pays no Fast premium
 
 `ResolveOpenAI` billed a ChatGPT-subscription turn at the Fast (né priority)

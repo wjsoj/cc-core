@@ -81,6 +81,20 @@ const (
 	// on every bump rather than carrying it forward.
 	CodexCLIBetaFeatures = "remote_compaction_v2"
 
+	// CodexModelsOriginator / CodexModelsUserAgent are the identity the CLI
+	// presents on GET /backend-api/codex/models specifically, and they are NOT
+	// the handshake's.
+	//
+	// crack/codexv0.153.4/rows/01 shows that one request going out as
+	// originator `codex_cli_rs` — the codex-rs library default — with a
+	// User-Agent that DROPS the trailing "(codex-tui; <ver>)" parenthetical
+	// the WebSocket upgrade carries. Same process, same second, different
+	// component: the model fetch goes through the library's own HTTP client
+	// while the turn goes through the TUI's. Pairing the TUI originator with
+	// this endpoint, or this originator with the TUI's full User-Agent, is a
+	// combination no genuine client emits.
+	CodexModelsOriginator = "codex_cli_rs"
+
 	// CodexSessionIDHeader is the session id header name. It is spelled with a
 	// HYPHEN. cc-core previously sent "Session_id" — an underscore, which Go's
 	// header canonicalization preserves verbatim — while both captures
@@ -302,3 +316,12 @@ func setCodexHeader(h http.Header, name, value string) {
 // path, NOT the web portal's Chrome UA. The CLI's usage call carries only
 // Authorization + Chatgpt-Account-Id + this UA (no oai-client-* headers).
 const CodexUsageUserAgent = CodexCLIUserAgent
+
+// CodexModelsUserAgent is the User-Agent for GET /backend-api/codex/models.
+//
+// Derived from CodexCLIUserAgent rather than written out, so a version bump
+// cannot move one and leave the other behind — the two differ only by the
+// trailing "(codex-tui; <version>)" parenthetical, which the models fetch
+// omits. See CodexModelsOriginator for why the two differ at all.
+var CodexModelsUserAgent = strings.TrimSuffix(
+	CodexCLIUserAgent, " ("+CodexOriginator+"; "+CodexCLIVersion+")")
