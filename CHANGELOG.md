@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.8.104 — stop hiding models a relay can serve
+
+Customers could not see gpt-6-astra in their Codex model picker, one day after
+the manifest endpoint shipped that was supposed to show it to them.
+
+v0.8.103's `FilterCodexManifest` dropped any model whose
+`minimal_client_version` was above the caller's, reasoning that upstream filters
+by the account's plan but not by the caller's version. The effect is that a
+floor set days ago excludes every CLI build older than days — which is nearly
+every real customer. astra's floor is 0.153.0 and the release is days old, so
+the filter hid it from almost everyone.
+
+The floor is the vendor gating its own client rollout. It says nothing about
+what a relay may serve: the model name is a string in the Responses body and an
+older CLI pointed at the gateway uses astra perfectly well. Neither reference
+implementation enforces it — sub2api never mentions
+`minimal_client_version`, and CLIProxyAPI names it once, in a field allow-list
+for copying template values, then ships astra's `"0.153.0"` to every client.
+The field is now passed through and never acted on.
+
+Reasoning levels are still trimmed, and that is the opposite case: a pre-0.144
+client that receives an `xhigh`/`max`/`ultra` effort refuses to render the model
+at all, so passing them through would hide the model rather than reveal it.
+CLIProxyAPI trims the same set at the same floor.
+
+Two more faults found while diagnosing it:
+
+- The manifest fetch inherited the caller's request context with no bound of its
+  own, while holding the cache entry's lock. A hung upstream would serialise
+  every concurrent picker refresh behind it. It now has a 20 s timeout.
+- A cold-cache failure was not remembered, so a credential whose refresh token
+  upstream had invalidated made every picker refresh re-attempt a doomed token
+  refresh — 34 attempts in 30 minutes against one dead account in production.
+  Failures are now cached for a minute.
+
 ## v0.8.103 — the model list a Codex client actually reads
 
 A Codex client pointed at a third-party gateway does not populate its model

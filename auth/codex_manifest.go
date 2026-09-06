@@ -50,6 +50,12 @@ import (
 
 const codexModelsURL = "https://chatgpt.com/backend-api/codex/models"
 
+// codexManifestFetchTimeout bounds one upstream manifest fetch. The payload is
+// ~400 KB over a proxied connection, so this is generous for the happy path and
+// still short enough that a hung upstream cannot hold a cache entry's lock for
+// the length of a client's patience.
+const codexManifestFetchTimeout = 20 * time.Second
+
 // CodexModelsRequest reports whether an incoming /v1/models request came from a
 // Codex client and therefore wants the manifest rather than the OpenAI list.
 //
@@ -105,6 +111,13 @@ func FetchCodexModelsManifest(ctx context.Context, a *Auth, clientVersion string
 		clientVersion = mimicry.DefaultCodexProfile().ModelsClientVersion
 	}
 	endpoint := codexModelsURL + "?client_version=" + neturl.QueryEscape(clientVersion)
+
+	// A bound of our own, not the caller's. The caller's context is a client
+	// request that may be cancelled the moment a picker gives up, and the
+	// fetch runs while the cache entry is locked — so an unbounded fetch turns
+	// one slow upstream into every concurrent picker refresh blocking on it.
+	ctx, cancel := context.WithTimeout(ctx, codexManifestFetchTimeout)
+	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -168,9 +181,9 @@ func SynthesizeCodexModelsManifest(models []string, clientVersion string) []byte
 	entries := make([]map[string]any, 0, len(models))
 	for i, slug := range models {
 		spec := codexModelSpecFor(slug)
-		if !codexClientAtLeast(clientVersion, spec.minimalClientVersion) {
-			continue
-		}
+		// The floor is reported, not enforced — same reasoning as
+		// FilterCodexManifest. Hiding a model the gateway will happily serve
+		// is the failure this path exists to avoid.
 		entries = append(entries, map[string]any{
 			"slug":                         slug,
 			"display_name":                 spec.displayName,
@@ -378,14 +391,31 @@ func parseCodexVersion(v string) []int {
 	return out
 }
 
-// FilterCodexManifest drops models the requesting client is too old to use and
-// trims reasoning levels it would not understand.
+// FilterCodexManifest adapts a manifest to the requesting client. It trims
+// reasoning levels the client would not understand and leaves the model SET
+// alone.
 //
-// Upstream already filters by the account's plan, but NOT by the caller's
-// version — the manifest is fetched once with whatever version the gateway
-// reports and then served to every client, so a 0.140 CLI would otherwise be
-// offered gpt-6-astra, which its build cannot select. `minimal_client_version`
-// is the backend's own declaration of that floor, so it is the field to honour.
+// It deliberately does NOT drop models by `minimal_client_version`, and that is
+// a correction rather than an omission. An earlier version did, on the
+// reasoning that upstream filters by the account's plan but not by the caller's
+// version, so a 0.140 CLI would otherwise be offered a model gated at 0.153.0.
+// Shipping that hid gpt-6-astra from essentially every real customer within a
+// day of the model launching, because a floor set days ago excludes every CLI
+// build older than days.
+//
+// The floor is the vendor gating its OWN client rollout. It is not a statement
+// about what a relay can serve: the model name is a string in the Responses
+// body, and an older CLI pointed at this gateway uses gpt-6-astra perfectly
+// well. Neither reference implementation enforces it — sub2api does not
+// mention minimal_client_version anywhere, and CLIProxyAPI names it once, in a
+// field allow-list for copying template values, then ships astra's
+// "0.153.0" to every client regardless of version.
+//
+// Reasoning levels are different and ARE trimmed: a pre-0.144 client that
+// receives an `xhigh`/`max`/`ultra` effort refuses to render the model at all,
+// so passing them through would hide the model rather than expose it — the
+// opposite of the goal. CLIProxyAPI trims the same set at the same 0.144.0
+// floor (normalizeCodexClientReasoningLevel / supportsExtendedReasoningLevels).
 //
 // Unparseable input is returned unchanged: serving the upstream manifest as-is
 // is strictly better than serving nothing.
@@ -408,10 +438,7 @@ func FilterCodexManifest(raw []byte, clientVersion string) []byte {
 			kept = append(kept, item)
 			continue
 		}
-		floor, _ := entry["minimal_client_version"].(string)
-		if !codexClientAtLeast(clientVersion, floor) {
-			continue
-		}
+		// minimal_client_version is passed through untouched, never acted on.
 		filterCodexEntryReasoning(entry, clientVersion)
 		kept = append(kept, entry)
 	}
@@ -474,7 +501,13 @@ type codexManifestEntry struct {
 	body      []byte
 	fetchedAt time.Time
 	lastErr   error
+	failedAt  time.Time
 }
+
+// codexManifestFailureTTL is how long a cold-cache failure is remembered. Short
+// enough that a credential coming back healthy is picked up quickly, long
+// enough that a dead one is not retried per request.
+const codexManifestFailureTTL = time.Minute
 
 // Get returns the manifest for clientVersion, calling fetch at most once per
 // TTL per version. fetch is only consulted when there is nothing cached or the
@@ -507,16 +540,24 @@ func (c *CodexManifestCache) Get(clientVersion string, fetch func() ([]byte, err
 	if entry.body != nil && time.Since(entry.fetchedAt) < ttl {
 		return entry.body, nil
 	}
+	// A failure is remembered for a short while too. Without this, a
+	// credential whose refresh token has been invalidated upstream makes every
+	// single picker refresh re-attempt a doomed token refresh — observed at 34
+	// attempts in 30 minutes against one dead credential, which both serialises
+	// the endpoint and hammers a refresh endpoint that has already said no.
+	if entry.body == nil && entry.lastErr != nil && time.Since(entry.failedAt) < codexManifestFailureTTL {
+		return nil, entry.lastErr
+	}
 	body, err := fetch()
 	if err != nil {
-		entry.lastErr = err
+		entry.lastErr, entry.failedAt = err, time.Now()
 		if entry.body != nil {
 			// Stale beats empty.
 			return entry.body, err
 		}
 		return nil, err
 	}
-	entry.body, entry.fetchedAt, entry.lastErr = body, time.Now(), nil
+	entry.body, entry.fetchedAt, entry.lastErr, entry.failedAt = body, time.Now(), nil, time.Time{}
 	return body, nil
 }
 

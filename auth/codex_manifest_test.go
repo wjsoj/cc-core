@@ -82,16 +82,43 @@ func TestFilterCodexManifestKeepsAstraForCurrentClient(t *testing.T) {
 	}
 }
 
-// And the converse: a client below astra's floor must NOT be offered it, or its
-// picker shows a model the build cannot select.
-func TestFilterCodexManifestHidesAstraFromOldClient(t *testing.T) {
+// The regression that started this: an OLDER client must still be offered
+// gpt-6-astra. minimal_client_version gates the vendor's own client rollout,
+// not what a relay may serve — the model name is a string in the Responses body
+// and an older CLI uses it through this gateway fine. Enforcing the floor hid
+// astra from essentially every real customer within a day of launch, since a
+// floor set days ago excludes every build older than days.
+func TestFilterCodexManifestKeepsAstraForOlderClients(t *testing.T) {
 	raw := loadCapturedManifest(t)
-	got := slugSet(t, FilterCodexManifest(raw, "0.147.0"))
-	if got["gpt-6-astra"] {
-		t.Error("gpt-6-astra offered to a 0.147.0 client, below its 0.153.0 floor")
+	full := len(CodexManifestSlugs(raw))
+	for _, cv := range []string{"0.147.0", "0.144.0", "0.98.0"} {
+		got := slugSet(t, FilterCodexManifest(raw, cv))
+		if !got["gpt-6-astra"] {
+			t.Errorf("client %s was not offered gpt-6-astra", cv)
+		}
+		if n := len(got); n != full {
+			t.Errorf("client %s got %d of %d models — the model set must not shrink", cv, n, full)
+		}
 	}
-	if !got["gpt-5.6-sol"] {
-		t.Error("gpt-5.6-sol should still be offered at 0.147.0 (floor 0.144.0)")
+}
+
+// The floor is still REPORTED, just never acted on: the client may do whatever
+// it likes with it, and dropping the field would be its own lie.
+func TestFilterCodexManifestStillReportsTheFloor(t *testing.T) {
+	raw := FilterCodexManifest(loadCapturedManifest(t), "0.147.0")
+	var payload struct {
+		Models []struct {
+			Slug  string `json:"slug"`
+			Floor string `json:"minimal_client_version"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range payload.Models {
+		if m.Slug == "gpt-6-astra" && m.Floor != "0.153.0" {
+			t.Errorf("astra's minimal_client_version = %q, want it passed through as 0.153.0", m.Floor)
+		}
 	}
 }
 
@@ -184,14 +211,15 @@ func TestSynthesizeCodexModelsManifestShape(t *testing.T) {
 	}
 }
 
-// The fallback honours the same floor as the real manifest.
-func TestSynthesizeCodexModelsManifestRespectsClientFloor(t *testing.T) {
+// The fallback must agree with the proxied path: report the floor, never
+// enforce it. A deployment that falls back is exactly the one least able to
+// explain why a model vanished.
+func TestSynthesizeCodexModelsManifestDoesNotEnforceFloor(t *testing.T) {
 	models := []string{"gpt-6-astra", "gpt-5.6-sol"}
-	if s := slugSet(t, SynthesizeCodexModelsManifest(models, "0.147.0")); s["gpt-6-astra"] {
-		t.Error("astra synthesized for a 0.147.0 client, below its 0.153.0 floor")
-	}
-	if s := slugSet(t, SynthesizeCodexModelsManifest(models, "0.153.4")); !s["gpt-6-astra"] {
-		t.Error("astra missing for a 0.153.4 client")
+	for _, cv := range []string{"0.147.0", "0.153.4", ""} {
+		if s := slugSet(t, SynthesizeCodexModelsManifest(models, cv)); !s["gpt-6-astra"] {
+			t.Errorf("astra missing from the synthesized manifest for client %q", cv)
+		}
 	}
 }
 
@@ -245,6 +273,35 @@ func TestCodexManifestCache(t *testing.T) {
 	// With nothing cached, a failure is a failure.
 	if _, err := (&CodexManifestCache{}).Get("x", func() ([]byte, error) { return nil, errors.New("boom") }); err == nil {
 		t.Error("cold-cache failure should propagate")
+	}
+}
+
+// A cold-cache failure must be remembered briefly. Without this, a credential
+// whose refresh token upstream has invalidated makes every picker refresh
+// re-attempt a doomed token refresh — 34 attempts in 30 minutes against one
+// dead credential, in production.
+func TestCodexManifestCacheNegativeCaching(t *testing.T) {
+	c := &CodexManifestCache{TTL: time.Hour}
+	calls := 0
+	failing := func() ([]byte, error) { calls++; return nil, errors.New("refresh_token_invalidated") }
+
+	for i := 0; i < 5; i++ {
+		if _, err := c.Get("0.153.4", failing); err == nil {
+			t.Fatal("expected the failure to propagate")
+		}
+	}
+	if calls != 1 {
+		t.Errorf("a dead credential was retried %d times, want 1 within the failure TTL", calls)
+	}
+
+	// Once the failure TTL lapses, it tries again — a credential that comes
+	// back healthy must be picked up.
+	c.entries["0.153.4"].failedAt = time.Now().Add(-2 * codexManifestFailureTTL)
+	if _, err := c.Get("0.153.4", func() ([]byte, error) { return []byte(`{"models":[]}`), nil }); err != nil {
+		t.Fatalf("recovery after the failure TTL: %v", err)
+	}
+	if _, err := c.Get("0.153.4", failing); err != nil {
+		t.Fatal("a healthy body should now be cached and served")
 	}
 }
 
