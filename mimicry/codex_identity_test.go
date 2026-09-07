@@ -2,6 +2,9 @@ package mimicry
 
 import (
 	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -164,10 +167,12 @@ func TestCodexContextWindowIDSharesThreadPrefix(t *testing.T) {
 }
 
 // The default profile is what both forks advertise upstream without opting in,
-// so flipping it gets an explicit assertion. It was Desktop until 2026-09-05;
-// gpt-6-astra's minimal_client_version of 0.153.0 put Desktop's 0.147.0 below
-// the floor for the current flagship, and no Desktop capture at or above that
-// version exists to bump it from. See DefaultCodexProfile's comment.
+// so flipping it gets an explicit assertion. It flipped Desktop → CLI on
+// 2026-09-05 (gpt-6-astra's minimal_client_version of 0.153.0 put Desktop's
+// 0.147.0 below the floor for the current flagship) and was re-examined on
+// 2026-09-07 against crack/codexapp0.153.4/ without moving back — the two
+// clients send the same upgrade, so only the CLI's identity has byte-parity
+// tests behind it. See DefaultCodexProfile's comment.
 func TestDefaultCodexProfileIsCLI(t *testing.T) {
 	if DefaultCodexProfile().Originator != CodexOriginator {
 		t.Errorf("default profile originator = %q, want %q",
@@ -176,6 +181,17 @@ func TestDefaultCodexProfileIsCLI(t *testing.T) {
 	if DefaultCodexProfile().Version != CodexCLIVersion {
 		t.Errorf("default profile version = %q, want %q",
 			DefaultCodexProfile().Version, CodexCLIVersion)
+	}
+}
+
+// Both real clients send the turn-metadata cluster on an ordinary upgrade, and
+// they send the same one. A profile that opted out would emit a handshake
+// neither client sends.
+func TestCodexProfilesAllSendTurnMetadata(t *testing.T) {
+	for _, p := range []CodexClientProfile{CodexDesktopClientProfile(), CodexTUIClientProfile()} {
+		if !p.SendsTurnMetadata {
+			t.Errorf("profile %q must send the turn-metadata cluster on the upgrade", p.Originator)
+		}
 	}
 }
 
@@ -222,4 +238,90 @@ func compareDottedVersions(a, b string) int {
 		}
 	}
 	return 0
+}
+
+// The Desktop User-Agent constants are checked against the capture FILES rather
+// than against strings retyped from them. Retyping is how a bump goes half-done:
+// 0.147.0 → 0.153.4 moved three independent segments (version, Konsole build,
+// app build tail) and two coexisting UA forms, and nothing but a file read
+// catches the one that was missed.
+//
+// It asserts only what crack/codexapp0.153.4/SPEC.md §1 actually establishes.
+// The full-vs-base split is NOT per-endpoint — most endpoints appear with both
+// forms in the one capture — so the only per-endpoint claims here are the two
+// that never vary: POST /oauth/token and the WebSocket upgrade both send the
+// FULL UA. Everything else is checked against the weaker, true invariant: a
+// Desktop-originator row sends one of the two forms and never a third string.
+func TestCodexDesktopUserAgentsMatchCapture(t *testing.T) {
+	const dir = "../crack/codexapp0.153.4/rows/"
+
+	readUA := func(t *testing.T, name string) (ua, originator string) {
+		t.Helper()
+		b, err := os.ReadFile(filepath.FromSlash(dir + name))
+		if err != nil {
+			t.Skipf("capture row unavailable (%v); parity check skipped", err)
+		}
+		var row struct {
+			ReqHeaders map[string]string `json:"req_headers"`
+		}
+		if err := json.Unmarshal(b, &row); err != nil {
+			t.Fatalf("%s is not valid JSON: %v", name, err)
+		}
+		return row.ReqHeaders["user-agent"], row.ReqHeaders["originator"]
+	}
+
+	// The two endpoints whose UA form is invariant across the capture.
+	for _, tc := range []struct{ row, why string }{
+		{"01-post-oauth-token-refresh.json", "the oauth refresh grant"},
+		{"10-ws-handshake-desktop.json", "the WebSocket upgrade"},
+	} {
+		if ua, _ := readUA(t, tc.row); ua != CodexDesktopUserAgent {
+			t.Errorf("%s (%s): capture sends %q, our full UA is %q",
+				tc.row, tc.why, ua, CodexDesktopUserAgent)
+		}
+	}
+
+	// Every other Desktop-identified row must be one of the two forms.
+	entries, err := os.ReadDir(filepath.FromSlash(dir))
+	if err != nil {
+		t.Skipf("capture unavailable (%v); parity check skipped", err)
+	}
+	seenBase := false
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || e.Name() == "_manifest.json" {
+			continue
+		}
+		ua, originator := readUA(t, e.Name())
+		if originator != CodexDesktopOriginator {
+			continue // ps/mcp and the OTLP exporter carry their own identities.
+		}
+		switch ua {
+		case CodexDesktopUserAgent:
+		case CodexDesktopBaseUserAgent:
+			seenBase = true
+		default:
+			t.Errorf("%s: user-agent %q is neither our full nor our base Desktop UA", e.Name(), ua)
+		}
+	}
+	if !seenBase {
+		t.Error("no row exercised the base UA form; the constant is unverified")
+	}
+}
+
+// The base form must be DERIVED, not written out — that is the property that
+// keeps a version bump from moving one UA and leaving the other stale.
+func TestCodexDesktopBaseUserAgentIsDerived(t *testing.T) {
+	if CodexDesktopBaseUserAgent == CodexDesktopUserAgent {
+		t.Fatal("the base UA is identical to the full one; the parenthetical was not trimmed")
+	}
+	if !strings.HasPrefix(CodexDesktopUserAgent, CodexDesktopBaseUserAgent) {
+		t.Errorf("base UA %q is not a prefix of the full one %q", CodexDesktopBaseUserAgent, CodexDesktopUserAgent)
+	}
+	if strings.Contains(CodexDesktopBaseUserAgent, CodexDesktopBuild) {
+		t.Errorf("base UA %q still carries the build number", CodexDesktopBaseUserAgent)
+	}
+	// The version and the UA must never move independently.
+	if !strings.HasPrefix(CodexDesktopUserAgent, CodexDesktopOriginator+"/"+CodexDesktopVersion+" ") {
+		t.Errorf("UA %q does not lead with %s/%s", CodexDesktopUserAgent, CodexDesktopOriginator, CodexDesktopVersion)
+	}
 }

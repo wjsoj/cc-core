@@ -346,24 +346,35 @@ func parseCodexOAuthFile(path string, raw map[string]any, provider string) (*Aut
 			exp = time.Unix(int64(v), 0)
 		}
 	}
+	// Append-only fields — a credential file written before they existed has
+	// neither key, and must keep loading. A zero EarliestRefreshAt simply
+	// means "no server opinion", which is how every pre-existing credential
+	// behaves until its next refresh returns one.
+	earliestRefresh := time.Time{}
+	if v, ok := raw["earliest_refresh_at"].(float64); ok && v > 0 {
+		earliestRefresh = time.Unix(int64(v), 0)
+	}
+	oaiIS, _ := raw["oai_is"].(string)
 	return &Auth{
-		ID:            filepath.Base(path),
-		Kind:          KindOAuth,
-		Provider:      provider,
-		Label:         label,
-		Email:         email,
-		AccessToken:   access,
-		RefreshToken:  refresh,
-		IDToken:       idToken,
-		AccountID:     accountID,
-		PlanType:      planType,
-		ExpiresAt:     exp,
-		ProxyURL:      proxyURL,
-		MaxConcurrent: maxConc,
-		FilePath:      path,
-		Disabled:      disabled,
-		LastQuotaHit:  parseQuotaHit(raw),
-		Group:         NormalizeGroup(group),
+		ID:                filepath.Base(path),
+		Kind:              KindOAuth,
+		Provider:          provider,
+		Label:             label,
+		Email:             email,
+		AccessToken:       access,
+		RefreshToken:      refresh,
+		IDToken:           idToken,
+		AccountID:         accountID,
+		PlanType:          planType,
+		ExpiresAt:         exp,
+		EarliestRefreshAt: earliestRefresh,
+		OAIIS:             oaiIS,
+		ProxyURL:          proxyURL,
+		MaxConcurrent:     maxConc,
+		FilePath:          path,
+		Disabled:          disabled,
+		LastQuotaHit:      parseQuotaHit(raw),
+		Group:             NormalizeGroup(group),
 	}, nil
 }
 
@@ -528,6 +539,16 @@ func saveAuth(a *Auth) error {
 			raw["plan_type"] = a.PlanType
 		} else {
 			delete(raw, "plan_type")
+		}
+		if !a.EarliestRefreshAt.IsZero() {
+			raw["earliest_refresh_at"] = a.EarliestRefreshAt.Unix()
+		} else {
+			delete(raw, "earliest_refresh_at")
+		}
+		if a.OAIIS != "" {
+			raw["oai_is"] = a.OAIIS
+		} else {
+			delete(raw, "oai_is")
 		}
 		if a.OrganizationType != "" {
 			raw["organization_type"] = a.OrganizationType
@@ -728,8 +749,39 @@ type refreshResponse struct {
 	} `json:"account"`
 }
 
+// refreshEmbargoFloor is the one thing that outranks earliest_refresh_at.
+//
+// If the server's embargo somehow reaches past the token's own expiry — a
+// clock skew, a backend that moved the goalposts, a credential file edited by
+// hand — obeying it would strand the credential dead rather than merely early.
+// Inside this much runway we refresh anyway and let the server say no. An hour
+// is ~60 attempts at the refresher's one-minute cadence; the real gap between
+// earliest_refresh_at (iat+9d) and expiry (iat+10d) is a full day, so on a
+// healthy credential this branch never fires.
+const refreshEmbargoFloor = time.Hour
+
 // needsRefresh reports whether the OAuth token is missing or within `leeway`
 // of expiry. Returns false if there is no refresh token to use.
+//
+// It also honours the server's own embargo. The OpenAI token endpoint returns
+// earliest_refresh_at (crack/codexapp0.153.4/rows/02, SPEC §2.1) — the moment
+// it is willing to mint a replacement, observed at iat+9d against a 10-day
+// expires_in. Our MinRefreshLeeway asks at 5 days remaining, i.e. day 5 of 10,
+// four days inside the embargo. That is not a harmless early ask: OpenAI treats
+// refresh_tokens as single-use and rotates them, and refreshing outside the
+// window it advertised is the leading suspect for the recurring
+// refresh_token_invalidated failures in production. The server's field is
+// first-hand knowledge of its own policy; our leeway is a guess copied from the
+// CLI. The field wins.
+//
+// Two escapes, both deliberate:
+//
+//   - refreshEmbargoFloor, above — never let an embargo strand a token.
+//   - A leeway larger than MinRefreshLeeway means the caller is not the
+//     scheduler. That is the forced-refresh idiom (an upstream 401 saying the
+//     token is dead whatever its exp claim says, or an operator's "refresh
+//     now"), and it must not be second-guessed: in exactly those cases the
+//     backend has already contradicted its own timetable.
 func (a *Auth) needsRefresh(leeway time.Duration) bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -739,13 +791,22 @@ func (a *Auth) needsRefresh(leeway time.Duration) bool {
 	if a.ExpiresAt.IsZero() {
 		return true
 	}
-	return time.Until(a.ExpiresAt) < leeway
+	remaining := time.Until(a.ExpiresAt)
+	if remaining >= leeway {
+		return false
+	}
+	if leeway <= a.MinRefreshLeeway() && remaining > refreshEmbargoFloor &&
+		!a.EarliestRefreshAt.IsZero() && time.Now().Before(a.EarliestRefreshAt) {
+		return false
+	}
+	return true
 }
 
 // EnsureFresh refreshes the access token if it's within `leeway` of expiry.
 // The effective leeway is max(leeway, MinRefreshLeeway()) — providers with
-// long-lived tokens (e.g. Codex at ~30 days) want to refresh days early so a
-// brief upstream outage near expiry doesn't leave zero recovery window.
+// long-lived tokens (Codex at 10 days) want to refresh early so a brief
+// upstream outage near expiry doesn't leave zero recovery window. needsRefresh
+// then clamps that against the server's earliest_refresh_at.
 // Concurrent callers are deduplicated via a per-auth refresh mutex so the
 // rotating refresh_token is never burned by parallel exchanges.
 func (a *Auth) EnsureFresh(ctx context.Context, leeway time.Duration, useUTLS bool) error {
@@ -765,9 +826,14 @@ func (a *Auth) EnsureFresh(ctx context.Context, leeway time.Duration, useUTLS bo
 
 // MinRefreshLeeway returns the per-provider minimum refresh lead time.
 // Anthropic access tokens live ~8 hours — 5 minutes of lead is fine.
-// OpenAI / Codex access tokens live ~30 days — refresh 5 days ahead to
-// match the Codex CLI's RefreshLead, so a transient outage near expiry
-// has a 5-day window to recover before the token actually dies.
+//
+// OpenAI / Codex access tokens live 10 days, not the ~30 this comment used to
+// claim: expires_in is 864000 in crack/codexapp0.153.4/rows/02. The 5-day lead
+// is kept (it matches the Codex CLI's RefreshLead and leaves a wide recovery
+// window), but it is now an upper bound rather than the decision: needsRefresh
+// will not act on it before the server's earliest_refresh_at, which lands at
+// iat+9 days. On a credential that carries the field the effective refresh
+// point is therefore ~1 day of remaining life, not 5.
 func (a *Auth) MinRefreshLeeway() time.Duration {
 	switch NormalizeProvider(a.Provider) {
 	case ProviderOpenAI:

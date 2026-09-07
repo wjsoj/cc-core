@@ -26,15 +26,25 @@ diffed at the same backend version with no version drift as a confound. The CLI 
 | terminal segment | `Konsole/260800` | `Konsole/260403` |
 | full UA | `Codex Desktop/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (Codex Desktop; 26.901.51231)` | — |
 
-**Four User-Agent forms coexist in one process.** They are per-component and must never be
-mixed — pairing an originator with the wrong UA is a one-header tell:
+**Four User-Agent forms coexist**, and only two of the four map cleanly to an endpoint:
 
-| Component | `originator` | User-Agent |
+| User-Agent | `originator` | where |
 |---|---|---|
-| WS upgrade, `codex/models`, `plugins/*` | `Codex Desktop` | the full UA above |
-| `wham/remote/control/*`, `oauth/token` refresh | `Codex Desktop` | the full UA **minus** the trailing `(Codex Desktop; <build>)` |
-| `ps/mcp` | present on some, absent on others | `codex-mcp-client/0.153.4` |
-| OTLP metrics | — | `OTel-OTLP-Exporter-Rust/0.31.0` |
+| `codex-mcp-client/0.153.4` | present on some, absent on others | `ps/mcp` only |
+| `OTel-OTLP-Exporter-Rust/0.31.0` | — | `ab.chatgpt.com/otlp/v1/metrics` only |
+| the full Desktop UA above | `Codex Desktop` | see below |
+| the full UA **minus** the trailing `(Codex Desktop; <build>)` | `Codex Desktop` | see below |
+
+⚠️ **The full-vs-base split is NOT per-endpoint.** An earlier draft of this section claimed it
+was; the rows disprove it. `codex/models`, `plugins/featured`, `ps/plugins/installed`,
+`ps/plugins/suggested` and `wham/remote/control/server/refresh` each appear with **both** forms
+in this one capture. The two that never vary are `oauth/token` and the WebSocket upgrade, and
+both use the **full** UA.
+
+The likeliest reading is that two components of the Desktop app — the app-server and the
+codex-rs core — reach the same endpoints under the same originator with slightly different UA
+construction. This capture cannot separate them, so do not encode a per-endpoint rule. What it
+does settle: **`oauth/token` sends the full UA**, and the base form is not an OAuth thing.
 
 Mapped to code: `mimicry.CodexDesktop*` in `mimicry/codex_identity.go`.
 
@@ -99,44 +109,38 @@ implement it.
 
 ---
 
-## 3. WebSocket handshake — Desktop ≠ CLI
+## 3. WebSocket handshake — ordinary vs guardian, NOT Desktop vs CLI
 
-Both clients hit `wss://chatgpt.com/backend-api/codex/responses` at the same version during this
-capture, and they send different header sets in a different order.
+⚠️ **An earlier draft of this section was wrong, and the error was load-bearing.** It read the
+two handshake shapes here as a Desktop-vs-CLI client split. They are not: **all 19 upgrades in
+this capture carry `originator: Codex Desktop`.** There is no codex-tui handshake here at all.
+The real split:
 
-**Desktop, 18 headers** (row `10`):
-```
-Host, Connection, Upgrade, Sec-WebSocket-Version, Sec-WebSocket-Key,
-chatgpt-account-id, authorization, user-agent, originator,
-x-client-request-id, version, session-id, thread-id,
-[x-openai-subagent,]
-x-codex-window-id, openai-beta,
-x-openai-internal-codex-responses-lite,
-sec-websocket-extensions
-```
+| shape | count | `x-openai-subagent` | turn-metadata | beta-features | routing-hint | lite header | headers |
+|---|---|---|---|---|---|---|---|
+| ordinary | 2 | — | ✓ | ✓ | ✓ | — | 19 |
+| guardian | 1 | `guardian` | ✓ | ✓ | ✓ | — | 21 |
+| guardian + lite | 16 | `guardian` | — | — | — | ✓ | 18 |
 
-**CLI, 19 headers** (`crack/codexv0.153.4/rows/10`):
-```
-… originator, openai-beta, version, x-codex-beta-features,
-x-client-request-id, session-id, thread-id, x-codex-window-id,
-x-codex-turn-metadata, [x-codex-parent-thread-id, x-openai-subagent,]
-x-codex-routing-hint, sec-websocket-extensions
-```
+**The ordinary Desktop shape (19 headers) is identical in header set AND order to the CLI shape
+in `crack/codexv0.153.4/rows/10`.** Desktop and codex-tui send the same handshake for an
+ordinary thread, so whatever we emit for a normal turn is already right, and choosing between
+the two client profiles does not change the handshake at all.
 
-Desktop sends **none** of `x-codex-beta-features`, `x-codex-turn-metadata`,
-`x-codex-routing-hint`. It instead carries **`x-openai-internal-codex-responses-lite: true` as
-an HTTP header** — the switch the CLI smuggles inside the frame body, because a WebSocket cannot
-set per-message headers and the CLI's design puts it there.
+The 18-header shape is a **guardian subagent running Responses-Lite**. It drops the metadata
+trio and carries `x-openai-internal-codex-responses-lite: true` as an HTTP header instead — the
+switch the ordinary path puts in the frame body, because a WebSocket cannot set per-message
+headers. Sixteen of them appear because auto-review ran repeatedly during the capture.
 
-Note this is a change within Desktop too: `codexapp0.147.0`'s Desktop handshake *did* send
-`x-codex-turn-metadata`. Between 0.147.0 and 0.153.4 Desktop dropped the metadata trio and
-adopted the lite header.
+**Do not implement the 18-header shape as a client profile.** A proxy is never a subagent, and
+the single 21-header row proves a guardian can also use the ordinary shape — so the lite variant
+is not even universal among subagents. Emitting it for ordinary turns would produce a shape seen
+only on auto-review connections, minus the `x-openai-subagent` marker that identifies them:
+a combination no real client sends.
 
-**Consequence for cc-core**: `DefaultCodexProfile()` and `codexws.handshakeHeaderOrder` are a
-matched pair. Selecting the Desktop profile while emitting the CLI header set produces a shape
-neither client sends, which is worse than either alone.
-
----
+What this section does establish, both confirming `crack/codexv0.153.4`: `x-codex-routing-hint`
+is present on every ordinary upgrade, and `x-codex-window-id` follows the **thread** id rather
+than the session id — visible on the 21-header row, the only one where the two differ.
 
 ## 4. Endpoints this archive adds
 
@@ -207,9 +211,12 @@ Two constraints any emulation inherits from these rows:
 ## 6. Edit checklist
 
 - [ ] `auth/codex_refresh.go` — refresh body to JSON, drop `scope`, split the header helper so
-      only this grant carries originator + UA, parse `earliest_refresh_at` and `oai_is`
+      only this grant carries originator + UA (the **full** UA — see §1), parse
+      `earliest_refresh_at` and `oai_is`
 - [ ] `auth/codex_login.go` — order-preserving auth-code body, persist the two new fields
 - [ ] `auth/oauth.go` — honour `earliest_refresh_at`; the "~30 days" comment is wrong (10)
-- [ ] `mimicry/codex_identity.go` — Desktop version / build / Konsole segment, all three
-- [ ] `codexws/headers.go` — a Desktop handshake shape distinct from the CLI's (§3)
+- [ ] `mimicry/codex_identity.go` — Desktop version / build / Konsole segment, all three.
+      Flipping DefaultCodexProfile is NOT implied: per §3 the handshake is the same either way.
+- [x] `codexws/headers.go` — NOTHING TO DO. §3's first draft was wrong: the ordinary
+      Desktop handshake already equals what we send. Do not add a second profile shape.
 - [ ] parity tests that read `rows/` rather than constants copied out of it

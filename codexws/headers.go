@@ -202,7 +202,14 @@ func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header {
 		set("x-client-request-id", sessionID)
 		set("session-id", sessionID)
 		set("thread-id", threadID)
-		set("x-codex-window-id", mimicry.CodexWindowID(sessionID))
+		// Anchored on the THREAD, not the session. The two are equal on a fresh
+		// thread, which is why a session-anchored value looked right for two
+		// captures; crack/codexv0.153.4/rows/12 and the 21-header row of
+		// crack/codexapp0.153.4 are the rows where they differ, and both show
+		// the window following the thread. A session-anchored header would also
+		// disagree with the window_id inside x-codex-turn-metadata and inside
+		// the rewritten frame, both of which already follow the thread.
+		set("x-codex-window-id", mimicry.CodexWindowID(threadID))
 		md := mimicry.NewCodexHandshakeMetadata(installationID, sessionID, threadID)
 		set("x-codex-turn-metadata", md.Encode())
 	}

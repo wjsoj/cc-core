@@ -1,5 +1,72 @@
 # Changelog
 
+## v0.8.105 — align the Codex OAuth legs with the captured client
+
+From a live Codex Desktop capture spanning a complete re-login, archived at
+`crack/codexapp0.153.4/`.
+
+**The three `/oauth/token` grants do not share a request shape**, and cc-core
+applied one shared header helper to all of them. The refresh grant is
+`application/json` and identifies itself with an originator and a User-Agent;
+the authorization-code and token-exchange grants are form-encoded and carry no
+identity at all. The helper is split accordingly.
+
+The refresh body was also wrong in two further ways: it sent a `scope` field the
+real client does not send, and `url.Values.Encode()` sorted the fields
+alphabetically. It is now ordered JSON — `client_id`, `grant_type`,
+`refresh_token` — built from a struct, because both `url.Values` and a map sort.
+The authorization-code body gets the same treatment for its own five-field
+order.
+
+Which client the refresh grant names follows `DefaultCodexProfile()` rather than
+the captured Desktop identity. The row establishes that this grant identifies
+itself; it cannot establish whose name we should use, and pinning Desktop would
+have one credential forwarding traffic as codex-tui while refreshing as Codex
+Desktop.
+
+**Refresh timing now honours the server.** The token response carries
+`earliest_refresh_at`, which we never parsed, and `expires_in` is 864000 — ten
+days, not the thirty the `MinRefreshLeeway` comment assumed. We were refreshing
+at day five, four days before the server says a refresh is permitted, which is
+the leading suspect for the repeated `refresh_token_invalidated` incidents. The
+scheduled path now waits for that timestamp; a forced refresh (the 401 recovery
+path, the admin button) and a genuinely near-expiry token both still override
+it, because an embargo that blocked those would disable exactly the recovery
+built for the failure it is meant to prevent. `oai_is` is parsed and persisted
+alongside it; both fields are optional on read, so existing credential files
+keep loading.
+
+**Desktop identity constants** move to 0.153.4 / build 26.901.51231 /
+Konsole/260800 — stale by a full generation in all three segments.
+`CodexDesktopBaseUserAgent` is derived by TrimSuffix rather than written out.
+
+**`x-codex-window-id` now follows the thread id, not the session id.** They are
+equal on a fresh thread, which is why the session-anchored derivation survived
+two captures; the one row where they differ shows the window following the
+thread, and the header disagreed with the `window_id` inside the metadata blob
+it accompanies.
+
+**`DefaultCodexProfile()` stays on codex-tui**, and the capture is why. A first
+reading of it took the two WebSocket handshake shapes for a Desktop-vs-CLI
+split; all nineteen upgrades in the capture are Desktop, and the split is
+ordinary-vs-guardian. The ordinary Desktop handshake is identical to the CLI
+shape we already send, so the profile decides identity only — and the CLI's is
+the one with byte-parity tests behind every constant. `codexws` keeps one
+handshake shape; a new test reads both archives' rows and fails if they ever
+diverge.
+
+**`codexsidecar`** is a new, disabled-by-default package that emulates the
+auxiliary traffic a real Codex client emits — plugin store, MCP discovery,
+model catalog, user settings, analytics and OTLP — on first touch of an
+(account, clientToken) pair, at roughly a third of the genuine client's rate.
+Three properties are structural rather than documented: an analytics event
+cannot be built without ids from a turn that actually happened (the constructor
+takes an unexported type with one validating factory), OTLP resource attributes
+vary per account through `auth.HostProfile`, and API-key credentials never
+trigger any of it. Sentry is not emulated — its payload was never decrypted and
+it is a third-party destination — nor is `wham/remote/control`, whose
+`server_id` comes from an uncaptured registration step.
+
 ## v0.8.104 — stop hiding models a relay can serve
 
 Customers could not see gpt-6-astra in their Codex model picker, one day after

@@ -20,33 +20,39 @@ import (
 // together as one profile.
 //
 //   - Codex Desktop — the Electron/Tauri app. Ground truth:
-//     crack/codexapp0.147.0/ (whistle dump 2026-08-14, full login → WS turn).
+//     crack/codexapp0.153.4/ (whistle dump 2026-09-07, a complete re-login plus
+//     nineteen WS upgrades). It supersedes crack/codexapp0.147.0/, which
+//     remains the only record of the 0.147.0 handshake shape.
 //   - codex-tui — the Rust terminal client. Ground truth:
-//     crack/codexv0.135.0/ (whistle dump 2026-05-30), version-bumped to
-//     0.147.0 against the codex-rs source.
+//     crack/codexv0.153.4/ (whistle dump 2026-09-05).
 //
-// Desktop is the default because it is the larger installed base. The cost of
-// that choice is spelled out here so it is not forgotten: the captured Desktop
-// build self-reports a PRE-RELEASE version (0.147.0-alpha.6.6) and a build
-// number (26.803.81509). Pinning an alpha means the target drifts faster than
-// a stable CLI tag does, and the version string is not free to invent — see
-// CodexDesktopVersion.
+// Desktop is the larger installed base but is NOT the default; codex-tui is.
+// The reason is not the version floor that first forced the switch (the
+// constants below now clear it) — it is that the two clients send the same
+// WebSocket upgrade, so the profile decides identity only, and only the CLI's
+// identity has byte-parity tests against a live capture. See
+// DefaultCodexProfile for the full history, including why the 0.153.4 Desktop
+// capture did not justify flipping back.
 const (
 	// CodexDesktopVersion is the `version` header value and the version
 	// segment of CodexDesktopUserAgent. The two must always agree.
 	//
-	// It is a pre-release string, verbatim from the capture. Do not "clean"
-	// it to 0.147.0: the backend has been observed 404ing clients whose
-	// version is below a floor (openai/codex#3901), which proves it parses
-	// this field, and a version/UA mismatch is a one-header tell.
-	CodexDesktopVersion = "0.147.0-alpha.6.6"
+	// 0.153.4 is a STABLE tag. The 0.147.0 capture pinned a pre-release
+	// ("0.147.0-alpha.6.6"), which is why the surrounding comments warn about
+	// inventing this string: the backend has been observed 404ing clients
+	// whose version is below a floor (openai/codex#3901), so it parses this
+	// field, and a version/UA mismatch is a one-header tell.
+	CodexDesktopVersion = "0.153.4"
 
 	// CodexDesktopBuild is the Desktop app build number that appears ONLY in
 	// the User-Agent's trailing parenthetical and in the analytics-events
 	// body as app_server_client.client_version. It is not a semver and is
 	// not the same thing as CodexDesktopVersion (which is the codex-rs core
 	// version, reported as runtime.codex_rs_version in the same body).
-	CodexDesktopBuild = "26.803.81509"
+	//
+	// 26.803.81509 (0.147.0) → 26.901.51231 (0.153.4): it moves independently
+	// of the version, so it cannot be derived and must come from a capture.
+	CodexDesktopBuild = "26.901.51231"
 
 	CodexDesktopOriginator = "Codex Desktop"
 
@@ -54,21 +60,58 @@ const (
 	// "{originator}/{version} ({os_type} {os_version}; {arch}) {terminal_ua}{suffix}".
 	// The OS/terminal segment is our synthetic Arch/Konsole identity, shared
 	// with CodexCLIUserAgent; see the note on per-account variation below.
+	//
+	// THREE segments moved between 0.147.0 and 0.153.4 — the version, the
+	// terminal (Konsole/260403 → Konsole/260800) and the build tail. A version
+	// bump here is never a one-token edit; re-read the capture for all three.
 	CodexDesktopUserAgent = "Codex Desktop/" + CodexDesktopVersion +
-		" (Arch Linux Rolling Release; x86_64) Konsole/260403 (Codex Desktop; " + CodexDesktopBuild + ")"
+		" (Arch Linux Rolling Release; x86_64) Konsole/260800 (Codex Desktop; " + CodexDesktopBuild + ")"
 
 	// CodexDesktopBetaFeatures is the x-codex-beta-features value. This drifts
 	// per release and is NOT derivable — 0.135.0 sent "terminal_resize_reflow",
-	// 0.147.0 sends "remote_compaction_v2". Re-capture on every version bump.
+	// 0.147.0 and 0.153.4 send "remote_compaction_v2". Re-capture on every
+	// version bump.
+	//
+	// The CLI and Desktop values have CONVERGED at 0.153.4 — both send
+	// "remote_compaction_v2" on every ordinary upgrade — which is one more
+	// reason the two clients' handshakes are indistinguishable.
 	CodexDesktopBetaFeatures = "remote_compaction_v2"
 
 	// CodexDesktopModelsClientVersion is the `client_version` query parameter
-	// on GET /backend-api/codex/models. The capture shows Desktop sending the
-	// BASE version here (0.147.0) while the `version` header carries the full
-	// pre-release string — the mismatch is the client's own behaviour, not a
-	// capture artifact, so it is reproduced rather than reconciled.
-	CodexDesktopModelsClientVersion = "0.147.0"
+	// on GET /backend-api/codex/models.
+	//
+	// At 0.147.0 this was a DIFFERENT string from the version header: the app
+	// self-reported "0.147.0-alpha.6.6" in the header and the base "0.147.0"
+	// in the query. 0.153.4 is a stable tag with no pre-release suffix, and
+	// crack/codexapp0.153.4/rows/12 shows client_version=0.153.4 — the two
+	// coincide, so this is defined as the version rather than retyped. If a
+	// future capture pins a pre-release again, split this back out to the base
+	// triple instead of letting the alpha suffix leak into the query.
+	CodexDesktopModelsClientVersion = CodexDesktopVersion
 )
+
+// CodexDesktopBaseUserAgent is the Desktop User-Agent MINUS the trailing
+// "(Codex Desktop; <build>)" parenthetical.
+//
+// Four User-Agent forms coexist in one Desktop process (crack/codexapp0.153.4/
+// SPEC.md §1). Two of them are per-component and unambiguous
+// (codex-mcp-client/… on ps/mcp, the OTLP exporter on the metrics endpoint);
+// the other two are this one and the full CodexDesktopUserAgent.
+//
+// The full-vs-base split is NOT per-endpoint — do not encode a rule that says
+// otherwise. codex/models, plugins/featured, ps/plugins/{installed,suggested}
+// and wham/remote/control each appear with BOTH forms inside the single
+// capture, most likely because the app-server and the codex-rs core reach the
+// same endpoints under the same originator. The two endpoints that never vary
+// are POST /oauth/token and the WebSocket upgrade, and both send the FULL UA.
+//
+// It is DERIVED rather than written out, exactly as CodexModelsUserAgent is
+// derived from CodexCLIUserAgent, so a version or build bump cannot move one
+// form and leave the other stale. That is the whole failure mode this file
+// exists to prevent, and it is why this is exported: callers that need the
+// base form must take it from here rather than re-deriving it locally.
+var CodexDesktopBaseUserAgent = strings.TrimSuffix(
+	CodexDesktopUserAgent, " ("+CodexDesktopOriginator+"; "+CodexDesktopBuild+")")
 
 // CodexClientProfile is one complete, self-consistent Codex client identity.
 // Never mix fields across profiles: originator, UA and version are validated
@@ -89,6 +132,11 @@ type CodexClientProfile struct {
 	// SendsTurnMetadata reports whether this client sends the
 	// x-codex-turn-metadata / x-codex-window-id / thread-id / session-id /
 	// x-client-request-id cluster on a WebSocket handshake.
+	//
+	// Both real clients do, and they send the SAME cluster: the ordinary
+	// upgrade is identical in header set and order whether it comes from
+	// Codex Desktop or codex-tui (crack/codexapp0.153.4/SPEC.md §3). There is
+	// no per-client handshake shape to select — see DefaultCodexProfile.
 	SendsTurnMetadata bool
 }
 
@@ -124,25 +172,37 @@ var codexTUIClientProfile = CodexClientProfile{
 // default. Both forks get this without opting in, so changing it is a
 // behaviour change for production traffic on both at once.
 //
-// It returns the codex-tui (CLI) profile as of 2026-09-05. It used to return
-// Desktop, and the flip was forced rather than preferred:
+// It returns the codex-tui (CLI) profile. It used to return Desktop; the flip
+// happened on 2026-09-05 and was RE-EXAMINED on 2026-09-07 against a fresh
+// Desktop capture, which did not justify flipping back. Both halves are
+// recorded so this is not re-litigated a third time.
 //
-//  1. The 0.153.4 model catalog gates gpt-6-astra behind
-//     minimal_client_version "0.153.0". The Desktop profile self-reports
-//     0.147.0-alpha.6.6, below that floor, so a Desktop-identified request
-//     cannot be routed to the current flagship at all.
-//  2. Desktop cannot simply be bumped to clear the floor. Its version, its
-//     build number (26.803.81509) and its terminal segment are three
-//     independent values the backend cross-validates against the originator
-//     and the UA, and no Desktop capture newer than 0.147.0 exists. Inventing
-//     a Desktop 0.153.x triple would be a worse fingerprint than presenting a
-//     real CLI one — the repo rule is that constants match crack/, and only
-//     the CLI has fresh ground truth (crack/codexv0.153.4/).
+// Why it flipped, 2026-09-05: the 0.153.4 model catalog gates gpt-6-astra
+// behind minimal_client_version "0.153.0". The Desktop profile self-reported
+// 0.147.0-alpha.6.6, below that floor, so a Desktop-identified request could
+// not be routed to the current flagship at all — and Desktop could not be
+// bumped past it, because its version, build number and terminal segment are
+// three independent values and no capture backed them.
 //
-// So the choice was: present a stale-but-real Desktop that cannot reach astra,
-// or a current-and-real CLI that can. Re-visit if a Desktop capture at or above
-// 0.153.0 is taken — Desktop is the more common client and was the default for
-// that reason.
+// Why it did NOT flip back, 2026-09-07: crack/codexapp0.153.4/ supplied that
+// missing capture, and the constants above were refreshed from it, so the
+// version-floor argument is spent — Desktop is 0.153.4 now and clears it. The
+// flip back was proposed on the further belief that Desktop had its own
+// WebSocket handshake shape that cc-core was failing to emit. It does not.
+// All 19 upgrades in that capture carry originator "Codex Desktop", and the
+// ordinary-thread ones are IDENTICAL in header set and order to the codex-tui
+// upgrade in crack/codexv0.153.4/rows/10 (SPEC §3). The 18-header variant that
+// looked like a Desktop shape is an auto-review GUARDIAN subagent running
+// Responses-Lite — a connection kind a proxy never has — and a single
+// 21-header row proves guardians use the ordinary shape too, so it is not even
+// universal among subagents.
+//
+// So the handshake is the same either way, and the choice of profile decides
+// only the advertised identity. The CLI wins that on evidence: it is the
+// profile with a live capture behind every constant AND byte-parity tests
+// against it (codexws/capture_parity_test.go reads the row). Presenting
+// Desktop would buy nothing and give up the verified identity. Revisit only if
+// a capture shows the two clients' UPGRADES actually diverging.
 func DefaultCodexProfile() CodexClientProfile { return codexTUIClientProfile }
 
 // NOTE ON PER-ACCOUNT VARIATION — deliberately NOT done here.

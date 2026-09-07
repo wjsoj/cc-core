@@ -63,6 +63,24 @@ type Auth struct {
 	AccountID string
 	PlanType  string
 
+	// EarliestRefreshAt is the `earliest_refresh_at` the OpenAI token
+	// endpoint returns alongside the tokens (unix seconds, observed at
+	// iat + 9 days against a 10-day expires_in — see
+	// crack/codexapp0.153.4/rows/02). It is the server telling us when it is
+	// willing to mint a replacement; refreshing before it is what we did for
+	// a year, and it is the leading suspect for the recurring
+	// refresh_token_invalidated incidents. Honoured by needsRefresh. Zero =
+	// unknown (a credential file written before this field existed, or an
+	// Anthropic credential, which never carries one).
+	EarliestRefreshAt time.Time
+
+	// OAIIS is the opaque `oai_is` value ("ois1.<JWT>") returned by the token
+	// endpoint and echoed by the backend in the x-oai-is-update response
+	// header. Nothing reads it yet; it is captured and persisted so a future
+	// consumer has the real value instead of having to re-login every account
+	// to obtain one. Append-only field — old credential files decode as "".
+	OAIIS string
+
 	// Anthropic OAuth account/org UUIDs returned by the token-exchange
 	// response. Used by the body mimicry layer to populate
 	// metadata.user_id.account_uuid so requests look identical to the real

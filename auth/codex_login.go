@@ -45,6 +45,33 @@ func buildCodexAuthURL(state, verifier string) string {
 	return openaiAuthURL + "?" + params.Encode()
 }
 
+// buildCodexAuthCodeBody renders the authorization_code grant body.
+//
+// Hand-built rather than url.Values.Encode()d because Encode sorts: it emits
+// client_id, code, code_verifier, grant_type, redirect_uri, and the real client
+// (crack/codexapp0.153.4/rows/02) sends grant_type, code, redirect_uri,
+// client_id, code_verifier. An alphabetised body is an order no genuine client
+// produces — the same reason buildAnthropicAuthURL hand-builds its query.
+func buildCodexAuthCodeBody(code, codeVerifier string) string {
+	pairs := [][2]string{
+		{"grant_type", "authorization_code"},
+		{"code", code},
+		{"redirect_uri", openaiRedirectURI},
+		{"client_id", openaiClientID},
+		{"code_verifier", codeVerifier},
+	}
+	var b strings.Builder
+	for i, kv := range pairs {
+		if i > 0 {
+			b.WriteByte('&')
+		}
+		b.WriteString(url.QueryEscape(kv[0]))
+		b.WriteByte('=')
+		b.WriteString(url.QueryEscape(kv[1]))
+	}
+	return b.String()
+}
+
 // finishCodexLogin exchanges the OAuth code for tokens at OpenAI's token
 // endpoint. Unlike the Anthropic side this body is form-urlencoded (not
 // JSON) and the response carries an id_token whose claims determine the
@@ -57,19 +84,12 @@ func finishCodexLogin(
 	useUTLS bool,
 	group string,
 ) (*Auth, error) {
-	data := url.Values{
-		"grant_type":    {"authorization_code"},
-		"client_id":     {openaiClientID},
-		"code":          {code},
-		"redirect_uri":  {openaiRedirectURI},
-		"code_verifier": {sess.CodeVerifier},
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openaiTokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openaiTokenURL,
+		strings.NewReader(buildCodexAuthCodeBody(code, sess.CodeVerifier)))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	applyCodexTokenEndpointHeaders(req)
+	applyCodexFormGrantHeaders(req)
 
 	client := ClientFor(sess.ProxyURL, useUTLS)
 	resp, err := client.Do(req)
@@ -81,13 +101,7 @@ func finishCodexLogin(
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("codex token exchange http %d: %s", resp.StatusCode, string(body))
 	}
-	var tr struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		IDToken      string `json:"id_token"`
-		TokenType    string `json:"token_type"`
-		ExpiresIn    int    `json:"expires_in"`
-	}
+	var tr codexTokenResponse
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, fmt.Errorf("codex token exchange parse: %w", err)
 	}
@@ -131,6 +145,16 @@ func finishCodexLogin(
 		"last_refresh":   time.Now().UTC().Format(time.RFC3339),
 		"max_concurrent": maxConcurrent,
 		"label":          label,
+	}
+	// Append-only credential-file fields (see parseCodexOAuthFile, which
+	// tolerates their absence). earliest_refresh_at is what stops the
+	// refresher from asking for a new token four days before the server is
+	// willing to mint one; oai_is is captured for a future consumer.
+	if t := tr.EarliestRefresh(); !t.IsZero() {
+		raw["earliest_refresh_at"] = t.Unix()
+	}
+	if tr.OAIIS != "" {
+		raw["oai_is"] = tr.OAIIS
 	}
 	if sess.ProxyURL != "" {
 		raw["proxy_url"] = sess.ProxyURL

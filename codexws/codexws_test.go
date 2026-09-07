@@ -159,6 +159,28 @@ func TestBuildUpstreamHeadersMatchesCapturedOrder(t *testing.T) {
 	}
 }
 
+// The window id follows the THREAD, not the session. The two are equal on a
+// fresh thread, which is why a session-anchored value looked right for two
+// captures; crack/codexv0.153.4/rows/12 and the 21-header row of
+// crack/codexapp0.153.4 are the rows that separate them, and both follow the
+// thread. A session-anchored header also disagreed with the window_id inside
+// x-codex-turn-metadata and inside the rewritten frame.
+func TestBuildUpstreamHeadersWindowIDFollowsThread(t *testing.T) {
+	h := BuildUpstreamHeadersWithOptions(UpstreamHeaderOptions{
+		AccessToken:    "tok",
+		AccountID:      "acct",
+		SessionID:      "sess-id",
+		ThreadID:       "thread-id",
+		InstallationID: "inst",
+	})
+	if got := hdr(h, "x-codex-window-id"); got != "thread-id:0" {
+		t.Errorf("x-codex-window-id = %q, want thread-id:0", got)
+	}
+	if md := hdr(h, "x-codex-turn-metadata"); !strings.Contains(md, `"window_id":"thread-id:0"`) {
+		t.Errorf("header and metadata window ids disagree: %s", md)
+	}
+}
+
 func TestIsUnexpectedClose(t *testing.T) {
 	normal := &gorillaws.CloseError{Code: gorillaws.CloseNormalClosure}
 	if IsUnexpectedClose(normal) {

@@ -10,11 +10,16 @@ import (
 
 // The codex-tui (Rust terminal client) fingerprint, pinned to 0.147.0.
 //
-// This is NO LONGER the default identity. cc-core presents Codex Desktop —
-// see mimicry.DefaultCodexProfile and the constants in codex_identity.go,
-// captured live at 0.147.0-alpha.6.6 in crack/codexapp0.147.0/. The constants
-// below remain the CLI profile, selectable via CodexTUIClientProfile, and they
-// still anchor everything the two clients share.
+// This IS the default identity again as of 2026-09-05, and it stayed that way
+// when the 0.153.4 Desktop capture was reviewed on 2026-09-07 — see
+// mimicry.DefaultCodexProfile for why that capture did not move it back. The
+// Desktop constants live in codex_identity.go and remain selectable via
+// CodexDesktopClientProfile.
+//
+// The constants below anchor everything the two clients share, and that turns
+// out to include the WebSocket upgrade itself: crack/codexapp0.153.4/SPEC.md §3
+// shows an ordinary Desktop handshake identical in header set AND order to the
+// codex-tui one captured in crack/codexv0.153.4/rows/10.
 //
 // The identity template (Originator / UA shape / Version header) was verified
 // against a live ChatGPT Pro `codex` session capture at 0.135.0 — see
@@ -60,9 +65,12 @@ import (
 //
 // This version floor is now load-bearing rather than cosmetic. The 0.153.4
 // model catalog gives gpt-6-astra minimal_client_version "0.153.0", so any
-// profile self-reporting below that cannot be routed to the current flagship —
-// which is why DefaultCodexProfile returns the CLI profile and not Desktop
-// (see mimicry/codex_identity.go).
+// profile self-reporting below that cannot be routed to the current flagship.
+// That floor is what made the CLI the default, and although
+// crack/codexapp0.153.4/ has since put Desktop back above it, the default did
+// not move: the two clients send the same upgrade, so the profile decides
+// identity only, and the CLI's is the one with byte-parity tests behind it
+// (see mimicry/codex_identity.go for the full history).
 //
 // Bumping the version target requires re-verifying against real Codex traffic
 // or the codex-rs source at that tag; CodexCLIVersion must match the version
@@ -124,6 +132,26 @@ const (
 	// paths again. Do not re-derive its absence from the older captures — they
 	// are older, not contradictory.
 	CodexRoutingHintHeader = "x-codex-routing-hint"
+
+	// CodexResponsesLiteHeader switches the backend into "Responses-Lite"
+	// mode — the reduced /responses surface the gpt-5.6 line runs (see
+	// codexResponsesLiteModel and `use_responses_lite` in the model catalog).
+	//
+	// cc-core does NOT send it as a header, and the name is defined here so
+	// that decision is documented rather than merely absent.
+	//
+	// Every ordinary upgrade asks for the mode from inside the frame's
+	// client_metadata, as ws_request_header_x_openai_internal_codex_responses_
+	// lite (see RewriteCodexClientFrame), because a WebSocket cannot set
+	// per-message headers. The header form appears on exactly one kind of
+	// connection in crack/codexapp0.153.4: an auto-review GUARDIAN subagent
+	// (SPEC §3), which also drops the turn-metadata trio and carries
+	// x-openai-subagent. A proxy is never a subagent, so emitting the header
+	// on an ordinary turn would produce a shape observed only on auto-review
+	// connections, minus the marker that identifies them — a combination no
+	// real client sends. It is also absent from the HTTP /responses path in
+	// every capture.
+	CodexResponsesLiteHeader = "x-openai-internal-codex-responses-lite"
 )
 
 // CodexServiceTier* are the only tier values that belong in a routing hint.

@@ -35,7 +35,12 @@ var dialerOwnedHeaders = map[string]bool{
 
 func loadCapturedHandshake(t *testing.T) capturedRow {
 	t.Helper()
-	b, err := os.ReadFile(filepath.FromSlash(capturedHandshakeRow))
+	return loadCapturedRow(t, capturedHandshakeRow)
+}
+
+func loadCapturedRow(t *testing.T, path string) capturedRow {
+	t.Helper()
+	b, err := os.ReadFile(filepath.FromSlash(path))
 	if err != nil {
 		t.Skipf("capture row unavailable (%v); parity check skipped", err)
 	}
@@ -178,4 +183,59 @@ func decodeOrderedJSON(t *testing.T, raw string) (keys, types []string) {
 		}
 	}
 	return keys, types
+}
+
+// capturedDesktopOrdinaryRow is an ORDINARY-thread WebSocket upgrade from the
+// Codex Desktop app, captured against the same backend two days after the CLI
+// row above.
+const capturedDesktopOrdinaryRow = "../crack/codexapp0.153.4/rows/10-ws-handshake-desktop.json"
+
+// TestOrdinaryDesktopHandshakeMatchesCLIShape pins the fact this whole package
+// rests on: there is ONE handshake shape, not one per client.
+//
+// It was briefly believed that Codex Desktop sent a different, 18-header
+// upgrade, and a profile-switched header set and order were built for it. That
+// reading was wrong. All 19 upgrades in crack/codexapp0.153.4 carry originator
+// "Codex Desktop" — there is no codex-tui row in that capture to contrast with
+// — and the ordinary-thread ones match the codex-tui upgrade exactly. The
+// 18-header shape belongs to an auto-review GUARDIAN subagent running
+// Responses-Lite, a connection kind a proxy never has; see
+// crack/codexapp0.153.4/SPEC.md §3.
+//
+// If this test ever fails, the two clients have genuinely diverged and
+// handshakeHeaderOrder can no longer serve both. That is the trigger to
+// reintroduce a per-profile shape — and not before.
+func TestOrdinaryDesktopHandshakeMatchesCLIShape(t *testing.T) {
+	cli := loadCapturedRow(t, capturedHandshakeRow)
+	desktop := loadCapturedRow(t, capturedDesktopOrdinaryRow)
+
+	// Sanity: they really are the two different clients.
+	if got := cli.ReqHeaders["originator"]; got != mimicry.CodexOriginator {
+		t.Fatalf("CLI row originator = %q, want %q — wrong row?", got, mimicry.CodexOriginator)
+	}
+	if got := desktop.ReqHeaders["originator"]; got != mimicry.CodexDesktopOriginator {
+		t.Fatalf("Desktop row originator = %q, want %q — wrong row?", got, mimicry.CodexDesktopOriginator)
+	}
+
+	if len(cli.ReqHeaderOrder) != len(desktop.ReqHeaderOrder) {
+		t.Fatalf("header counts differ: CLI %d %v, Desktop %d %v",
+			len(cli.ReqHeaderOrder), cli.ReqHeaderOrder,
+			len(desktop.ReqHeaderOrder), desktop.ReqHeaderOrder)
+	}
+	for i := range cli.ReqHeaderOrder {
+		if cli.ReqHeaderOrder[i] != desktop.ReqHeaderOrder[i] {
+			t.Fatalf("header %d differs: CLI %q, Desktop %q\n  CLI     %v\n  Desktop %v",
+				i, cli.ReqHeaderOrder[i], desktop.ReqHeaderOrder[i],
+				cli.ReqHeaderOrder, desktop.ReqHeaderOrder)
+		}
+	}
+
+	// And neither ordinary upgrade carries the guardian/Responses-Lite markers.
+	for _, row := range []capturedRow{cli, desktop} {
+		for _, name := range []string{mimicry.CodexResponsesLiteHeader, "x-openai-subagent"} {
+			if _, ok := row.ReqHeaders[name]; ok {
+				t.Errorf("an ordinary upgrade must not carry %q", name)
+			}
+		}
+	}
 }
