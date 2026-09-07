@@ -196,7 +196,13 @@ type Auth struct {
 	// 7d_oi bucket is an independent ~half-of-weekly allotment that rejects on
 	// its own while 5h/7d stay allowed). nil/empty = no scoped limits. Append-
 	// only field: old credential files without it decode as nil.
-	ModelRateLimits     map[string]time.Time
+	ModelRateLimits map[string]time.Time
+
+	// modelSheds remembers, per (provider, model) scope, that upstream shed
+	// this credential for capacity recently. Unexported and never persisted:
+	// unlike ModelRateLimits it is not a quota fact but a routing preference,
+	// and it only ever reorders the scheduler's candidates. See model_shed.go.
+	modelSheds          map[string]modelShedState
 	LastFailure         time.Time
 	LastFailureReason   string
 	LastSuccess         time.Time // set on every <400 upstream response

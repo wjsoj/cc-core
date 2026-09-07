@@ -875,6 +875,7 @@ func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedG
 	fanouts := p.clientFanoutsLocked(now)
 	type cand struct {
 		a      *Auth
+		shed   int   // consecutive recent capacity sheds of clientModel on this auth
 		fanout int   // distinct client tokens this auth would serve with us on it
 		load   int64 // weighted tokens consumed in the recent load-balancing window (0 if unknown)
 	}
@@ -906,12 +907,22 @@ func (p *Pool) pickOAuthLocked(now time.Time, excluded map[string]bool, allowedG
 		if _, already := tokens[clientToken]; !already {
 			fanout++
 		}
-		cands = append(cands, cand{a: a, fanout: fanout, load: used})
+		cands = append(cands, cand{a: a, shed: a.ModelShedPenalty(clientModel, now), fanout: fanout, load: used})
 	}
 	if len(cands) == 0 {
 		return nil
 	}
 	sort.SliceStable(cands, func(i, j int) bool {
+		// Recent capacity sheds of THIS model come first, ahead of fan-out and
+		// load: an account upstream just refused this model on is the worst
+		// place to send the next request for it, however lightly loaded it is.
+		// It is an ordering and not a filter, so a window where every account
+		// is shedding degrades to the previous behaviour rather than to a 503.
+		// The penalty is per-model, so a credential shedding gpt-6-astra keeps
+		// its normal position for every other model. See auth/model_shed.go.
+		if cands[i].shed != cands[j].shed {
+			return cands[i].shed < cands[j].shed
+		}
 		if cands[i].fanout != cands[j].fanout {
 			return cands[i].fanout < cands[j].fanout
 		}
