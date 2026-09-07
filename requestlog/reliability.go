@@ -179,3 +179,76 @@ ORDER BY requests DESC`
 	})
 	return out, nil
 }
+
+// ShedBucket is the real-traffic quality of one time slot, for a status page
+// that wants to say "requests were unstable around then".
+//
+// This is deliberately separate from ModelReliability: that answers "which
+// model is bad", this answers "when was it bad", and a status strip needs the
+// second. It is also separate from the health PROBE the strip is otherwise
+// built from — a probe says whether a synthetic request succeeded, which stays
+// green through a capacity shed that made every real turn retry.
+type ShedBucket struct {
+	// Start is the bucket's opening instant, aligned to the bucket width.
+	Start time.Time
+	// Requests counts downstream requests, excluding client cancellations:
+	// a user pressing Ctrl-C is not instability, and leaving them in would
+	// dilute the rate exactly when people are giving up most.
+	Requests int64
+	// Shed counts requests upstream refused at least once for capacity or
+	// quota, including those a retry then served successfully. That is the
+	// point — the customer waited through the retry either way.
+	Shed int64
+}
+
+// Rate returns Shed/Requests in [0,1]; an empty bucket reports 0.
+func (b ShedBucket) Rate() float64 {
+	if b.Requests == 0 {
+		return 0
+	}
+	return float64(b.Shed) / float64(b.Requests)
+}
+
+// ShedBucketsSince buckets shed activity for one provider from `since` to now.
+//
+// Empty buckets are omitted rather than returned as zeros: the caller is
+// overlaying this onto a strip it already built, and "no traffic" must stay
+// distinguishable from "traffic, none shed" — the first should leave the strip
+// alone, the second should mark it healthy.
+func (s *Store) ShedBucketsSince(provider string, since time.Time, bucket time.Duration) ([]ShedBucket, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("requestlog: no index open")
+	}
+	if bucket <= 0 {
+		return nil, fmt.Errorf("requestlog: bucket must be positive")
+	}
+	width := bucket.Nanoseconds()
+
+	const q = `
+SELECT (ts / ?) * ?                                              AS bucket_ns,
+       COUNT(*)                                                  AS requests,
+       SUM(CASE WHEN error IN (?, ?) THEN 1 ELSE 0 END)          AS shed
+FROM req
+WHERE attempt_only = 0 AND ts >= ? AND provider = ? AND status <> 499
+GROUP BY bucket_ns
+ORDER BY bucket_ns`
+
+	rows, err := s.db.Query(q, width, width, ShedCapacityLabel, ShedQuotaLabel,
+		since.UnixNano(), provider)
+	if err != nil {
+		return nil, fmt.Errorf("requestlog: shed buckets: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]ShedBucket, 0, 160)
+	for rows.Next() {
+		var startNS int64
+		var b ShedBucket
+		if err := rows.Scan(&startNS, &b.Requests, &b.Shed); err != nil {
+			return nil, err
+		}
+		b.Start = time.Unix(0, startNS)
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
