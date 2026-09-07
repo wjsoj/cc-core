@@ -35,8 +35,22 @@ func (s *Store) storeAggregateByAuth(from, to time.Time) (map[string]Aggregate, 
 			FROM agg_cube WHERE auth_id != '' GROUP BY auth_id`)
 	} else {
 		where, args := timeWhere(from, to)
+		// INDEXED BY is a correctness-neutral plan pin, not a micro-optimisation.
+		// Left to itself the planner picks idx_req_auth, because that index is
+		// (auth_id, ts) and satisfies the GROUP BY without a sort — but it
+		// cannot seek the ts range inside each auth_id group, so it walks every
+		// row in the table. Measured on production (1.5M rows over the 90-day
+		// window) that is 1.76s cold / 0.35s warm for a 24h window holding
+		// ~20k rows. Pinning idx_req_ts turns it into a range seek plus a
+		// temp-B-tree GROUP BY over just those rows: 0.065s warm.
+		//
+		// This is the admin panel's list endpoint, and the aggregate is behind
+		// a 20s cache with a 10-minute staleness ceiling — so the cost lands
+		// squarely on an operator opening the credentials page after a quiet
+		// spell, which is exactly when it is most visible.
 		rows, err = s.db.Query(`SELECT auth_id, `+aggSelect+`
-			FROM req WHERE attempt_only = 0 AND auth_id != ''`+where+`
+			FROM req INDEXED BY idx_req_ts
+			WHERE attempt_only = 0 AND auth_id != ''`+where+`
 			GROUP BY auth_id`, args...)
 	}
 	if err != nil {
