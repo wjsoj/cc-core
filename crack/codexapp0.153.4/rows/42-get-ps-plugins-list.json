@@ -1,0 +1,58 @@
+{
+  "_note": "GET /backend-api/ps/plugins/list — plugin-store sidecar (long-polled).",
+  "method": "GET",
+  "url": "https://chatgpt.com/backend-api/ps/plugins/list?scope=GLOBAL&limit=200",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (Codex Desktop; 26.901.51231)",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "oai-product-sku": "codex",
+    "accept": "*/*",
+    "host": "chatgpt.com",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "originator",
+    "user-agent",
+    "authorization",
+    "chatgpt-account-id",
+    "oai-product-sku",
+    "accept",
+    "host",
+    "Connection"
+  ],
+  "req_body": null,
+  "status": 401,
+  "res_headers": {
+    "Date": "Mon, 07 Sep 2026 08:16:27 GMT",
+    "Content-Type": "text/plain",
+    "Content-Length": "182",
+    "Connection": "close",
+    "x-openai-ide-root-error-code": "token_revoked",
+    "x-openai-ide-error-code": "token_revoked",
+    "x-openai-authorization-error": "401",
+    "x-error-json": "ewogICJlcnJvciI6IHsKICAgICJtZXNzYWdlIjogIkVuY291bnRlcmVkIGludmFsaWRhdGVkIG9hdXRoIHRva2VuIGZvciB1c2VyLCBmYWlsaW5nIHJlcXVlc3QiLAogICAgInR5cGUiOiBudWxsLAogICAgImNvZGUiOiAidG9rZW5fcmV2b2tlZCIsCiAgICAicGFyYW0iOiBudWxsCiAgfSwKICAic3RhdHVzIjogNDAxCn0=",
+    "x-openai-internal-caller": "unknown_through_ide",
+    "cf-cache-status": "DYNAMIC",
+    "set-cookie": "<REDACTED>",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Server": "cloudflare",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "error": {
+      "message": "Encountered invalidated oauth token for user, failing request",
+      "type": null,
+      "code": "token_revoked",
+      "param": null
+    },
+    "status": 401
+  }
+}

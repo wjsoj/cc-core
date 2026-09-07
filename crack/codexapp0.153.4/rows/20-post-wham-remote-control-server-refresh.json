@@ -1,0 +1,65 @@
+{
+  "_note": "POST /backend-api/wham/remote/control/server/refresh — an endpoint cc-core has no notion of. Body is {server_id, installation_id} and the request carries x-codex-installation-id, a header we send nowhere. All 63 samples in this capture are 401 (the session's token had been revoked), so the SUCCESS shape is still unknown. Note the User-Agent here drops the trailing \"(Codex Desktop; <build>)\" parenthetical the WebSocket upgrade carries.",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/wham/remote/control/server/refresh",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "x-codex-installation-id": "<INSTALLATION_ID>",
+    "content-type": "application/json",
+    "accept": "*/*",
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800",
+    "host": "chatgpt.com",
+    "content-length": "111",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "authorization",
+    "chatgpt-account-id",
+    "x-codex-installation-id",
+    "content-type",
+    "accept",
+    "originator",
+    "user-agent",
+    "host",
+    "content-length",
+    "Connection"
+  ],
+  "req_body": {
+    "server_id": "<masked:remote-control server_id \"srv_e_<hex>\">",
+    "installation_id": "<INSTALLATION_ID>"
+  },
+  "status": 401,
+  "res_headers": {
+    "Date": "Mon, 07 Sep 2026 08:16:27 GMT",
+    "Content-Type": "text/plain",
+    "Content-Length": "182",
+    "Connection": "close",
+    "x-openai-ide-root-error-code": "token_revoked",
+    "x-openai-ide-error-code": "token_revoked",
+    "x-openai-authorization-error": "401",
+    "x-error-json": "ewogICJlcnJvciI6IHsKICAgICJtZXNzYWdlIjogIkVuY291bnRlcmVkIGludmFsaWRhdGVkIG9hdXRoIHRva2VuIGZvciB1c2VyLCBmYWlsaW5nIHJlcXVlc3QiLAogICAgInR5cGUiOiBudWxsLAogICAgImNvZGUiOiAidG9rZW5fcmV2b2tlZCIsCiAgICAicGFyYW0iOiBudWxsCiAgfSwKICAic3RhdHVzIjogNDAxCn0=",
+    "x-openai-internal-caller": "unknown_through_ide",
+    "cf-cache-status": "DYNAMIC",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "set-cookie": "<REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Server": "cloudflare",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "error": {
+      "message": "Encountered invalidated oauth token for user, failing request",
+      "type": null,
+      "code": "token_revoked",
+      "param": null
+    },
+    "status": 401
+  }
+}

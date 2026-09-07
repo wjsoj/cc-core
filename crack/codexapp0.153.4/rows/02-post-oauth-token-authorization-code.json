@@ -1,0 +1,55 @@
+{
+  "_note": "authorization_code grant. content-type application/x-www-form-urlencoded; identity headers ABSENT. POST https://auth.openai.com/oauth/token. The three grants this endpoint serves do NOT share a request shape: refresh_token is JSON and carries the Desktop originator + User-Agent, while authorization_code and the RFC 8693 token-exchange are form-encoded and carry no identity headers at all. cc-core applied one shared header helper to all of them until this capture.",
+  "method": "POST",
+  "url": "https://auth.openai.com/oauth/token",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "content-type": "application/x-www-form-urlencoded",
+    "accept": "*/*",
+    "host": "auth.openai.com",
+    "content-length": "326",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "content-type",
+    "accept",
+    "host",
+    "content-length",
+    "Connection"
+  ],
+  "req_body": "grant_type=authorization_code&code=<masked:oauth authorization code \"ac_...\">.szSa8NBQmUBp0MAH1A71IX21MmTezZMo4Ez83q6m0vU&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&client_id=app_EMoamEEZ73f0CkXaXp7hrann&code_verifier=<masked:PKCE code_verifier, 96-byte base64url>",
+  "status": 200,
+  "res_headers": {
+    "Date": "Mon, 07 Sep 2026 08:25:29 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "4971",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "x-oai-is-update": "ois1.<JWT_REDACTED>",
+    "Timing-Allow-Origin": "*",
+    "openai-version": "2020-10-01",
+    "x-request-id": "<REDACTED>",
+    "openai-processing-ms": "199",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "pragma": "no-cache",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<REDACTED>",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.1,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "CF-RAY": "<REDACTED>",
+    "alt-svc": "h3=\":443\"; ma=86400"
+  },
+  "res_body": {
+    "access_token": "<JWT_REDACTED>",
+    "token_type": "Bearer",
+    "expires_in": 864000,
+    "scope": "openid profile email offline_access api.connectors.read api.connectors.invoke",
+    "id_token": "<JWT_REDACTED>",
+    "earliest_refresh_at": 1789547129,
+    "refresh_token": "<masked:opaque \"rt.1.<base64url>\" refresh_token>",
+    "oai_is": "ois1.<JWT_REDACTED>"
+  }
+}

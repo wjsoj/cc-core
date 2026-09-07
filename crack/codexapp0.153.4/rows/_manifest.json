@@ -1,0 +1,174 @@
+[
+  {
+    "file": "01-post-oauth-token-refresh.json",
+    "url": "https://auth.openai.com/oauth/token",
+    "method": "POST",
+    "status": 401
+  },
+  {
+    "file": "02-post-oauth-token-authorization-code.json",
+    "url": "https://auth.openai.com/oauth/token",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "04-post-oauth-token-exchange-openai-api-key.json",
+    "url": "https://auth.openai.com/oauth/token",
+    "method": "POST",
+    "status": 401
+  },
+  {
+    "file": "10-ws-handshake-desktop.json",
+    "url": "wss://chatgpt.com/backend-api/codex/responses",
+    "method": "GET",
+    "status": "101"
+  },
+  {
+    "file": "11-ws-handshake-desktop-subagent-guardian.json",
+    "url": "wss://chatgpt.com/backend-api/codex/responses",
+    "method": "GET",
+    "status": "101"
+  },
+  {
+    "file": "12-get-codex-models.json",
+    "url": "https://chatgpt.com/backend-api/codex/models?client_version=0.153.4",
+    "method": "GET",
+    "status": 401
+  },
+  {
+    "file": "13-x-codex-turn-metadata-decoded.json",
+    "note": "derived companion row"
+  },
+  {
+    "file": "20-post-wham-remote-control-server-refresh.json",
+    "url": "https://chatgpt.com/backend-api/wham/remote/control/server/refresh",
+    "method": "POST",
+    "status": 401
+  },
+  {
+    "file": "21-get-wham-settings-user.json",
+    "url": "https://chatgpt.com/backend-api/wham/settings/user",
+    "method": "GET",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-01.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-02.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-03.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-04.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-05.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-06.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-07.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-08.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-09.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "30-post-analytics-events-10.json",
+    "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "40-post-ps-mcp-initialize.json",
+    "url": "https://chatgpt.com/backend-api/ps/mcp",
+    "method": "POST",
+    "status": 401
+  },
+  {
+    "file": "40-post-ps-mcp-notifications-initialized.json",
+    "url": "https://chatgpt.com/backend-api/ps/mcp",
+    "method": "POST",
+    "status": 204
+  },
+  {
+    "file": "40-post-ps-mcp-resources-list.json",
+    "url": "https://chatgpt.com/backend-api/ps/mcp",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "40-post-ps-mcp-resources-templates-list.json",
+    "url": "https://chatgpt.com/backend-api/ps/mcp",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "40-post-ps-mcp-tools-list.json",
+    "url": "https://chatgpt.com/backend-api/ps/mcp",
+    "method": "POST",
+    "status": 200
+  },
+  {
+    "file": "41-get-ps-plugins-installed.json",
+    "url": "https://chatgpt.com/backend-api/ps/plugins/installed?limit=200",
+    "method": "GET",
+    "status": 401
+  },
+  {
+    "file": "42-get-ps-plugins-list.json",
+    "url": "https://chatgpt.com/backend-api/ps/plugins/list?scope=GLOBAL&limit=200",
+    "method": "GET",
+    "status": 401
+  },
+  {
+    "file": "43-get-plugins-featured.json",
+    "url": "https://chatgpt.com/backend-api/plugins/featured?platform=codex",
+    "method": "GET",
+    "status": 401
+  },
+  {
+    "file": "44-get-ps-plugins-suggested.json",
+    "url": "https://chatgpt.com/backend-api/ps/plugins/suggested/codex?scope=GLOBAL",
+    "method": "GET",
+    "status": 401
+  },
+  {
+    "file": "50-post-otlp-v1-metrics.json",
+    "url": "https://ab.chatgpt.com/otlp/v1/metrics",
+    "method": "POST",
+    "status": 202
+  }
+]

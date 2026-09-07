@@ -53,6 +53,17 @@ EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
 # ChatGPT ids that are not UUIDs: user-XXXX, org-XXXX, authsess_XXXX, app_XXXX.
 OPAQUE_ID_RE = re.compile(r"\b(?:user|org)-[A-Za-z0-9_]{8,}|\bauthsess_[A-Za-z0-9]{8,}")
+# OAuth-capture secrets. These have no `eyJ` prefix so JWT_RE never saw them,
+# and the first login archive shipped with a live refresh_token because of it.
+# The placeholders keep the SHAPE (prefix, length) because that is fingerprint:
+# a reader has to be able to tell an rt.1 from an ois1 without the value.
+REFRESH_TOKEN_RE = re.compile(r"\brt\.1\.[A-Za-z0-9_-]{20,}")
+OAI_IS_RE = re.compile(r"\bois1\.[A-Za-z0-9_.=-]{20,}")
+OAUTH_CODE_RE = re.compile(r"\bac_[A-Za-z0-9_-]{20,}")
+SERVER_ID_RE = re.compile(r"\bsrv_e_[a-f0-9]{16,}")
+# The PKCE verifier is a bare base64url run with no prefix, so it can only be
+# matched positionally, in the form parameter that carries it.
+CODE_VERIFIER_RE = re.compile(r"(code_verifier=)[A-Za-z0-9_-]{40,}")
 
 
 class Redactor:
@@ -82,6 +93,11 @@ class Redactor:
         if not isinstance(text, str):
             return text
         text = JWT_RE.sub("<JWT_REDACTED>", text)
+        text = REFRESH_TOKEN_RE.sub('<masked:opaque "rt.1.<base64url>" refresh_token>', text)
+        text = OAI_IS_RE.sub('<masked:opaque "ois1.<base64url>" oai_is>', text)
+        text = OAUTH_CODE_RE.sub('<masked:oauth authorization code "ac_...">', text)
+        text = SERVER_ID_RE.sub('<masked:remote-control server_id "srv_e_<hex>">', text)
+        text = CODE_VERIFIER_RE.sub(r"\1<masked:PKCE code_verifier, 96-byte base64url>", text)
         text = EMAIL_RE.sub("<EMAIL>", text)
         text = OPAQUE_ID_RE.sub("<OPAQUE_ID>", text)
         return UUID_RE.sub(lambda m: self.sub_uuid(m.group(0)), text)
@@ -165,19 +181,34 @@ def redact_headers(headers, order, red):
     for key, value in headers.items():
         if key in out or any(k.lower() == key.lower() for k in out):
             continue
+        if _proxy_injected(key):
+            continue
         mask = MASK_HEADERS.get(key.lower())
         out[key] = mask if mask else red.scrub(value)
     return out
+
+
+# Headers whistle injects into the requests it relays. They are not the
+# client's and must never reach a row: header ORDER is the fingerprint this
+# archive exists to record, and interleaving the proxy's own names corrupts it.
+PROXY_INJECTED_HEADERS = ("x-whistle-", "proxy-authorization", "proxy-connection")
+
+
+def _proxy_injected(name):
+    low = name.lower()
+    return any(low.startswith(p) or low == p for p in PROXY_INJECTED_HEADERS)
 
 
 def header_order(section):
     names = section.get("rawHeaderNames")
     if isinstance(names, dict):
         # whistle maps lowercase -> on-the-wire spelling, insertion-ordered.
-        return list(names.values())
-    if isinstance(names, list):
-        return names
-    return list(section.get("headers", {}))
+        out = list(names.values())
+    elif isinstance(names, list):
+        out = list(names)
+    else:
+        out = list(section.get("headers", {}))
+    return [n for n in out if not _proxy_injected(n)]
 
 
 def emit(session, note, red, elide_catalog=False, elide_all=False):
@@ -209,7 +240,17 @@ def emit(session, note, red, elide_catalog=False, elide_all=False):
 
 # (filename, url substring, method or None, note). First match wins; a rule may
 # fire more than once only if its filename carries a {n} slot.
-RULES = [
+# Two rule sets, because one capture is not the other.
+#
+# CLI_SESSION describes an ordinary codex-tui working session (crack/codexv0.153.4).
+# DESKTOP_LOGIN describes a Codex Desktop capture that spans a re-login
+# (crack/codexapp0.153.4): its distinguishing rows are the three /oauth/token
+# grants, which the session set has no rule for because a session never
+# re-authenticates.
+#
+# They are kept separate rather than merged so that re-running the extractor on
+# the older dump still reproduces it byte-for-byte. Select with --profile.
+CLI_SESSION_RULES = [
     ("01-get-codex-models.json", "/backend-api/codex/models", "GET",
      "GET /backend-api/codex/models?client_version=0.153.4 (200). The 9-model "
      "catalog a Pro account sees. Every capability flag is verbatim; the prose "
@@ -251,6 +292,65 @@ RULES = [
      "POST https://ab.chatgpt.com/otlp/v1/metrics — OTLP metrics sidecar."),
 ]
 
+DESKTOP_LOGIN_RULES = [
+    # 01-04: the OAuth legs. postprocess() splits the three /oauth/token rows by
+    # grant_type, because the URL is identical for all three and only the body
+    # says which is which — and the three have DIFFERENT wire shapes, which is
+    # the whole reason this capture matters.
+    ("0x-post-oauth-token-{n}.json", "/oauth/token", "POST",
+     "POST https://auth.openai.com/oauth/token. The three grants this endpoint "
+     "serves do NOT share a request shape: refresh_token is JSON and carries the "
+     "Desktop originator + User-Agent, while authorization_code and the RFC 8693 "
+     "token-exchange are form-encoded and carry no identity headers at all. "
+     "cc-core applied one shared header helper to all of them until this capture."),
+    ("10-ws-handshake-desktop-{n}.json", "/backend-api/codex/responses", None,
+     "Codex Desktop 0.153.4 WebSocket handshake. Header names/case/order verbatim "
+     "from req.rawHeaderNames. This shape is NOT the CLI's (crack/codexv0.153.4/"
+     "rows/10): Desktop sends neither x-codex-beta-features nor "
+     "x-codex-turn-metadata nor x-codex-routing-hint, and instead carries "
+     "x-openai-internal-codex-responses-lite as an HTTP header — which the CLI "
+     "smuggles in the frame body. The order differs too."),
+    ("12-get-codex-models.json", "/backend-api/codex/models", "GET",
+     "GET /backend-api/codex/models?client_version=0.153.4 as DESKTOP sends it. "
+     "Prose instruction templates are elided; capability flags are verbatim."),
+    ("20-post-wham-remote-control-server-refresh.json", "/wham/remote/control/server/refresh", "POST",
+     "POST /backend-api/wham/remote/control/server/refresh — an endpoint cc-core "
+     "has no notion of. Body is {server_id, installation_id} and the request "
+     "carries x-codex-installation-id, a header we send nowhere. All 63 samples "
+     "in this capture are 401 (the session's token had been revoked), so the "
+     "SUCCESS shape is still unknown. Note the User-Agent here drops the trailing "
+     "\"(Codex Desktop; <build>)\" parenthetical the WebSocket upgrade carries."),
+    ("21-get-wham-settings-user.json", "/backend-api/wham/settings/user", "GET",
+     "GET /backend-api/wham/settings/user — per-user Codex settings."),
+    ("30-post-analytics-events-{n}.json", "/codex/analytics-events/events", "POST",
+     "POST /backend-api/codex/analytics-events/events — Desktop telemetry. The "
+     "envelope carries thread_id / session_id that the backend can join against "
+     "real /responses traffic, which is why anything emulating it must reuse the "
+     "ids of a turn that actually happened rather than invent them."),
+    ("40-post-ps-mcp-{n}.json", "/backend-api/ps/mcp", "POST",
+     "POST /backend-api/ps/mcp — plugin-store MCP channel. Sent as "
+     "codex-mcp-client/<ver>, a fourth User-Agent form distinct from the three "
+     "the rest of the client uses. Long third-party tool schemas are elided."),
+    ("41-get-ps-plugins-installed.json", "/ps/plugins/installed", "GET",
+     "GET /backend-api/ps/plugins/installed — plugin-store sidecar."),
+    ("42-get-ps-plugins-list.json", "/ps/plugins/list", "GET",
+     "GET /backend-api/ps/plugins/list — plugin-store sidecar (long-polled)."),
+    ("43-get-plugins-featured.json", "/plugins/featured", "GET",
+     "GET /backend-api/plugins/featured?platform=codex — plugin-store sidecar."),
+    ("44-get-ps-plugins-suggested.json", "/ps/plugins/suggested", "GET",
+     "GET /backend-api/ps/plugins/suggested/codex — plugin-store sidecar."),
+    ("50-post-otlp-v1-metrics.json", "/otlp/v1/metrics", "POST",
+     "POST https://ab.chatgpt.com/otlp/v1/metrics — OTLP metrics, sent as "
+     "OTel-OTLP-Exporter-Rust/<ver> with a statsig-api-key. The resource "
+     "attributes carry host identity, so an emulation must vary them per account "
+     "rather than send one blob for every credential."),
+]
+
+PROFILES = {
+    "cli-session": (CLI_SESSION_RULES, "codexv0.153.4"),
+    "desktop-login": (DESKTOP_LOGIN_RULES, "codexapp0.153.4"),
+}
+
 
 def _rewrite(path, row):
     with open(path, "w") as fh:
@@ -258,7 +358,7 @@ def _rewrite(path, row):
         fh.write("\n")
 
 
-def postprocess(outdir):
+def postprocess(outdir, profile="cli-session"):
     """Name the multi-instance rows by what distinguishes them, drop duplicates,
     and emit the decoded turn-metadata companion row.
 
@@ -272,11 +372,75 @@ def postprocess(outdir):
         with open(os.path.join(outdir, name)) as fh:
             return json.load(fh)
 
+    # --- /oauth/token: one row per GRANT, not per request.
+    #
+    # All three grants POST the same URL, so the RULES table cannot tell them
+    # apart — only the body can. They are split here because their wire shapes
+    # differ from each other, which is the single most load-bearing fact in this
+    # capture: refresh_token is JSON with the Desktop originator and
+    # User-Agent, while authorization_code and the RFC 8693 exchange are
+    # form-encoded with no identity headers at all.
+    for path in sorted(glob.glob(os.path.join(outdir, "0x-post-oauth-token-*.json"))):
+        row = json.load(open(path))
+        raw = row.get("req_body") or ""
+        blob = raw if isinstance(raw, str) else json.dumps(raw)
+        if "authorization_code" in blob:
+            name, label = "02-post-oauth-token-authorization-code.json", "authorization_code"
+        elif "token-exchange" in blob or "requested_token" in blob:
+            name, label = "04-post-oauth-token-exchange-openai-api-key.json", "token-exchange"
+        elif "refresh_token" in blob:
+            name, label = "01-post-oauth-token-refresh.json", "refresh_token"
+        else:
+            name, label = os.path.basename(path).replace("0x-", "09-"), "unknown"
+        ct = (row.get("req_headers") or {}).get("content-type", "?")
+        has_ua = "user-agent" in {k.lower() for k in (row.get("req_headers") or {})}
+        row["_note"] = (
+            "%s grant. content-type %s; identity headers %s. %s"
+            % (label, ct,
+               "PRESENT (originator + User-Agent)" if has_ua else "ABSENT",
+               row.get("_note", ""))
+        ).strip()
+        os.remove(path)
+        _rewrite(os.path.join(outdir, name), row)
+
     # --- handshakes: role comes from x-openai-subagent + metadata.thread_source
-    for path in sorted(glob.glob(os.path.join(outdir, "10-ws-handshake-codex-responses-*.json"))):
+    handshake_glob = ("10-ws-handshake-desktop-*.json" if profile == "desktop-login"
+                      else "10-ws-handshake-codex-responses-*.json")
+    for path in sorted(glob.glob(os.path.join(outdir, handshake_glob))):
         row = json.load(open(path))
         headers = row["req_headers"]
-        meta = json.loads(headers["x-codex-turn-metadata"])
+        # Desktop 0.153.4 sends NO x-codex-turn-metadata at all — that absence is
+        # one of the facts this capture exists to record, so it must not be a
+        # crash. An empty dict makes every metadata lookup below fall through to
+        # the header-only classification.
+        meta = {}
+        if "x-codex-turn-metadata" in headers:
+            try:
+                meta = json.loads(headers["x-codex-turn-metadata"])
+            except ValueError:
+                meta = {}
+
+        if profile == "desktop-login":
+            # Desktop has no thread_source to classify by; the only distinction
+            # the wire offers is whether this is a subagent upgrade.
+            sub = headers.get("x-openai-subagent")
+            name = ("11-ws-handshake-desktop-subagent-%s.json" % sub) if sub else "10-ws-handshake-desktop.json"
+            row["_note"] = (
+                "Codex Desktop/%s WebSocket handshake%s. Header names/case/order verbatim from "
+                "req.rawHeaderNames.\n\n"
+                "This shape is NOT the CLI's — compare crack/codexv0.153.4/rows/10. Desktop sends "
+                "neither x-codex-beta-features nor x-codex-turn-metadata nor x-codex-routing-hint, "
+                "and carries x-openai-internal-codex-responses-lite as an HTTP header, which the "
+                "CLI instead smuggles inside the frame body. The header ORDER differs as well: "
+                "Desktop puts x-client-request-id straight after originator and openai-beta near "
+                "the end, where the CLI puts openai-beta third and the routing hint last.\n\n"
+                "Both clients were running against the same backend at the same version during "
+                "this capture, so this is a genuine per-client divergence, not a version drift."
+                % (headers.get("version"), (" for a %s SUBAGENT connection" % sub) if sub else ", ordinary thread"))
+            os.remove(path)
+            _rewrite(os.path.join(outdir, name), row)
+            continue
+
         if headers.get("x-openai-subagent"):
             name = "12-ws-handshake-subagent-%s.json" % headers["x-openai-subagent"]
             row["_note"] = (
@@ -352,6 +516,10 @@ def postprocess(outdir):
     for path in sorted(glob.glob(os.path.join(outdir, "1?-ws-handshake-*.json"))):
         row = json.load(open(path))
         headers = row["req_headers"]
+        # Desktop handshakes carry no turn metadata, so there is nothing to
+        # decode for them — the companion row is a CLI-only artefact.
+        if "x-codex-turn-metadata" not in headers:
+            continue
         meta = json.loads(headers["x-codex-turn-metadata"])
         label = headers.get("x-openai-subagent") or meta.get("thread_source") or "thread"
         variants[label] = {
@@ -378,11 +546,23 @@ def postprocess(outdir):
 
 
 def main():
-    if len(sys.argv) < 2:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    if not args:
         sys.exit(__doc__)
-    dump_path = sys.argv[1]
-    outdir = sys.argv[2] if len(sys.argv) > 2 else os.path.join(CRACK_ROOT, "codexv0.153.4", "rows")
+
+    profile = "cli-session"
+    for f in flags:
+        if f.startswith("--profile="):
+            profile = f.split("=", 1)[1]
+    if profile not in PROFILES:
+        sys.exit("unknown --profile %r; choose one of %s" % (profile, ", ".join(sorted(PROFILES))))
+    rules, default_dir = PROFILES[profile]
+
+    dump_path = args[0]
+    outdir = args[1] if len(args) > 1 else os.path.join(CRACK_ROOT, default_dir, "rows")
     os.makedirs(outdir, exist_ok=True)
+    print("profile: %s" % profile)
 
     with open(dump_path) as fh:
         dump = json.load(fh)
@@ -415,7 +595,7 @@ def main():
     for session in rows:
         url = session.get("url", "")
         method = (session.get("req") or {}).get("method")
-        for pattern, needle, want_method, note in RULES:
+        for pattern, needle, want_method, note in rules:
             if needle not in url:
                 continue
             if want_method and method != want_method:
@@ -440,7 +620,7 @@ def main():
             print("  wrote", name)
             break
 
-    postprocess(outdir)
+    postprocess(outdir, profile)
 
     manifest = []
     for name in sorted(os.listdir(outdir)):

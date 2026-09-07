@@ -1,0 +1,27 @@
+{
+  "_note": "x-codex-turn-metadata decoded, one entry per handshake variant in this capture. Field ORDER in the source string is significant and is preserved here. Deltas vs codexapp0.147.0, which emitted only installation_id, session_id, thread_id, turn_id, window_id, request_kind, thread_source, sandbox: agent_name is new after thread_id; window_number and context_window_id are new after window_id; sandbox_mode, auto_review_enabled, node_repl_auto_review_required and node_repl_disabled are new after sandbox. A subagent connection inserts parent_thread_id and subagent_kind after request_kind. agent_name was literally \"/root\" here — it is the client's working directory, so a proxy has no honest value for it; kept unmasked only because it is not a secret.",
+  "variants": {
+    "thread_title": {
+      "source_row": "10-ws-handshake-desktop.json",
+      "x-codex-routing-hint": "model=gpt-5.6-luna",
+      "x-openai-subagent": null,
+      "decoded": {
+        "installation_id": "<INSTALLATION_ID>",
+        "session_id": "<UUID_6>",
+        "thread_id": "<UUID_6>",
+        "agent_name": "/root",
+        "turn_id": "",
+        "window_id": "<UUID_6>:0",
+        "window_number": 0,
+        "context_window_id": "<UUID_8>",
+        "request_kind": "prewarm",
+        "thread_source": "thread_title",
+        "sandbox": "seccomp",
+        "sandbox_mode": "read-only",
+        "auto_review_enabled": false,
+        "node_repl_auto_review_required": false,
+        "node_repl_disabled": false
+      }
+    }
+  }
+}

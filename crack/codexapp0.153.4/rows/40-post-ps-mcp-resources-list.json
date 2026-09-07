@@ -1,0 +1,636 @@
+{
+  "_note": "POST /backend-api/ps/mcp — plugin-store MCP channel. Sent as codex-mcp-client/<ver>, a fourth User-Agent form distinct from the three the rest of the client uses. Long third-party tool schemas are elided.",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/ps/mcp",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "user-agent": "codex-mcp-client/0.153.4",
+    "x-openai-product-sku": "codex",
+    "mcp-protocol-version": "2025-06-18",
+    "authorization": "Bearer <JWT_REDACTED>",
+    "chatgpt-account-id": "<ACCOUNT_UUID>",
+    "accept": "text/event-stream, application/json",
+    "content-type": "application/json",
+    "cookie": "<COOKIES_REDACTED>",
+    "host": "chatgpt.com",
+    "content-length": "89",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "user-agent",
+    "x-openai-product-sku",
+    "mcp-protocol-version",
+    "authorization",
+    "chatgpt-account-id",
+    "accept",
+    "content-type",
+    "cookie",
+    "host",
+    "content-length",
+    "Connection"
+  ],
+  "req_body": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "resources/list",
+    "params": {
+      "_meta": {
+        "progressToken": 1
+      }
+    }
+  },
+  "status": 200,
+  "res_headers": {
+    "Date": "Mon, 07 Sep 2026 08:25:45 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "26729",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    "x-oai-request-id": "<REDACTED>",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<REDACTED>",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "CF-RAY": "<REDACTED>"
+  },
+  "res_body": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "resources": [
+        {
+          "uri": "plugin://plugin_connector_1p_ae06492f57648191bd558c9c45188734",
+          "name": "plugin_connector_1p_ae06492f57648191bd558c9c45188734",
+          "title": "Deep Research",
+          "description": "Conduct cited, multi-pass research inside the current Work or Codex session.",
+          "mimeType": "mcp/plugin",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_ae06492f57648191bd558c9c45188734",
+            "plugin_name": "deep-research-work",
+            "plugin_release_id": "pluginrel_6a85ef9eccf48191807154b0f8bcb779",
+            "plugin_release_version": "0.1.14",
+            "apps": [
+              "app://connector_openai_deep_research_work"
+            ],
+            "skills": [
+              "skill://plugin_connector_1p_ae06492f57648191bd558c9c45188734/deep-research"
+            ],
+            "requires_executor": false,
+            "mcp_servers": [],
+            "contents": [
+              "bundle"
+            ],
+            "bundle": "plugin://plugin_connector_1p_ae06492f57648191bd558c9c45188734/bundle"
+          }
+        },
+        {
+          "uri": "plugin://plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+          "title": "Default templates",
+          "description": "OpenAI default document, presentation, and spreadsheet templates.",
+          "mimeType": "mcp/plugin",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_version": "0.1.1",
+            "apps": [
+              "app://connector_openai_default_templates"
+            ],
+            "skills": [
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-analytics-dashboard",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-business-review",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-design-report",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-experiment-analysis",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-financial-budget",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-investment-committee-memo",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-legal-memorandum",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-market-trends-report",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-minimal-letterhead",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-operating-calendar",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-operating-review",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-project-kickoff",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-project-tracker",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-sales-pipeline",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-simple-dark-mode",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-simple-light-mode",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-strategy-memorandum",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-system-design",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-team-alignment",
+              "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-three-statement-forecast"
+            ],
+            "requires_executor": false,
+            "mcp_servers": [],
+            "contents": [
+              "bundle"
+            ],
+            "bundle": "plugin://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/bundle"
+          }
+        },
+        {
+          "uri": "plugin://plugin_connector_1p_b3438d6beb9081918fba3625bc988128",
+          "name": "plugin_connector_1p_b3438d6beb9081918fba3625bc988128",
+          "title": "Plugin Management",
+          "description": "Discover relevant plugins and manage app connections, permissions, and dependencies.",
+          "mimeType": "mcp/plugin",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_b3438d6beb9081918fba3625bc988128",
+            "plugin_name": "plugin-management",
+            "plugin_release_id": "pluginrel_6a7e9f7d0ef08191b97b213bb9e118ef",
+            "plugin_release_version": "0.1.0",
+            "apps": [
+              "app://connector_openai_plugin_management"
+            ],
+            "skills": [
+              "skill://plugin_connector_1p_b3438d6beb9081918fba3625bc988128/plugin-management"
+            ],
+            "requires_executor": false,
+            "mcp_servers": [],
+            "contents": [
+              "bundle"
+            ],
+            "bundle": "plugin://plugin_connector_1p_b3438d6beb9081918fba3625bc988128/bundle"
+          }
+        },
+        {
+          "uri": "plugin://plugin_connector_1p_689987207de08191979cf68eca2941c6",
+          "name": "plugin_connector_1p_689987207de08191979cf68eca2941c6",
+          "title": "Sites",
+          "description": "Build and deploy websites with Sites. Use of Sites is subject to the ChatGPT Sites Terms (https://openai.com/policies/chatgpt-sites-terms/), and you are respons… <elided, 190 chars total>",
+          "mimeType": "mcp/plugin",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_689987207de08191979cf68eca2941c6",
+            "plugin_name": "sites",
+            "plugin_release_id": "pluginrel_6a9b2f654edc8191a3416cfad985c087",
+            "plugin_release_version": "0.1.51",
+            "apps": [
+              "app://connector_20205bf7d4e99a89d7154bb849718324"
+            ],
+            "skills": [
+              "skill://plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-building",
+              "skill://plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-hosting",
+              "skill://plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-preview-troubleshooting"
+            ],
+            "requires_executor": true,
+            "mcp_servers": [],
+            "contents": [
+              "bundle"
+            ],
+            "bundle": "plugin://plugin_connector_1p_689987207de08191979cf68eca2941c6/bundle"
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_ae06492f57648191bd558c9c45188734/deep-research",
+          "name": "plugin_connector_1p_ae06492f57648191bd558c9c45188734/deep-research",
+          "title": "Deep Research",
+          "description": "Conduct thorough research using authoritative sources and produce evidence-backed findings with citations. Use this skill only when the user asks specifically f… <elided, 283 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_ae06492f57648191bd558c9c45188734",
+            "plugin_name": "deep-research-work",
+            "plugin_release_id": "pluginrel_6a85ef9eccf48191807154b0f8bcb779",
+            "plugin_release_skill_id": "pluginrsk_4fae72002620819199f2914080892c29",
+            "skill_name": "deep-research",
+            "contents": [],
+            "allow_implicit_invocation": true
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-analytics-dashboard",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-analytics-dashboard",
+          "title": "Analytics Dashboard",
+          "description": "Create a spreadsheet using the Analytics Dashboard template and its retained reference file. Use when the user selects or names Analytics Dashboard. Monitor acq… <elided, 241 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbd081918551b9ff949b0dcd",
+            "skill_name": "artifact-template-analytics-dashboard",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-business-review",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-business-review",
+          "title": "Business Review",
+          "description": "Create a presentation using the Business Review template and its retained reference file. Use when the user selects or names Business Review. Review business pe… <elided, 239 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbdc8191a3080f71992db75f",
+            "skill_name": "artifact-template-business-review",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-design-report",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-design-report",
+          "title": "Design Report",
+          "description": "Create a document using the Design Report template and its retained reference file. Use when the user selects or names Design Report. Produce design reports wit… <elided, 242 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbe08191918c70c8437a0f90",
+            "skill_name": "artifact-template-design-report",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-experiment-analysis",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-experiment-analysis",
+          "title": "Experiment Analysis",
+          "description": "Create a document using the Experiment Analysis template and its retained reference file. Use when the user selects or names Experiment Analysis. Analyze experi… <elided, 249 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbe88191a5da52bf989269b8",
+            "skill_name": "artifact-template-experiment-analysis",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-financial-budget",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-financial-budget",
+          "title": "Financial Budget",
+          "description": "Create a spreadsheet using the Financial Budget template and its retained reference file. Use when the user selects or names Financial Budget. Model actuals, bu… <elided, 236 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbec8191ab9fb1dfa916b101",
+            "skill_name": "artifact-template-financial-budget",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-investment-committee-memo",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-investment-committee-memo",
+          "title": "Investment Committee Memo",
+          "description": "Create a document using the Investment Committee Memo template and its retained reference file. Use when the user selects or names Investment Committee Memo. Pr… <elided, 277 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbf08191b1e46e0069bf9d39",
+            "skill_name": "artifact-template-investment-committee-memo",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-legal-memorandum",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-legal-memorandum",
+          "title": "Legal Memorandum",
+          "description": "Create a document using the Legal Memorandum template and its retained reference file. Use when the user selects or names Legal Memorandum. Draft legal memorand… <elided, 233 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbf4819196907b35a4560c72",
+            "skill_name": "artifact-template-legal-memorandum",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-market-trends-report",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-market-trends-report",
+          "title": "Market Trends Report",
+          "description": "Create a presentation using the Market Trends Report template and its retained reference file. Use when the user selects or names Market Trends Report. Communic… <elided, 252 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbf88191b625517e4a40d184",
+            "skill_name": "artifact-template-market-trends-report",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-minimal-letterhead",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-minimal-letterhead",
+          "title": "Minimal Letterhead",
+          "description": "Create a document using the Minimal Letterhead template and its retained reference file. Use when the user selects or names Minimal Letterhead. Write profession… <elided, 265 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdbfc819182515502a73c32fc",
+            "skill_name": "artifact-template-minimal-letterhead",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-operating-calendar",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-operating-calendar",
+          "title": "Operating Calendar",
+          "description": "Create a spreadsheet using the Operating Calendar template and its retained reference file. Use when the user selects or names Operating Calendar. Plan annual a… <elided, 246 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc0081919445bd6adfeee9ba",
+            "skill_name": "artifact-template-operating-calendar",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-operating-review",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-operating-review",
+          "title": "Operating Review",
+          "description": "Create a presentation using the Operating Review template and its retained reference file. Use when the user selects or names Operating Review. Run weekly opera… <elided, 245 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc048191b1dd87c6d0bb3190",
+            "skill_name": "artifact-template-operating-review",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-project-kickoff",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-project-kickoff",
+          "title": "Project Kickoff",
+          "description": "Create a presentation using the Project Kickoff template and its retained reference file. Use when the user selects or names Project Kickoff. Align teams on pro… <elided, 227 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc0c819183f2aba3389112f3",
+            "skill_name": "artifact-template-project-kickoff",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-project-tracker",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-project-tracker",
+          "title": "Project Tracker",
+          "description": "Create a spreadsheet using the Project Tracker template and its retained reference file. Use when the user selects or names Project Tracker. Manage workstreams,… <elided, 236 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc108191855d2449b7e3b59e",
+            "skill_name": "artifact-template-project-tracker",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-sales-pipeline",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-sales-pipeline",
+          "title": "Sales Pipeline",
+          "description": "Create a spreadsheet using the Sales Pipeline template and its retained reference file. Use when the user selects or names Sales Pipeline. Track opportunities, … <elided, 236 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc148191b504023513d219ca",
+            "skill_name": "artifact-template-sales-pipeline",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-simple-dark-mode",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-simple-dark-mode",
+          "title": "Simple Dark Mode",
+          "description": "Create a presentation using the Simple Dark Mode template and its retained reference file. Use when the user selects or names Simple Dark Mode. Create clean dar… <elided, 240 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc188191ac80335d6d2609f2",
+            "skill_name": "artifact-template-simple-dark-mode",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-simple-light-mode",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-simple-light-mode",
+          "title": "Simple Light Mode",
+          "description": "Create a presentation using the Simple Light Mode template and its retained reference file. Use when the user selects or names Simple Light Mode. Create clean l… <elided, 247 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc1c81918b1d571866753f69",
+            "skill_name": "artifact-template-simple-light-mode",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-strategy-memorandum",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-strategy-memorandum",
+          "title": "Strategy Memorandum",
+          "description": "Create a document using the Strategy Memorandum template and its retained reference file. Use when the user selects or names Strategy Memorandum. Present strate… <elided, 239 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc208191b851e518f7d802bb",
+            "skill_name": "artifact-template-strategy-memorandum",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-system-design",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-system-design",
+          "title": "System Design",
+          "description": "Create a document using the System Design template and its retained reference file. Use when the user selects or names System Design. Document system architectu… <elided, 250 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc2481918c654b7fa5b8a772",
+            "skill_name": "artifact-template-system-design",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-team-alignment",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-team-alignment",
+          "title": "Team Alignment",
+          "description": "Create a presentation using the Team Alignment template and its retained reference file. Use when the user selects or names Team Alignment. Facilitate team offs… <elided, 239 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc288191a9c1edc952010f81",
+            "skill_name": "artifact-template-team-alignment",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-three-statement-forecast",
+          "name": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f/artifact-template-three-statement-forecast",
+          "title": "Three-Statement Forecast",
+          "description": "Create a spreadsheet using the Three-Statement Forecast template and its retained reference file. Use when the user selects or names Three-Statement Forecast. B… <elided, 286 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_2330815c823c8191941e5dc465bb899f",
+            "plugin_name": "openai-templates",
+            "plugin_release_id": "pluginrel_6a6ced4ebc8c8191bf7c17972c03db1c",
+            "plugin_release_skill_id": "pluginrsk_6a6ced4fdc2c8191ab4516ba7697f480",
+            "skill_name": "artifact-template-three-statement-forecast",
+            "contents": [
+              "assets"
+            ],
+            "allow_implicit_invocation": false
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_b3438d6beb9081918fba3625bc988128/plugin-management",
+          "name": "plugin_connector_1p_b3438d6beb9081918fba3625bc988128/plugin-management",
+          "title": "plugin-management",
+          "description": "Discover and suggest relevant plugins, inspect app permissions and dependencies, and manage plugin connections or removal. Use when the user asks about plugins … <elided, 290 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_b3438d6beb9081918fba3625bc988128",
+            "plugin_name": "plugin-management",
+            "plugin_release_id": "pluginrel_6a7e9f7d0ef08191b97b213bb9e118ef",
+            "plugin_release_skill_id": "pluginrsk_6a7e9f7d68608191bca9945146cbe6f1",
+            "skill_name": "plugin-management",
+            "contents": [],
+            "allow_implicit_invocation": true
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-building",
+          "name": "plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-building",
+          "title": "sites-building",
+          "description": "Use Sites to build websites, including landing pages, portfolios, dashboards, portals, trackers, hubs, and internal tools. Always use Sites when the project con… <elided, 189 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_689987207de08191979cf68eca2941c6",
+            "plugin_name": "sites",
+            "plugin_release_id": "pluginrel_6a9b2f654edc8191a3416cfad985c087",
+            "plugin_release_skill_id": "pluginrsk_6a9b2f66318c819186c9e0bc2cc06b5d",
+            "skill_name": "sites-building",
+            "contents": [
+              "references",
+              "templates"
+            ],
+            "allow_implicit_invocation": true
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-hosting",
+          "name": "plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-hosting",
+          "title": "sites-hosting",
+          "description": "Host websites with Sites. Use after `sites-building` to privately publish a Site created in this flow or for requested publishing or deployment, and for hosting… <elided, 218 chars total>",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_689987207de08191979cf68eca2941c6",
+            "plugin_name": "sites",
+            "plugin_release_id": "pluginrel_6a9b2f654edc8191a3416cfad985c087",
+            "plugin_release_skill_id": "pluginrsk_6a9b2f6631908191930865024ee9c44e",
+            "skill_name": "sites-hosting",
+            "contents": [
+              "references",
+              "scripts"
+            ],
+            "allow_implicit_invocation": true
+          }
+        },
+        {
+          "uri": "skill://plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-preview-troubleshooting",
+          "name": "plugin_connector_1p_689987207de08191979cf68eca2941c6/sites-preview-troubleshooting",
+          "title": "sites-preview-troubleshooting",
+          "description": "Diagnose and recover when a Sites agent preview cannot start, become healthy, or open in the cloud browser after sites-building runs sites-preview.",
+          "mimeType": "mcp/skill",
+          "_meta": {
+            "plugin_id": "plugin_connector_1p_689987207de08191979cf68eca2941c6",
+            "plugin_name": "sites",
+            "plugin_release_id": "pluginrel_6a9b2f654edc8191a3416cfad985c087",
+            "plugin_release_skill_id": "pluginrsk_6a9b2f66319481919b442cc810364cc0",
+            "skill_name": "sites-preview-troubleshooting",
+            "contents": [],
+            "allow_implicit_invocation": true
+          }
+        }
+      ]
+    }
+  }
+}

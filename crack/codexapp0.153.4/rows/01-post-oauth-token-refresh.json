@@ -1,0 +1,60 @@
+{
+  "_note": "refresh_token grant. content-type application/json; identity headers PRESENT (originator + User-Agent). POST https://auth.openai.com/oauth/token. The three grants this endpoint serves do NOT share a request shape: refresh_token is JSON and carries the Desktop originator + User-Agent, while authorization_code and the RFC 8693 token-exchange are form-encoded and carry no identity headers at all. cc-core applied one shared header helper to all of them until this capture.",
+  "method": "POST",
+  "url": "https://auth.openai.com/oauth/token",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "content-type": "application/json",
+    "accept": "*/*",
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (Codex Desktop; 26.901.51231)",
+    "host": "auth.openai.com",
+    "content-length": "303",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "content-type",
+    "accept",
+    "originator",
+    "user-agent",
+    "host",
+    "content-length",
+    "Connection"
+  ],
+  "req_body": {
+    "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
+    "grant_type": "refresh_token",
+    "refresh_token": "<masked:opaque \"rt.1.<base64url>\" refresh_token>"
+  },
+  "status": 401,
+  "res_headers": {
+    "Date": "Mon, 07 Sep 2026 08:16:30 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "179",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "Timing-Allow-Origin": "*",
+    "openai-version": "2020-10-01",
+    "x-request-id": "<REDACTED>",
+    "openai-processing-ms": "53",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "pragma": "no-cache",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<REDACTED>",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.1,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "CF-RAY": "<REDACTED>",
+    "alt-svc": "h3=\":443\"; ma=86400"
+  },
+  "res_body": {
+    "error": {
+      "message": "Your session has ended. Please log in again.",
+      "type": "invalid_request_error",
+      "param": null,
+      "code": "refresh_token_invalidated"
+    }
+  }
+}

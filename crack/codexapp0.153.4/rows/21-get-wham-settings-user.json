@@ -4,7 +4,7 @@
   "url": "https://chatgpt.com/backend-api/wham/settings/user",
   "httpVersion": "1.1",
   "req_headers": {
-    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "user-agent": "Codex Desktop/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (Codex Desktop; 26.901.51231)",
     "authorization": "Bearer <JWT_REDACTED>",
     "chatgpt-account-id": "<ACCOUNT_UUID>",
     "cache-control": "no-cache, no-store",
@@ -26,9 +26,9 @@
   "req_body": null,
   "status": 200,
   "res_headers": {
-    "Date": "Sat, 05 Sep 2026 03:43:17 GMT",
+    "Date": "Mon, 07 Sep 2026 08:25:47 GMT",
     "Content-Type": "application/json",
-    "Content-Length": "485",
+    "Content-Length": "532",
     "Connection": "close",
     "Server": "cloudflare",
     "x-oai-request-id": "<REDACTED>",
@@ -56,6 +56,7 @@
     "security_review": null,
     "alpha_opt_in": false,
     "allow_credits_for_code_reviews": false,
+    "allow_credits_for_security_reviews": false,
     "commit_attribution_enabled": false
   }
 }

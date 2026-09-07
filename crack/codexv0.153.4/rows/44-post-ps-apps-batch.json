@@ -27,10 +27,7 @@
     "cookie",
     "host",
     "content-length",
-    "x-whistle-client-info-1788579768704-1190294-1493",
-    "x-whistle-https-request",
-    "Connection",
-    "Proxy-Authorization"
+    "Connection"
   ],
   "req_body": {
     "app_ids": [

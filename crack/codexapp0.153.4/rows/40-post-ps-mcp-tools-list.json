@@ -1,12 +1,11 @@
 {
-  "_note": "POST /backend-api/ps/mcp — the plugin-store MCP channel the CLI opens at start (initialize, notifications/initialized, tools/list). The tools/list result is third-party plugin schemas, not fingerprint, so its long strings are elided. The tools array is sampled to the first 3 of 49 entries — the remainder is third-party plugin schemas, not fingerprint.",
+  "_note": "POST /backend-api/ps/mcp — plugin-store MCP channel. Sent as codex-mcp-client/<ver>, a fourth User-Agent form distinct from the three the rest of the client uses. Long third-party tool schemas are elided. The tools array is sampled to the first 3 of 49 entries — the remainder is third-party plugin schemas, not fingerprint.",
   "method": "POST",
   "url": "https://chatgpt.com/backend-api/ps/mcp",
   "httpVersion": "1.1",
   "req_headers": {
     "user-agent": "codex-mcp-client/0.153.4",
     "x-openai-product-sku": "codex",
-    "originator": "codex-tui",
     "mcp-protocol-version": "2025-06-18",
     "authorization": "Bearer <JWT_REDACTED>",
     "chatgpt-account-id": "<ACCOUNT_UUID>",
@@ -20,7 +19,6 @@
   "req_header_order": [
     "user-agent",
     "x-openai-product-sku",
-    "originator",
     "mcp-protocol-version",
     "authorization",
     "chatgpt-account-id",
@@ -43,9 +41,9 @@
   },
   "status": 200,
   "res_headers": {
-    "Date": "Sat, 05 Sep 2026 03:43:07 GMT",
+    "Date": "Mon, 07 Sep 2026 08:25:37 GMT",
     "Content-Type": "application/json",
-    "Content-Length": "297973",
+    "Content-Length": "298107",
     "Connection": "close",
     "Server": "cloudflare",
     "x-oai-request-id": "<REDACTED>",

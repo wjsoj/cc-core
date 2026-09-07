@@ -1,0 +1,52 @@
+{
+  "_note": "token-exchange grant. content-type application/x-www-form-urlencoded; identity headers ABSENT. POST https://auth.openai.com/oauth/token. The three grants this endpoint serves do NOT share a request shape: refresh_token is JSON and carries the Desktop originator + User-Agent, while authorization_code and the RFC 8693 token-exchange are form-encoded and carry no identity headers at all. cc-core applied one shared header helper to all of them until this capture.",
+  "method": "POST",
+  "url": "https://auth.openai.com/oauth/token",
+  "httpVersion": "1.1",
+  "req_headers": {
+    "content-type": "application/x-www-form-urlencoded",
+    "accept": "*/*",
+    "host": "auth.openai.com",
+    "content-length": "1982",
+    "Connection": "close"
+  },
+  "req_header_order": [
+    "content-type",
+    "accept",
+    "host",
+    "content-length",
+    "Connection"
+  ],
+  "req_body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&client_id=app_EMoamEEZ73f0CkXaXp7hrann&requested_token=openai-api-key&subject_token=<JWT_REDACTED>&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token",
+  "status": 401,
+  "res_headers": {
+    "Date": "Mon, 07 Sep 2026 08:25:30 GMT",
+    "Content-Type": "application/json",
+    "Content-Length": "172",
+    "Connection": "close",
+    "Server": "cloudflare",
+    "Timing-Allow-Origin": "*",
+    "openai-version": "2020-10-01",
+    "x-request-id": "<REDACTED>",
+    "openai-processing-ms": "199",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "pragma": "no-cache",
+    "x-openai-proxy-wasm": "v0.1",
+    "set-cookie": "<REDACTED>",
+    "cf-cache-status": "DYNAMIC",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.1,\"max_age\":604800}",
+    "Report-To": "<CF_REPORT_TO_REDACTED>",
+    "CF-RAY": "<REDACTED>",
+    "alt-svc": "h3=\":443\"; ma=86400"
+  },
+  "res_body": {
+    "error": {
+      "message": "Invalid ID token: missing organization_id",
+      "type": "invalid_request_error",
+      "param": null,
+      "code": "invalid_subject_token"
+    }
+  }
+}

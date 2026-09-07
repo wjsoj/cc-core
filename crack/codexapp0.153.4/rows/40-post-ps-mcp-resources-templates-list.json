@@ -1,34 +1,49 @@
 {
-  "_note": "GET /backend-api/wham/settings/user — per-user Codex settings.",
-  "method": "GET",
-  "url": "https://chatgpt.com/backend-api/wham/settings/user",
+  "_note": "POST /backend-api/ps/mcp — plugin-store MCP channel. Sent as codex-mcp-client/<ver>, a fourth User-Agent form distinct from the three the rest of the client uses. Long third-party tool schemas are elided.",
+  "method": "POST",
+  "url": "https://chatgpt.com/backend-api/ps/mcp",
   "httpVersion": "1.1",
   "req_headers": {
-    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "user-agent": "codex-mcp-client/0.153.4",
+    "x-openai-product-sku": "codex",
+    "mcp-protocol-version": "2025-06-18",
     "authorization": "Bearer <JWT_REDACTED>",
     "chatgpt-account-id": "<ACCOUNT_UUID>",
-    "cache-control": "no-cache, no-store",
-    "accept": "*/*",
+    "accept": "text/event-stream, application/json",
+    "content-type": "application/json",
     "cookie": "<COOKIES_REDACTED>",
     "host": "chatgpt.com",
+    "content-length": "99",
     "Connection": "close"
   },
   "req_header_order": [
     "user-agent",
+    "x-openai-product-sku",
+    "mcp-protocol-version",
     "authorization",
     "chatgpt-account-id",
-    "cache-control",
     "accept",
+    "content-type",
     "cookie",
     "host",
+    "content-length",
     "Connection"
   ],
-  "req_body": null,
+  "req_body": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "resources/templates/list",
+    "params": {
+      "_meta": {
+        "progressToken": 2
+      }
+    }
+  },
   "status": 200,
   "res_headers": {
-    "Date": "Sat, 05 Sep 2026 03:43:17 GMT",
+    "Date": "Mon, 07 Sep 2026 08:25:46 GMT",
     "Content-Type": "application/json",
-    "Content-Length": "485",
+    "Content-Length": "58",
     "Connection": "close",
     "Server": "cloudflare",
     "x-oai-request-id": "<REDACTED>",
@@ -44,18 +59,10 @@
     "CF-RAY": "<REDACTED>"
   },
   "res_body": {
-    "user_id": "<OPAQUE_ID>",
-    "git_diff_mode": "unified",
-    "branch_format": "codex/{feature}",
-    "custom_instructions": null,
-    "preferred_github_connector_id": null,
-    "preferred_gitlab_connector_id": null,
-    "code_review_preference": "repo_default",
-    "code_review_trigger_policy": "pr_open",
-    "exhaustive_code_review": false,
-    "security_review": null,
-    "alpha_opt_in": false,
-    "allow_credits_for_code_reviews": false,
-    "commit_attribution_enabled": false
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "resourceTemplates": []
+    }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "_note": "POST /backend-api/codex/analytics-events/events — the CLI's own telemetry batch. Kept for the header set and the event envelope shape.",
+  "_note": "POST /backend-api/codex/analytics-events/events — Desktop telemetry. The envelope carries thread_id / session_id that the backend can join against real /responses traffic, which is why anything emulating it must reuse the ids of a turn that actually happened rather than invent them.",
   "method": "POST",
   "url": "https://chatgpt.com/backend-api/codex/analytics-events/events",
   "httpVersion": "1.1",
@@ -8,11 +8,11 @@
     "chatgpt-account-id": "<ACCOUNT_UUID>",
     "content-type": "application/json",
     "accept": "*/*",
-    "originator": "codex-tui",
-    "user-agent": "codex-tui/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (codex-tui; 0.153.4)",
+    "originator": "Codex Desktop",
+    "user-agent": "Codex Desktop/0.153.4 (Arch Linux Rolling Release; x86_64) Konsole/260800 (Codex Desktop; 26.901.51231)",
     "cookie": "<COOKIES_REDACTED>",
     "host": "chatgpt.com",
-    "content-length": "658",
+    "content-length": "666",
     "Connection": "close"
   },
   "req_header_order": [
@@ -32,13 +32,13 @@
       {
         "event_type": "codex_thread_initialized",
         "event_params": {
-          "thread_id": "<UUID>",
-          "session_id": "<UUID>",
+          "thread_id": "<UUID_2>",
+          "session_id": "<UUID_2>",
           "app_server_client": {
-            "product_client_id": "codex-tui",
-            "client_name": "codex-tui",
-            "client_version": "0.153.4",
-            "rpc_transport": "in_process",
+            "product_client_id": "Codex Desktop",
+            "client_name": "Codex Desktop",
+            "client_version": "26.901.51231",
+            "rpc_transport": "stdio",
             "experimental_api_enabled": true
           },
           "runtime": {
@@ -47,35 +47,35 @@
             "runtime_os_version": "Rolling Release",
             "runtime_arch": "x86_64"
           },
-          "model": "gpt-5.6-sol",
+          "model": "gpt-6-astra",
           "ephemeral": false,
           "thread_source": "user",
           "initialization_mode": "new",
           "subagent_source": null,
           "parent_thread_id": null,
           "forked_from_thread_id": null,
-          "created_at": 1788579784
+          "created_at": 1788769544
         }
       }
     ]
   },
   "status": 200,
   "res_headers": {
-    "Date": "Sat, 05 Sep 2026 03:43:05 GMT",
+    "Date": "Mon, 07 Sep 2026 08:25:44 GMT",
     "Content-Type": "application/json",
     "Content-Length": "88",
     "Connection": "close",
     "Server": "cloudflare",
-    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
     "x-oai-request-id": "<REDACTED>",
     "x-openai-proxy-wasm": "v0.1",
     "Set-Cookie": "<REDACTED>",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
     "cf-cache-status": "DYNAMIC",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
     "X-Content-Type-Options": "nosniff",
     "Report-To": "<CF_REPORT_TO_REDACTED>",
     "Nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.01,\"max_age\":604800}",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
     "CF-RAY": "<REDACTED>"
   },
   "res_body": {
