@@ -342,6 +342,14 @@ const CodexDefaultAgentName = "/root"
 const (
 	CodexSandboxModeWorkspaceWrite = "workspace-write"
 	CodexSandboxModeReadOnly       = "read-only"
+
+	// CodexWorkspaceKindProjectless is the workspace_kind a turn frame carries
+	// when the client has no project open (crack/codexapp0.147.0/rows/15,18).
+	//
+	// It is the honest value for a proxy and not merely the convenient one: we
+	// have no workspace at all, and the alternative would be to claim a project
+	// whose name, path and contents we would then have to keep consistent.
+	CodexWorkspaceKindProjectless = "projectless"
 )
 
 // CodexTurnMetadata is the x-codex-turn-metadata payload.
@@ -386,6 +394,21 @@ type CodexTurnMetadata struct {
 	AutoReviewEnabled          bool
 	NodeReplAutoReviewRequired bool
 	NodeReplDisabled           bool
+
+	// TurnStartedAtUnixMs and WorkspaceKind appear ONLY on the in-band
+	// response.create frame of an actual turn, never on a handshake and never
+	// on a prewarm — crack/codexapp0.147.0/rows/15 (the real turn) and rows/18
+	// (its continuation) carry both; rows/15's prewarm frame and every captured
+	// handshake carry neither. Zero/empty means the key is omitted, which is
+	// what makes one struct able to render both variants.
+	//
+	// Their POSITION is inferred rather than captured. The only frames that
+	// carry them are 0.147.0's, where the metadata is eight keys and these two
+	// come last. A 0.153.4 frame has never been captured, so where they would
+	// sit among that version's six additional keys is unknown; last is the only
+	// placement the evidence supports.
+	TurnStartedAtUnixMs int64
+	WorkspaceKind       string
 }
 
 // NewCodexHandshakeMetadata builds the handshake ("prewarm") variant for one
@@ -498,6 +521,15 @@ func (m CodexTurnMetadata) Encode() string {
 	writeJSONRaw(&sb, "auto_review_enabled", strconv.FormatBool(m.AutoReviewEnabled))
 	writeJSONRaw(&sb, "node_repl_auto_review_required", strconv.FormatBool(m.NodeReplAutoReviewRequired))
 	writeJSONRaw(&sb, "node_repl_disabled", strconv.FormatBool(m.NodeReplDisabled))
+	// Turn-only keys, emitted last — see the field comments. A handshake sets
+	// neither, so this whole block is skipped there and the handshake's byte
+	// parity against the captures is untouched.
+	if m.TurnStartedAtUnixMs > 0 {
+		writeJSONRaw(&sb, "turn_started_at_unix_ms", strconv.FormatInt(m.TurnStartedAtUnixMs, 10))
+	}
+	if m.WorkspaceKind != "" {
+		writeJSONPair(&sb, "workspace_kind", m.WorkspaceKind, false)
+	}
 	sb.WriteByte('}')
 	return sb.String()
 }

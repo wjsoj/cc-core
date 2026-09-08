@@ -640,11 +640,38 @@ func appendCodexClientMetadata(frame []byte, id CodexFrameIdentity) ([]byte, err
 	if end < 0 {
 		return frame, errors.New("mimicry: frame is not a JSON object")
 	}
-	md := newCodexFrameMetadata(id, "", CodexRequestKindPrewarm)
+	// A synthesized frame is a TURN, so it says so.
+	//
+	// This used to declare request_kind "prewarm" with an empty turn_id, which
+	// is the HANDSHAKE variant. A prewarm is a specific thing in the captures
+	// (crack/codexapp0.147.0/rows/15): a `generate: false` cache-priming frame
+	// carrying only the tool list and the developer prompt, whose response comes
+	// back with `output: []` and zero output tokens. Our frames carry the user's
+	// real input and generate a real answer, so labelling them prewarm produced
+	// a shape no client emits — and produced it on EVERY turn, which is the part
+	// that mattered: the account would appear to prime its cache thousands of
+	// times and never once take a turn.
+	//
+	// The three keys that a turn adds are all honestly derivable, which is why
+	// this is now worth doing: turn_id is a fresh v7 exactly as a real client
+	// mints one per turn, turn_started_at_unix_ms is now, and workspace_kind is
+	// "projectless" because a proxy genuinely has no project open.
+	//
+	// One key from the captured turn variant is still absent: code_mode_tool_names,
+	// a 71-entry map of the client's installed tools, most of them `codex_app__*`
+	// Desktop app tools. It is deliberately NOT fabricated — copying a captured
+	// user's tool list would assert an app install we do not have, and assert it
+	// alongside a codex-tui originator that would not have those tools. A missing
+	// key is a smaller inconsistency than an invented one, and unlike the
+	// prewarm mislabel it does not contradict the rest of the frame.
+	turnID := NewCodexSessionUUID()
+	md := newCodexFrameMetadata(id, turnID, CodexRequestKindTurn)
+	md.TurnStartedAtUnixMs = time.Now().UnixMilli()
+	md.WorkspaceKind = CodexWorkspaceKindProjectless
 	meta := map[string]any{
 		"session_id":              id.SessionID,
 		"thread_id":               id.ThreadID,
-		"turn_id":                 "",
+		"turn_id":                 turnID,
 		"x-codex-installation-id": id.InstallationID,
 		"x-codex-window-id":       id.WindowID(),
 		"x-codex-turn-metadata":   md.Encode(),

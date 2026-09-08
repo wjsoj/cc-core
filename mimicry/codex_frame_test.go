@@ -443,11 +443,59 @@ func TestSynthesizedClientMetadataMatchesCapturedShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(f.ClientMetadata["x-codex-turn-metadata"]), &md); err != nil {
 		t.Fatalf("embedded metadata invalid: %v", err)
 	}
-	// turn_id == "" only ever appears alongside request_kind "prewarm"; the turn
-	// variant additionally carries fields a proxy cannot synthesize.
-	if md["turn_id"] != "" || md["request_kind"] != CodexRequestKindPrewarm {
-		t.Errorf("synthesized metadata claims %q with turn_id %q — no genuine client sends that",
-			md["request_kind"], md["turn_id"])
+	// A synthesized frame is a turn and must say so.
+	//
+	// This assertion used to require "prewarm" with an empty turn_id, on the
+	// grounds that the turn variant "carries fields a proxy cannot synthesize".
+	// Re-reading crack/codexapp0.147.0/rows/15 and /18 against that claim, three
+	// of the four extra fields are honestly derivable — turn_id is a fresh v7
+	// exactly as a real client mints per turn, turn_started_at_unix_ms is now,
+	// and workspace_kind "projectless" is literally our situation.
+	//
+	// The fourth, code_mode_tool_names, genuinely is not derivable. But it
+	// appears on the PREWARM frame too (rows/15's first frame carries it), so it
+	// was already missing from what we synthesized and switching the label does
+	// not change that axis at all. What the label does change is whether the
+	// frame contradicts itself: prewarm names a `generate:false` cache-priming
+	// frame that returns empty output, and we were stamping it on frames that
+	// carry the user's input and generate a real answer — on every single turn,
+	// so the account never appeared to take one.
+	if md["request_kind"] != CodexRequestKindTurn {
+		t.Errorf("synthesized metadata claims request_kind %q, want %q — our frames generate",
+			md["request_kind"], CodexRequestKindTurn)
+	}
+	turnID, _ := md["turn_id"].(string)
+	if !looksLikeUUID(turnID) {
+		t.Errorf("turn frame carries turn_id %q, want a UUID", turnID)
+	}
+	if f.ClientMetadata["turn_id"] != turnID {
+		t.Errorf("flat turn_id %q disagrees with the embedded %q; a real client has one turn id",
+			f.ClientMetadata["turn_id"], turnID)
+	}
+	if _, ok := md["turn_started_at_unix_ms"].(float64); !ok {
+		t.Errorf("turn frame is missing turn_started_at_unix_ms: %v", md)
+	}
+	if md["workspace_kind"] != CodexWorkspaceKindProjectless {
+		t.Errorf("workspace_kind = %v, want %q", md["workspace_kind"], CodexWorkspaceKindProjectless)
+	}
+}
+
+// The handshake variant must NOT grow the two turn-only keys. They are what
+// separates the two shapes, and every captured handshake carries neither.
+func TestHandshakeMetadataOmitsTurnOnlyKeys(t *testing.T) {
+	md := NewCodexHandshakeMetadata("install-1", ourSessionID, "")
+	encoded := md.Encode()
+	for _, k := range []string{"turn_started_at_unix_ms", "workspace_kind"} {
+		if strings.Contains(encoded, k) {
+			t.Errorf("handshake metadata leaked the turn-only key %q: %s", k, encoded)
+		}
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(encoded), &decoded); err != nil {
+		t.Fatalf("handshake metadata is not JSON: %v", err)
+	}
+	if decoded["request_kind"] != CodexRequestKindPrewarm {
+		t.Errorf("handshake request_kind = %v, want %q", decoded["request_kind"], CodexRequestKindPrewarm)
 	}
 }
 
