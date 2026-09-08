@@ -129,6 +129,23 @@ type CodexClientProfile struct {
 	// ModelsClientVersion is the client_version query parameter on
 	// GET /backend-api/codex/models. Empty falls back to Version.
 	ModelsClientVersion string
+	// ModelsOriginator / ModelsUserAgent are the identity this client presents
+	// on GET /backend-api/codex/models, which is NOT always its handshake
+	// identity.
+	//
+	// codex-tui's model fetch goes out as originator `codex_cli_rs` with the
+	// codex-rs library's own User-Agent, because that request is made by the
+	// library rather than by the TUI (crack/codexv0.153.4/rows/01). Desktop's
+	// does NOT do this: it sends its own originator and its BASE User-Agent —
+	// the full one minus the trailing "(Codex Desktop; <build>)" parenthetical
+	// (crack/codexapp0.153.4/rows/12).
+	//
+	// So this cannot be one shared constant. It was, and flipping the default
+	// to Desktop would otherwise have sent a Desktop client_version under a
+	// codex-tui User-Agent — a pairing neither capture contains.
+	ModelsOriginator string
+	ModelsUserAgent  string
+
 	// SendsTurnMetadata reports whether this client sends the
 	// x-codex-turn-metadata / x-codex-window-id / thread-id / session-id /
 	// x-client-request-id cluster on a WebSocket handshake.
@@ -156,7 +173,11 @@ var codexDesktopClientProfile = CodexClientProfile{
 	Version:             CodexDesktopVersion,
 	BetaFeatures:        CodexDesktopBetaFeatures,
 	ModelsClientVersion: CodexDesktopModelsClientVersion,
-	SendsTurnMetadata:   true,
+	// Desktop keeps its own originator on the model fetch and drops only the
+	// build parenthetical from its UA — crack/codexapp0.153.4/rows/12.
+	ModelsOriginator:  CodexDesktopOriginator,
+	ModelsUserAgent:   CodexDesktopBaseUserAgent,
+	SendsTurnMetadata: true,
 }
 
 var codexTUIClientProfile = CodexClientProfile{
@@ -165,7 +186,11 @@ var codexTUIClientProfile = CodexClientProfile{
 	Version:             CodexCLIVersion,
 	BetaFeatures:        CodexCLIBetaFeatures,
 	ModelsClientVersion: CodexCLIVersion,
-	SendsTurnMetadata:   true,
+	// The CLI's model fetch is made by the codex-rs library, not the TUI, and
+	// says so — crack/codexv0.153.4/rows/01.
+	ModelsOriginator:  CodexModelsOriginator,
+	ModelsUserAgent:   CodexModelsUserAgent,
+	SendsTurnMetadata: true,
 }
 
 // DefaultCodexProfile returns the identity cc-core presents upstream by

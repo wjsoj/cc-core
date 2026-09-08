@@ -107,8 +107,13 @@ func FetchCodexModelsManifest(ctx context.Context, a *Auth, clientVersion string
 		return nil, fmt.Errorf("no access token after refresh")
 	}
 
+	// One profile decides the whole request: the fallback version AND the
+	// originator/UA below. Reading the version from the profile while leaving
+	// the identity on hardcoded CLI constants is how a Desktop client_version
+	// ended up pairable with a codex-tui User-Agent.
+	profile := mimicry.DefaultCodexProfile()
 	if clientVersion == "" {
-		clientVersion = mimicry.DefaultCodexProfile().ModelsClientVersion
+		clientVersion = profile.ModelsClientVersion
 	}
 	endpoint := codexModelsURL + "?client_version=" + neturl.QueryEscape(clientVersion)
 
@@ -126,8 +131,8 @@ func FetchCodexModelsManifest(ctx context.Context, a *Auth, clientVersion string
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Encoding", "identity")
-	req.Header.Set("Originator", mimicry.CodexModelsOriginator)
-	req.Header.Set("User-Agent", mimicry.CodexModelsUserAgent)
+	req.Header.Set("Originator", profile.ModelsOriginator)
+	req.Header.Set("User-Agent", profile.ModelsUserAgent)
 	req.Header.Set("Version", clientVersion)
 	if accountID, _ := a.CodexIdentity(); accountID != "" {
 		req.Header.Set("Chatgpt-Account-Id", accountID)
