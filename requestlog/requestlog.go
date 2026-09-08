@@ -60,10 +60,21 @@ type Record struct {
 	CostUSD       float64 `json:"cost_usd"`
 	Status        int     `json:"status"`
 	DurationMs    int64   `json:"duration_ms"`
-	Stream        bool    `json:"stream"`
-	Path          string  `json:"path,omitempty"`
-	Attempts      int     `json:"attempts,omitempty"` // credential attempts before terminal
-	Error         string  `json:"error,omitempty"`
+	// TTFBMs is how long the upstream took to produce its first byte of
+	// response, measured from the moment the request was handed to the
+	// transport. DurationMs alone cannot separate "the model thought for a
+	// while" from "we waited in a queue": a turn's total is dominated by how
+	// many tokens it generated, so a slow egress and a long answer look
+	// identical in it. Splitting them is what makes egress quality and
+	// upstream admission delay measurable per credential.
+	//
+	// Zero means not measured (every record written before this field, and
+	// any path that answers without touching an upstream).
+	TTFBMs   int64  `json:"ttfb_ms,omitempty"`
+	Stream   bool   `json:"stream"`
+	Path     string `json:"path,omitempty"`
+	Attempts int    `json:"attempts,omitempty"` // credential attempts before terminal
+	Error    string `json:"error,omitempty"`
 	// AttemptOnly marks a credential-attempt audit row that was withheld from
 	// the client and followed by failover. Dashboard/query aggregates ignore
 	// these rows so retry telemetry does not inflate user-visible counts.

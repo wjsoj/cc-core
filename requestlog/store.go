@@ -588,6 +588,30 @@ CREATE INDEX idx_cube_ct ON agg_cube(client_token, bday);
 	`ALTER TABLE req ADD COLUMN requested_service_tier TEXT NOT NULL DEFAULT '';
 ALTER TABLE req ADD COLUMN upstream_service_tier TEXT NOT NULL DEFAULT '';
 ALTER TABLE req ADD COLUMN service_tier TEXT NOT NULL DEFAULT '';`,
+
+	// 8: upstream time-to-first-byte, so latency can be attributed.
+	//
+	// Without it the archive can only be regressed: fitting duration against
+	// output tokens across thousands of rows recovers a fleet-wide intercept
+	// and nothing per-credential, and it cannot see a request that produced no
+	// tokens at all. Both matter — production latency turned out to be a fixed
+	// ~10s before the first byte that varied 4× by egress proxy, which the
+	// totals hid completely.
+	`ALTER TABLE req ADD COLUMN ttfb_ms INTEGER NOT NULL DEFAULT 0;`,
+
+	// 9: a time index over the attempt rows.
+	//
+	// Every other ts index is partial on `attempt_only = 0`, which is right for
+	// the panel — but it leaves the attempt rows with no index at all, so the
+	// first query that wants them (shed telemetry) would scan a table measured
+	// in hundreds of megabytes. That failure mode has already cost this
+	// deployment one incident: a predicate that missed a partial index turned
+	// every write into a full-table scan under a write lock.
+	//
+	// Attempt rows are a small minority of the archive, so the mirror index is
+	// cheap; it exists so asking "how often did upstream shed us" can never
+	// become the reason the log is slow.
+	`CREATE INDEX IF NOT EXISTS idx_req_attempt_ts ON req(ts DESC, id DESC) WHERE attempt_only = 1;`,
 }
 
 func (s *Store) migrate() error {

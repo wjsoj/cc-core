@@ -30,6 +30,13 @@ import (
 const (
 	ShedCapacityLabel = "upstream shed the turn (capacity)"
 	ShedQuotaLabel    = "upstream shed the turn (quota/rate)"
+	// ShedPreOutputLabel tags a shed that arrived before any output and was
+	// withheld from the client, so the turn could be re-run on another
+	// credential. It is recorded on an attempt_only row — there is no
+	// downstream request to attach it to, the customer's request went on to
+	// succeed elsewhere — which is why it needs its own counter below rather
+	// than joining the two labels above.
+	ShedPreOutputLabel = "upstream shed the turn before any output"
 )
 
 // ModelReliability is what real traffic did for one (provider, model) over a
@@ -47,6 +54,16 @@ type ModelReliability struct {
 	// Shed: upstream refused the turn for capacity or quota at least once.
 	// Includes turns that were then served successfully elsewhere.
 	Shed int64
+	// ShedAttempts counts withheld pre-output sheds — upstream attempts that
+	// were refused and silently re-run on another credential. It is a count of
+	// ATTEMPTS, not requests: one request shed three times contributes three,
+	// which is why it is not folded into Shed.
+	//
+	// This is the number the failover hides. In a 16-hour production window it
+	// was 3315 while Shed, which can only see sheds that survived to the
+	// customer, was two orders of magnitude lower — the whole cost of the
+	// condition was showing up as latency and nowhere else.
+	ShedAttempts int64
 	// Failed: the customer received an error. A shed that could not be
 	// retried — because output had already started — lands here too.
 	Failed int64
@@ -55,6 +72,12 @@ type ModelReliability struct {
 	Canceled int64
 
 	AvgMs int64
+	// AvgTTFBMs is how long upstream took to start producing, averaged over the
+	// requests that reported it. AvgMs cannot stand in for it: a turn's total is
+	// dominated by how many tokens it generated, so a model that answers at half
+	// speed and a model that sits in a queue for ten seconds look the same in it.
+	// Zero when no request in the window carried a measurement.
+	AvgTTFBMs int64
 	// SlowRequests: completed, but took longer than SlowThreshold. Retries
 	// after a shed are the usual cause, and they are invisible in a failure
 	// rate that only counts outright errors.
@@ -115,8 +138,11 @@ func (s *Store) ModelReliabilitySince(since time.Time, minRequests int64) ([]Mod
 	}
 
 	// attempt_only rows are per-credential attempts behind one downstream
-	// request; counting them would report the retry storm rather than what the
-	// customer asked for. idx_req_ts covers (ts DESC) for exactly these rows.
+	// request; counting them as requests would report the retry storm rather
+	// than what the customer asked for. They are read separately below, into
+	// their own counter. idx_req_ts covers (ts DESC) for exactly these rows —
+	// it is PARTIAL on attempt_only = 0, so this predicate is load-bearing and
+	// must not be relaxed to pull both kinds of row in one pass.
 	const q = `
 SELECT provider,
        model,
@@ -125,6 +151,7 @@ SELECT provider,
        SUM(CASE WHEN status >= 400 AND status <> 499 THEN 1 ELSE 0 END) AS failed,
        SUM(CASE WHEN status = 499 THEN 1 ELSE 0 END)              AS canceled,
        CAST(COALESCE(AVG(duration_ms), 0) AS INTEGER)             AS avg_ms,
+       CAST(COALESCE(AVG(NULLIF(ttfb_ms, 0)), 0) AS INTEGER)      AS avg_ttfb_ms,
        SUM(CASE WHEN duration_ms > ? THEN 1 ELSE 0 END)           AS slow
 FROM req
 WHERE attempt_only = 0 AND ts >= ?
@@ -148,7 +175,7 @@ ORDER BY requests DESC`
 		var m ModelReliability
 		var provider, model sql.NullString
 		if err := rows.Scan(&provider, &model, &m.Requests, &m.Shed, &m.Failed,
-			&m.Canceled, &m.AvgMs, &m.SlowRequests); err != nil {
+			&m.Canceled, &m.AvgMs, &m.AvgTTFBMs, &m.SlowRequests); err != nil {
 			return nil, err
 		}
 		m.Provider, m.Model = provider.String, model.String
@@ -160,6 +187,10 @@ ORDER BY requests DESC`
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := s.foldShedAttempts(out, since); err != nil {
 		return nil, err
 	}
 
@@ -198,15 +229,47 @@ type ShedBucket struct {
 	// Shed counts requests upstream refused at least once for capacity or
 	// quota, including those a retry then served successfully. That is the
 	// point — the customer waited through the retry either way.
+	//
+	// It can only see sheds that reached the terminal row, i.e. ones that
+	// arrived after output had started. The far more common kind is withheld
+	// before the client sees anything and re-run elsewhere, and that lands in
+	// ShedAttempts.
 	Shed int64
+	// ShedAttempts counts withheld pre-output sheds in the bucket — upstream
+	// attempts refused and silently retried on another credential.
+	//
+	// ATTEMPTS, not requests: one request shed three times contributes three,
+	// so this can exceed Requests. It is not folded into Shed for exactly that
+	// reason. Without it the strip was blind to the condition it exists to
+	// show — a production window with 3315 withheld sheds carried a Shed count
+	// two orders of magnitude smaller, so every slot rendered healthy.
+	ShedAttempts int64
 }
 
 // Rate returns Shed/Requests in [0,1]; an empty bucket reports 0.
+//
+// This is the rate of sheds the CUSTOMER SAW. For how much upstream refusal the
+// slot actually absorbed, see Severity.
 func (b ShedBucket) Rate() float64 {
 	if b.Requests == 0 {
 		return 0
 	}
 	return float64(b.Shed) / float64(b.Requests)
+}
+
+// Severity is shed activity per request, counting the withheld retries the
+// failover hides: (Shed + ShedAttempts) / Requests.
+//
+// It is an index, not a probability, and deliberately NOT clamped to 1 — a slot
+// where every request had to be retried twice should read as worse than one
+// where every request was retried once, and clamping would erase exactly that
+// difference at the moment it matters. Callers rendering it as a percentage are
+// the ones that should clamp.
+func (b ShedBucket) Severity() float64 {
+	if b.Requests == 0 {
+		return 0
+	}
+	return float64(b.Shed+b.ShedAttempts) / float64(b.Requests)
 }
 
 // ShedBucketsSince buckets shed activity for one provider from `since` to now.
@@ -241,6 +304,7 @@ ORDER BY bucket_ns`
 	defer func() { _ = rows.Close() }()
 
 	out := make([]ShedBucket, 0, 160)
+	byStart := make(map[int64]int, 160)
 	for rows.Next() {
 		var startNS int64
 		var b ShedBucket
@@ -248,7 +312,99 @@ ORDER BY bucket_ns`
 			return nil, err
 		}
 		b.Start = time.Unix(0, startNS)
+		byStart[startNS] = len(out)
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.foldShedAttemptBuckets(out, byStart, provider, since, width); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// foldShedAttemptBuckets adds the withheld pre-output sheds to buckets the
+// customer-facing pass already created.
+//
+// A second query for the same reason as foldShedAttempts: the ts indexes on req
+// are partial on attempt_only = 0, so one pass over both kinds of row would
+// match no index at all.
+//
+// Attempt rows land only in buckets that already exist. A bucket built purely
+// from attempts has no request count, so its severity would divide by zero, and
+// the strip's contract is that a slot with no traffic stays untouched rather
+// than being drawn as an incident.
+func (s *Store) foldShedAttemptBuckets(out []ShedBucket, byStart map[int64]int, provider string, since time.Time, width int64) error {
+	if len(out) == 0 {
+		return nil
+	}
+	const q = `
+SELECT (ts / ?) * ? AS bucket_ns, COUNT(*)
+FROM req
+WHERE attempt_only = 1 AND ts >= ? AND provider = ? AND error = ?
+GROUP BY bucket_ns`
+
+	rows, err := s.db.Query(q, width, width, since.UnixNano(), provider, ShedPreOutputLabel)
+	if err != nil {
+		return fmt.Errorf("requestlog: shed attempt buckets: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var startNS, n int64
+		if err := rows.Scan(&startNS, &n); err != nil {
+			return err
+		}
+		if i, ok := byStart[startNS]; ok {
+			out[i].ShedAttempts = n
+		}
+	}
+	return rows.Err()
+}
+
+// foldShedAttempts adds the withheld pre-output sheds onto the rows already
+// built from customer requests.
+//
+// It is a second query rather than a wider first one because every ts index on
+// req is PARTIAL on attempt_only = 0. A single pass over both kinds of row
+// would match none of them and scan an archive measured in hundreds of
+// megabytes; idx_req_attempt_ts is the mirror index that makes this half a
+// range seek of its own.
+//
+// Models that only appear as shed attempts are dropped rather than added: a
+// (provider, model) with no completed request in the window has no denominator,
+// and a status page listing a model nobody successfully used says nothing a
+// reader can act on.
+func (s *Store) foldShedAttempts(out []ModelReliability, since time.Time) error {
+	if len(out) == 0 {
+		return nil
+	}
+	const q = `
+SELECT provider, model, COUNT(*)
+FROM req
+WHERE attempt_only = 1 AND ts >= ? AND error = ?
+GROUP BY provider, model`
+
+	rows, err := s.db.Query(q, since.UnixNano(), ShedPreOutputLabel)
+	if err != nil {
+		return fmt.Errorf("requestlog: shed attempts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	counts := make(map[string]int64, len(out))
+	for rows.Next() {
+		var provider, model sql.NullString
+		var n int64
+		if err := rows.Scan(&provider, &model, &n); err != nil {
+			return err
+		}
+		counts[provider.String+"\x00"+model.String] = n
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range out {
+		out[i].ShedAttempts = counts[out[i].Provider+"\x00"+out[i].Model]
+	}
+	return nil
 }

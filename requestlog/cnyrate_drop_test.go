@@ -44,6 +44,7 @@ func TestDroppingTheRateKeepsEveryRow(t *testing.T) {
 		`ALTER TABLE req DROP COLUMN requested_service_tier`,
 		`ALTER TABLE req DROP COLUMN upstream_service_tier`,
 		`ALTER TABLE req DROP COLUMN service_tier`,
+		`ALTER TABLE req DROP COLUMN ttfb_ms`,
 		`PRAGMA user_version = 4`,
 	} {
 		if _, err := raw.Exec(stmt); err != nil {
