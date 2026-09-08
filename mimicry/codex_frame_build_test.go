@@ -6,20 +6,55 @@ import (
 	"testing"
 )
 
-// The frame's top-level key order is part of the captured shape, and `type`
-// leads it. A re-encode would sort the keys; this asserts the splice does not.
-func TestNewCodexResponseCreateFramePutsTypeFirstAndKeepsOrder(t *testing.T) {
-	body := []byte(`{"model":"gpt-5.6-codex","input":[{"role":"user"}],"store":false,"stream":true,"prompt_cache_key":"pck"}`)
+// The frame is rendered in the CAPTURED key order, not the caller's and not
+// alphabetical. The input here is deliberately alphabetical, which is what
+// SanitizeCodexRequestBody's map round-trip actually hands us in production.
+func TestNewCodexResponseCreateFrameUsesCapturedKeyOrder(t *testing.T) {
+	body := []byte(`{"include":["reasoning.encrypted_content"],"input":[{"role":"user"}],` +
+		`"model":"gpt-5.6-codex","parallel_tool_calls":false,"prompt_cache_key":"pck",` +
+		`"reasoning":{"effort":"medium"},"store":false,"stream":true,"text":{"verbosity":"low"},` +
+		`"tool_choice":"auto"}`)
 	got, err := NewCodexResponseCreateFrame(body)
 	if err != nil {
 		t.Fatalf("NewCodexResponseCreateFrame: %v", err)
 	}
-	want := `{"type":"response.create","model":"gpt-5.6-codex","input":[{"role":"user"}],"store":false,"stream":true,"prompt_cache_key":"pck"}`
+	want := `{"type":"response.create","model":"gpt-5.6-codex","input":[{"role":"user"}],` +
+		`"tool_choice":"auto","parallel_tool_calls":false,"reasoning":{"effort":"medium"},` +
+		`"store":false,"stream":true,"include":["reasoning.encrypted_content"],` +
+		`"prompt_cache_key":"pck","text":{"verbosity":"low"}}`
 	if string(got) != want {
 		t.Fatalf("frame mismatch:\n got %s\nwant %s", got, want)
 	}
 	if !json.Valid(got) {
-		t.Fatal("spliced frame is not valid JSON")
+		t.Fatal("rendered frame is not valid JSON")
+	}
+}
+
+// previous_response_id sits directly after model on a continuation
+// (crack/codexapp0.147.0/rows/18), not wherever the caller happened to put it.
+func TestNewCodexResponseCreateFramePlacesPreviousResponseID(t *testing.T) {
+	body := []byte(`{"input":[],"model":"m","previous_response_id":"resp_1","stream":true}`)
+	got, err := NewCodexResponseCreateFrame(body)
+	if err != nil {
+		t.Fatalf("NewCodexResponseCreateFrame: %v", err)
+	}
+	want := `{"type":"response.create","model":"m","previous_response_id":"resp_1","input":[],"stream":true}`
+	if string(got) != want {
+		t.Fatalf("frame mismatch:\n got %s\nwant %s", got, want)
+	}
+}
+
+// A field the captures do not name must survive — dropping it would change the
+// request — but it goes after the known keys so it cannot disturb their order.
+func TestNewCodexResponseCreateFrameKeepsUnknownFieldsLast(t *testing.T) {
+	body := []byte(`{"model":"m","zzz_future":1,"aaa_future":2,"input":[]}`)
+	got, err := NewCodexResponseCreateFrame(body)
+	if err != nil {
+		t.Fatalf("NewCodexResponseCreateFrame: %v", err)
+	}
+	want := `{"type":"response.create","model":"m","input":[],"aaa_future":2,"zzz_future":1}`
+	if string(got) != want {
+		t.Fatalf("frame mismatch:\n got %s\nwant %s", got, want)
 	}
 }
 
