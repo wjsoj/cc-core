@@ -166,21 +166,25 @@ func TestCodexContextWindowIDSharesThreadPrefix(t *testing.T) {
 	}
 }
 
-// The default profile is what both forks advertise upstream without opting in,
-// so flipping it gets an explicit assertion. It flipped Desktop → CLI on
-// 2026-09-05 (gpt-6-astra's minimal_client_version of 0.153.0 put Desktop's
-// 0.147.0 below the floor for the current flagship) and was re-examined on
-// 2026-09-07 against crack/codexapp0.153.4/ without moving back — the two
-// clients send the same upgrade, so only the CLI's identity has byte-parity
-// tests behind it. See DefaultCodexProfile's comment.
-func TestDefaultCodexProfileIsCLI(t *testing.T) {
-	if DefaultCodexProfile().Originator != CodexOriginator {
-		t.Errorf("default profile originator = %q, want %q",
-			DefaultCodexProfile().Originator, CodexOriginator)
+// The default identity is Codex Desktop. Pinned because it is a behaviour
+// change for both forks' production traffic at once, so it must never move as
+// a side effect of an unrelated edit — it has already moved twice on purpose.
+func TestDefaultCodexProfileIsDesktop(t *testing.T) {
+	got := DefaultCodexProfile()
+	if got.Originator != CodexDesktopOriginator {
+		t.Errorf("default profile originator = %q, want %q", got.Originator, CodexDesktopOriginator)
 	}
-	if DefaultCodexProfile().Version != CodexCLIVersion {
-		t.Errorf("default profile version = %q, want %q",
-			DefaultCodexProfile().Version, CodexCLIVersion)
+	if got.UserAgent != CodexDesktopUserAgent {
+		t.Errorf("default profile user-agent = %q, want %q", got.UserAgent, CodexDesktopUserAgent)
+	}
+	if got.Version != CodexDesktopVersion {
+		t.Errorf("default profile version = %q, want %q", got.Version, CodexDesktopVersion)
+	}
+	// The originator and the UA's leading segment are validated against each
+	// other upstream, so a profile that mixes them is a 404, not a subtle tell.
+	if !strings.HasPrefix(got.UserAgent, got.Originator+"/"+got.Version+" ") {
+		t.Errorf("profile is internally inconsistent: originator %q, version %q, UA %q",
+			got.Originator, got.Version, got.UserAgent)
 	}
 }
 

@@ -25,14 +25,21 @@ func hdr(h map[string][]string, name string) string {
 func TestBuildUpstreamHeaders(t *testing.T) {
 	h := BuildUpstreamHeaders("tok-abc", "acct-123", "sess-xyz", "", "gpt-5.6-sol", "priority")
 
+	// Read the identity from the default profile rather than pinning one
+	// client's constants. This test is about the WIRING — that each profile
+	// field reaches the right header — and which profile is default is a
+	// separate decision with its own test (mimicry.TestDefaultCodexProfileIsDesktop)
+	// and its own capture-parity coverage for both profiles. Hardcoding one
+	// client here made a deliberate default flip look like a regression.
+	profile := mimicry.DefaultCodexProfile()
 	want := map[string]string{
 		"chatgpt-account-id":    "acct-123",
 		"authorization":         "Bearer tok-abc",
-		"user-agent":            mimicry.CodexCLIUserAgent,
-		"originator":            mimicry.CodexOriginator,
+		"user-agent":            profile.UserAgent,
+		"originator":            profile.Originator,
 		"openai-beta":           CodexOpenAIBetaWS,
-		"version":               mimicry.CodexCLIVersion,
-		"x-codex-beta-features": mimicry.CodexCLIBetaFeatures,
+		"version":               profile.Version,
+		"x-codex-beta-features": profile.BetaFeatures,
 		"x-client-request-id":   "sess-xyz",
 		"session-id":            "sess-xyz",
 		"thread-id":             "sess-xyz",

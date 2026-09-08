@@ -33,11 +33,6 @@ var dialerOwnedHeaders = map[string]bool{
 	"sec-websocket-extensions": true,
 }
 
-func loadCapturedHandshake(t *testing.T) capturedRow {
-	t.Helper()
-	return loadCapturedRow(t, capturedHandshakeRow)
-}
-
 func loadCapturedRow(t *testing.T, path string) capturedRow {
 	t.Helper()
 	b, err := os.ReadFile(filepath.FromSlash(path))
@@ -51,8 +46,29 @@ func loadCapturedRow(t *testing.T, path string) capturedRow {
 	return row
 }
 
-func buildParityHeaders() map[string][]string {
+// parityProfiles pairs each client identity with the captured upgrade it must
+// reproduce. Both are pinned, not just the default one: the default is a
+// deployment choice that has now flipped twice, and a parity suite that only
+// covered whichever profile happened to be default would go quiet on the other
+// exactly when someone flips it.
+func parityProfiles() []struct {
+	name    string
+	profile mimicry.CodexClientProfile
+	row     string
+} {
+	return []struct {
+		name    string
+		profile mimicry.CodexClientProfile
+		row     string
+	}{
+		{"desktop", mimicry.CodexDesktopClientProfile(), capturedDesktopOrdinaryRow},
+		{"cli", mimicry.CodexTUIClientProfile(), capturedHandshakeRow},
+	}
+}
+
+func buildParityHeadersFor(profile mimicry.CodexClientProfile) map[string][]string {
 	return BuildUpstreamHeadersWithOptions(UpstreamHeaderOptions{
+		Profile:     &profile,
 		AccessToken: "tok",
 		AccountID:   "acct-uuid",
 		SessionID:   "01a06fa9-a7f8-7811-8a75-3dccb3ea9a71",
@@ -67,8 +83,15 @@ func buildParityHeaders() map[string][]string {
 // TestHandshakeMatchesCapturedHeaderOrder pins the wire order against the
 // capture, minus the headers the dialer owns.
 func TestHandshakeMatchesCapturedHeaderOrder(t *testing.T) {
-	row := loadCapturedHandshake(t)
-	h := buildParityHeaders()
+	for _, tc := range parityProfiles() {
+		t.Run(tc.name, func(t *testing.T) { assertHeaderOrderParity(t, tc.profile, tc.row) })
+	}
+}
+
+func assertHeaderOrderParity(t *testing.T, profile mimicry.CodexClientProfile, rowPath string) {
+	t.Helper()
+	row := loadCapturedRow(t, rowPath)
+	h := buildParityHeadersFor(profile)
 
 	var want []string
 	for _, name := range row.ReqHeaderOrder {
@@ -95,8 +118,15 @@ func TestHandshakeMatchesCapturedHeaderOrder(t *testing.T) {
 // TestHandshakeMatchesCapturedIdentityHeaders pins the values that are constants
 // rather than per-session ids.
 func TestHandshakeMatchesCapturedIdentityHeaders(t *testing.T) {
-	row := loadCapturedHandshake(t)
-	h := buildParityHeaders()
+	for _, tc := range parityProfiles() {
+		t.Run(tc.name, func(t *testing.T) { assertIdentityParity(t, tc.profile, tc.row) })
+	}
+}
+
+func assertIdentityParity(t *testing.T, profile mimicry.CodexClientProfile, rowPath string) {
+	t.Helper()
+	row := loadCapturedRow(t, rowPath)
+	h := buildParityHeadersFor(profile)
 
 	for _, name := range []string{"user-agent", "originator", "version", "x-codex-beta-features", "openai-beta"} {
 		want := row.ReqHeaders[name]
@@ -111,7 +141,9 @@ func TestHandshakeMatchesCapturedIdentityHeaders(t *testing.T) {
 			t.Errorf("%s = %q, capture has %q", name, got, want)
 		}
 	}
-	// The hint's model is per-request, so only its format is comparable.
+	// The hint's model and tier are per-request — the CLI row asked for
+	// priority, the Desktop row named a model alone — so only OUR format is
+	// comparable, not the captured value.
 	if got := h[mimicry.CodexRoutingHintHeader]; len(got) == 0 || got[0] != "model=gpt-5.6-sol;tier=priority" {
 		t.Errorf("x-codex-routing-hint = %v, want model=gpt-5.6-sol;tier=priority (capture: %q)",
 			got, row.ReqHeaders[mimicry.CodexRoutingHintHeader])
@@ -123,8 +155,15 @@ func TestHandshakeMatchesCapturedIdentityHeaders(t *testing.T) {
 // own: window_number is a number and the three flags are booleans, and quoting
 // any of them is a one-character tell.
 func TestHandshakeMetadataMatchesCapturedShape(t *testing.T) {
-	row := loadCapturedHandshake(t)
-	h := buildParityHeaders()
+	for _, tc := range parityProfiles() {
+		t.Run(tc.name, func(t *testing.T) { assertMetadataShapeParity(t, tc.profile, tc.row) })
+	}
+}
+
+func assertMetadataShapeParity(t *testing.T, profile mimicry.CodexClientProfile, rowPath string) {
+	t.Helper()
+	row := loadCapturedRow(t, rowPath)
+	h := buildParityHeadersFor(profile)
 
 	ours, ok := h["x-codex-turn-metadata"]
 	if !ok || len(ours) == 0 {

@@ -26,13 +26,13 @@ import (
 //   - codex-tui — the Rust terminal client. Ground truth:
 //     crack/codexv0.153.4/ (whistle dump 2026-09-05).
 //
-// Desktop is the larger installed base but is NOT the default; codex-tui is.
-// The reason is not the version floor that first forced the switch (the
-// constants below now clear it) — it is that the two clients send the same
-// WebSocket upgrade, so the profile decides identity only, and only the CLI's
-// identity has byte-parity tests against a live capture. See
-// DefaultCodexProfile for the full history, including why the 0.153.4 Desktop
-// capture did not justify flipping back.
+// Desktop is the default, and is also the larger installed base. The two
+// clients send the SAME WebSocket upgrade — identical header set and order —
+// so the profile decides the advertised identity only, never the wire shape.
+// Both identities are pinned against their own captured row by
+// codexws/capture_parity_test.go, so neither is the less-verified choice. See
+// DefaultCodexProfile for the full history of this value, which has moved
+// twice.
 const (
 	// CodexDesktopVersion is the `version` header value and the version
 	// segment of CodexDesktopUserAgent. The two must always agree.
@@ -172,38 +172,49 @@ var codexTUIClientProfile = CodexClientProfile{
 // default. Both forks get this without opting in, so changing it is a
 // behaviour change for production traffic on both at once.
 //
-// It returns the codex-tui (CLI) profile. It used to return Desktop; the flip
-// happened on 2026-09-05 and was RE-EXAMINED on 2026-09-07 against a fresh
-// Desktop capture, which did not justify flipping back. Both halves are
-// recorded so this is not re-litigated a third time.
+// It returns the Codex Desktop profile. This value has moved twice; the whole
+// history is here so it is not re-litigated a fourth time.
 //
-// Why it flipped, 2026-09-05: the 0.153.4 model catalog gates gpt-6-astra
-// behind minimal_client_version "0.153.0". The Desktop profile self-reported
-// 0.147.0-alpha.6.6, below that floor, so a Desktop-identified request could
-// not be routed to the current flagship at all — and Desktop could not be
-// bumped past it, because its version, build number and terminal segment are
-// three independent values and no capture backed them.
+//   - Originally Desktop.
+//   - 2026-09-05, flipped to CLI: the 0.153.4 model catalog gates gpt-6-astra
+//     behind minimal_client_version "0.153.0", and Desktop then self-reported
+//     0.147.0-alpha.6.6 — below the floor, so a Desktop-identified request
+//     could not reach the current flagship at all. Desktop could not simply be
+//     bumped past it, because its version, build number and terminal segment
+//     are three independent values and no capture backed them.
+//   - 2026-09-07, examined and left on CLI: crack/codexapp0.153.4 supplied the
+//     missing capture, so the version-floor argument was spent — but the case
+//     for flipping back rested on Desktop having its own handshake shape, and
+//     it does not (SPEC §3: the ordinary Desktop upgrade is identical in header
+//     set AND order to the codex-tui one). CLI kept it on the grounds that it
+//     was the profile with byte-parity tests behind it.
+//   - 2026-09-08, flipped to Desktop: operator decision, and the one argument
+//     that had been holding it is now gone — codexws/capture_parity_test.go
+//     pins BOTH profiles against their own captured rows, so Desktop is no
+//     longer the less-verified option. Every Desktop constant here has a live
+//     0.153.4 capture behind it and clears the version floor.
 //
-// Why it did NOT flip back, 2026-09-07: crack/codexapp0.153.4/ supplied that
-// missing capture, and the constants above were refreshed from it, so the
-// version-floor argument is spent — Desktop is 0.153.4 now and clears it. The
-// flip back was proposed on the further belief that Desktop had its own
-// WebSocket handshake shape that cc-core was failing to emit. It does not.
-// All 19 upgrades in that capture carry originator "Codex Desktop", and the
-// ordinary-thread ones are IDENTICAL in header set and order to the codex-tui
-// upgrade in crack/codexv0.153.4/rows/10 (SPEC §3). The 18-header variant that
-// looked like a Desktop shape is an auto-review GUARDIAN subagent running
-// Responses-Lite — a connection kind a proxy never has — and a single
-// 21-header row proves guardians use the ordinary shape too, so it is not even
-// universal among subagents.
+// What this changes: the advertised identity only — user-agent, originator,
+// version, x-codex-beta-features, and the models client_version. The handshake
+// header set and order are the same either way, which is why the flip is
+// cheap in both directions.
 //
-// So the handshake is the same either way, and the choice of profile decides
-// only the advertised identity. The CLI wins that on evidence: it is the
-// profile with a live capture behind every constant AND byte-parity tests
-// against it (codexws/capture_parity_test.go reads the row). Presenting
-// Desktop would buy nothing and give up the verified identity. Revisit only if
-// a capture shows the two clients' UPGRADES actually diverging.
-func DefaultCodexProfile() CodexClientProfile { return codexTUIClientProfile }
+// What it deliberately does NOT change: the turn-metadata VALUES
+// (thread_source, sandbox_mode, auto_review_enabled). Those look like a
+// Desktop-vs-CLI difference in a two-row diff, and are not — within the CLI
+// capture alone they take three different combinations, tracking the THREAD
+// KIND rather than the client:
+//
+//	ordinary user thread : user            / workspace-write / true
+//	system thread        : system          / read-only       / false
+//	guardian review      : guardian_review / read-only       / false
+//
+// The Desktop row's thread_title/read-only/false is one Desktop user's
+// particular thread, not a Desktop constant. A proxy serves ordinary user
+// threads, so the first row is the correct one to emit under either identity.
+// Copying Desktop's values across would also have claimed a read-only sandbox
+// while our callers run write-capable agents, which the backend may act on.
+func DefaultCodexProfile() CodexClientProfile { return codexDesktopClientProfile }
 
 // NOTE ON PER-ACCOUNT VARIATION — deliberately NOT done here.
 //
