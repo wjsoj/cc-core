@@ -297,6 +297,24 @@ func (s *SSEStream) noteStallProgressLocked(data []byte) error {
 	return nil
 }
 
+// DisarmStall retires the stall budget for the rest of this turn.
+//
+// The budget exists to turn a parked turn into a failover, and a failover is
+// only available while nothing has reached the client. Once the caller has
+// committed the response the budget can no longer buy anything: aborting the
+// read converts a turn that was merely slow into a truncated stream the user
+// has to see, which is strictly worse than waiting for the backend to schedule
+// it. Production made the point in one afternoon — 141 of 326 truncated
+// streams were a committed response cut at the budget.
+//
+// Callers commit lazily, so the call site is the moment the first byte is
+// written downstream. After this only ReadTimeout bounds the turn.
+func (s *SSEStream) DisarmStall() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stallAt = time.Time{}
+}
+
 // appendSSEEvent renders one frame as an SSE event. The event line is emitted
 // whenever the frame declares a type, because the HTTP backend emits one and
 // downstream Codex clients read it; a frame with no type degrades to a bare

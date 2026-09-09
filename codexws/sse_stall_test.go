@@ -299,3 +299,51 @@ func (c *pacedConn) ReadMessage() (int, []byte, error) {
 	time.Sleep(gap)
 	return TextMessage, []byte(next), nil
 }
+
+// TestDisarmStallLeavesOnlyTheReadTimeout is the regression for the second half
+// of the parked-turn story. The budget is there to convert a park into a
+// failover; once the caller has written a byte downstream there is no failover
+// left to convert it into, and firing anyway turns a slow turn into a truncated
+// one. Production ran a day like that: 141 of 326 truncated streams were a
+// committed response cut at the budget.
+//
+// gap deliberately exceeds ReadTimeout so the read times out on its own — the
+// assertion is about which error the timeout is reported as, not whether one
+// happens.
+func TestDisarmStallLeavesOnlyTheReadTimeout(t *testing.T) {
+	conn := &heartbeatConn{gap: 300 * time.Millisecond}
+	s := NewSSEStream(conn, SSEStreamOptions{
+		ReadTimeout:  100 * time.Millisecond,
+		StallTimeout: 20 * time.Millisecond,
+		ContentFree:  contentFreeForTest,
+	})
+	s.DisarmStall()
+
+	_, err := io.ReadAll(s)
+	if errors.Is(err, ErrStalled) {
+		t.Fatal("a disarmed budget still ended the turn as a stall — post-commit that is a truncation the client pays for and nobody can act on")
+	}
+	var ne net.Error
+	if !errors.As(err, &ne) || !ne.Timeout() {
+		t.Fatalf("read error = %v, want the plain read timeout", err)
+	}
+	if !errors.Is(s.Err(), err) {
+		t.Fatalf("Err() = %v, want the same %v", s.Err(), err)
+	}
+}
+
+// TestStallStaysArmedUntilDisarmed pins the default: a stream nobody disarms
+// keeps the budget, because the withhold window is open until the caller says
+// otherwise.
+func TestStallStaysArmedUntilDisarmed(t *testing.T) {
+	conn := &heartbeatConn{gap: 300 * time.Millisecond}
+	s := NewSSEStream(conn, SSEStreamOptions{
+		ReadTimeout:  100 * time.Millisecond,
+		StallTimeout: 20 * time.Millisecond,
+		ContentFree:  contentFreeForTest,
+	})
+
+	if _, err := io.ReadAll(s); !errors.Is(err, ErrStalled) {
+		t.Fatalf("read error = %v, want ErrStalled", err)
+	}
+}
