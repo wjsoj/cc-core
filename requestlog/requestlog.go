@@ -70,11 +70,19 @@ type Record struct {
 	//
 	// Zero means not measured (every record written before this field, and
 	// any path that answers without touching an upstream).
-	TTFBMs   int64  `json:"ttfb_ms,omitempty"`
-	Stream   bool   `json:"stream"`
-	Path     string `json:"path,omitempty"`
-	Attempts int    `json:"attempts,omitempty"` // credential attempts before terminal
-	Error    string `json:"error,omitempty"`
+	TTFBMs int64 `json:"ttfb_ms,omitempty"`
+
+	// ReasoningTokens is the thinking subset of Output — see usage.Counts.
+	ReasoningTokens int64 `json:"reasoning_tokens,omitempty"`
+	// UpstreamModel is the model the UPSTREAM said it served, read off the
+	// terminal event's `response.model`, as opposed to Model which is what the
+	// client asked for. They are normally equal; a provider that quietly serves
+	// something lighter under load is visible here and nowhere else.
+	UpstreamModel string `json:"upstream_model,omitempty"`
+	Stream        bool   `json:"stream"`
+	Path          string `json:"path,omitempty"`
+	Attempts      int    `json:"attempts,omitempty"` // credential attempts before terminal
+	Error         string `json:"error,omitempty"`
 	// AttemptOnly marks a credential-attempt audit row that was withheld from
 	// the client and followed by failover. Dashboard/query aggregates ignore
 	// these rows so retry telemetry does not inflate user-visible counts.

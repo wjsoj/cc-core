@@ -612,6 +612,21 @@ ALTER TABLE req ADD COLUMN service_tier TEXT NOT NULL DEFAULT '';`,
 	// cheap; it exists so asking "how often did upstream shed us" can never
 	// become the reason the log is slow.
 	`CREATE INDEX IF NOT EXISTS idx_req_attempt_ts ON req(ts DESC, id DESC) WHERE attempt_only = 1;`,
+
+	// 10: evidence for "was the model downgraded", which nothing in the archive
+	// could answer.
+	//
+	// A provider under load can serve a lighter reasoning tier, or a different
+	// model, while every field we did record stays normal. Throughput cannot
+	// stand in for it: measured on 2730 gpt-6-astra turns, a credential serving
+	// concurrent turns dropped from 36.7 to 21.8 tokens/second while output
+	// length was flat — a shared egress splitting bandwidth, not a weaker model,
+	// and the two are indistinguishable from totals alone.
+	//
+	// Both values arrive on the terminal event we already parse for usage, so
+	// this costs one more field read per turn and two columns.
+	`ALTER TABLE req ADD COLUMN reasoning_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE req ADD COLUMN upstream_model TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

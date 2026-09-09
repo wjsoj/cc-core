@@ -218,8 +218,8 @@ const insertReq = `INSERT OR IGNORE INTO req (
 	model, input, output, cache_read, cache_create, cache_create_1h,
 	cost_usd, billed_usd, multiplier, status, duration_ms, stream,
 	path, attempts, error, attempt_only, user_id, audit, src_file, src_off, requested_service_tier, upstream_service_tier, service_tier,
-	ttfb_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	ttfb_ms, reasoning_tokens, upstream_model
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // ingestFile folds the records in path[from:] into req and returns how many
 // rows were added and the byte offset just past the last complete line.
@@ -361,7 +361,7 @@ func insertRecord(stmt *sql.Stmt, day string, r Record, srcFile string, srcOff i
 		r.Status, r.DurationMs, boolToInt(r.Stream),
 		r.Path, r.Attempts, r.Error, boolToInt(r.AttemptOnly),
 		r.UserID, audit, srcFile, srcOff, r.RequestedServiceTier, r.UpstreamServiceTier, r.ServiceTier,
-		r.TTFBMs,
+		r.TTFBMs, r.ReasoningTokens, r.UpstreamModel,
 	)
 	return err
 }

@@ -71,6 +71,18 @@ type Counts struct {
 	Requests          int64 `json:"requests"`
 	Errors            int64 `json:"errors"`
 
+	// ReasoningTokens is the SUBSET of OutputTokens the model spent thinking,
+	// from the Responses API's `usage.output_tokens_details.reasoning_tokens`.
+	// Like CacheCreate1h it is a breakdown, not an axis: OutputTokens already
+	// contains it, so nothing that sums or bills changes when it is zero.
+	//
+	// It exists because it is the only signal that separates "the model was
+	// downgraded" from "the model was slow". Throughput cannot: a credential
+	// serving two turns at once loses 40% of its tokens/second to the shared
+	// egress whether or not anything about the model changed. Reasoning tokens
+	// collapse only when the reasoning tier actually does.
+	ReasoningTokens int64 `json:"reasoning_tokens,omitempty"`
+
 	// CacheCreate1hTokens is the SUBSET of CacheCreateTokens written with a
 	// 1-hour TTL, taken from Anthropic's
 	// `usage.cache_creation.ephemeral_1h_input_tokens` breakdown. It is NOT
