@@ -79,9 +79,8 @@ type SSEStreamOptions struct {
 	// the request until the client gives up.
 	ReadTimeout time.Duration
 
-	// StallTimeout bounds how long the turn may run before its first
-	// content-bearing frame, and it exists because ReadTimeout cannot bound
-	// that at all.
+	// StallTimeout bounds the gap between content-bearing frames, and it
+	// exists because ReadTimeout cannot bound that at all.
 	//
 	// When the backend cannot schedule a turn over the WebSocket it does not
 	// shed it the way the HTTP transport does — it parks the turn and
@@ -93,17 +92,28 @@ type SSEStreamOptions struct {
 	// the withheld-shed telemetry that had logged 1116 rescued turns in a
 	// single pre-WebSocket hour recorded exactly zero.
 	//
-	// The budget is safe to set aggressively because the two populations do
-	// not overlap. Across 2231 successful WebSocket turns the slowest first
-	// output was 21.1s and p99.9 was 15.0s, while every parked turn produced
-	// nothing at all — succeed early or never, with nothing in between.
+	// It bounds the gap and not just the opening because the first version of
+	// this bounded only the opening and changed nothing. A parked turn is not
+	// silent from the start: it emits its opening frames and a first reasoning
+	// delta within a couple of seconds — measured at 1.6-6.3s — and parks
+	// after that. A budget the first delta retires is a budget that never
+	// fires. Rearming on each content frame covers both, and the caller still
+	// separates them, because whether anything reached the client is what
+	// decides between an invisible failover and a truncation the client
+	// retries.
+	//
+	// Size it against total turn duration, which is the ceiling on any gap
+	// inside one: across 345 successful turns the slowest ran 104s end to end
+	// and p99 was 75s, so a gap beyond about two minutes cannot belong to a
+	// turn that was going to finish.
 	//
 	// Zero disables the budget and restores the hang.
 	StallTimeout time.Duration
 
 	// ContentFree classifies a frame payload as carrying nothing the client
 	// could see, and so nothing that forecloses a retry elsewhere. The budget
-	// above is retired by the first frame this rejects.
+	// above is rearmed by every frame this rejects, and untouched by every
+	// frame it accepts.
 	//
 	// It is supplied by the caller rather than hardcoded here so that it stays
 	// the same predicate the caller's own withhold logic uses. If the two
@@ -129,10 +139,10 @@ type SSEStream struct {
 	terminal bool
 	frames   int
 	err      error
-	// stallAt is the instant the turn is abandoned if it has still produced no
-	// content by then. Zero once the budget is retired — either because the
-	// caller set no StallTimeout or because content arrived — and a zero value
-	// is what every check below tests, so a retired budget costs nothing.
+	// stallAt is the instant the turn is abandoned if no content has arrived by
+	// then. Every content frame pushes it forward. Zero when the caller set no
+	// StallTimeout, and a zero value is what every check below tests, so an
+	// unset budget costs nothing.
 	stallAt time.Time
 }
 
@@ -267,7 +277,7 @@ func (s *SSEStream) classifyReadErrLocked(err error) error {
 	return err
 }
 
-// noteStallProgressLocked retires the stall budget on the first content-bearing
+// noteStallProgressLocked rearms the stall budget on every content-bearing
 // frame, and abandons the turn when a content-free one arrives past it.
 //
 // Checking on arrival matters as much as the deadline above: a keepalive every
@@ -278,7 +288,7 @@ func (s *SSEStream) noteStallProgressLocked(data []byte) error {
 		return nil
 	}
 	if s.opt.ContentFree == nil || !s.opt.ContentFree(data) {
-		s.stallAt = time.Time{}
+		s.stallAt = time.Now().Add(s.opt.StallTimeout)
 		return nil
 	}
 	if !time.Now().Before(s.stallAt) {
