@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"sync"
 	"time"
 )
@@ -61,6 +62,13 @@ func eventType(payload []byte) string {
 	return ev.Type
 }
 
+// ErrStalled ends a turn that ran its whole StallTimeout without producing a
+// single content-bearing frame. It is deliberately distinct from a read
+// timeout: a stalled turn is one the backend accepted and then never
+// scheduled, which is a capacity refusal wearing a heartbeat, and the caller
+// should withhold it and fail over rather than surface it.
+var ErrStalled = errors.New("codexws: upstream produced no content within the stall budget")
+
 // SSEStreamOptions configures one turn's worth of adaptation.
 type SSEStreamOptions struct {
 	// ReadTimeout bounds the wait for each individual frame. It is a safety
@@ -70,6 +78,40 @@ type SSEStreamOptions struct {
 	// disables the deadline, which leaves a silently-dead socket able to hang
 	// the request until the client gives up.
 	ReadTimeout time.Duration
+
+	// StallTimeout bounds how long the turn may run before its first
+	// content-bearing frame, and it exists because ReadTimeout cannot bound
+	// that at all.
+	//
+	// When the backend cannot schedule a turn over the WebSocket it does not
+	// shed it the way the HTTP transport does — it parks the turn and
+	// heartbeats `keepalive` about every 30s, indefinitely. Every one of those
+	// frames resets the per-frame deadline, so ReadTimeout never fires however
+	// large or small it is set: the socket is not idle, it is just useless.
+	// Production ran ten hours that way. 6.8% of turns sat through keepalives
+	// until the client gave up at ~600s, none of them ever failed over, and
+	// the withheld-shed telemetry that had logged 1116 rescued turns in a
+	// single pre-WebSocket hour recorded exactly zero.
+	//
+	// The budget is safe to set aggressively because the two populations do
+	// not overlap. Across 2231 successful WebSocket turns the slowest first
+	// output was 21.1s and p99.9 was 15.0s, while every parked turn produced
+	// nothing at all — succeed early or never, with nothing in between.
+	//
+	// Zero disables the budget and restores the hang.
+	StallTimeout time.Duration
+
+	// ContentFree classifies a frame payload as carrying nothing the client
+	// could see, and so nothing that forecloses a retry elsewhere. The budget
+	// above is retired by the first frame this rejects.
+	//
+	// It is supplied by the caller rather than hardcoded here so that it stays
+	// the same predicate the caller's own withhold logic uses. If the two
+	// disagree, this stream can abort a turn whose opening frames the caller
+	// had already committed to the client — a failover that is no longer
+	// invisible. Nil treats every frame as content, which retires the budget
+	// on the first frame of any kind.
+	ContentFree func(payload []byte) bool
 }
 
 // SSEStream adapts one turn of upstream WebSocket frames into SSE bytes.
@@ -87,11 +129,20 @@ type SSEStream struct {
 	terminal bool
 	frames   int
 	err      error
+	// stallAt is the instant the turn is abandoned if it has still produced no
+	// content by then. Zero once the budget is retired — either because the
+	// caller set no StallTimeout or because content arrived — and a zero value
+	// is what every check below tests, so a retired budget costs nothing.
+	stallAt time.Time
 }
 
 // NewSSEStream wraps conn for the duration of one turn.
 func NewSSEStream(conn Conn, opt SSEStreamOptions) *SSEStream {
-	return &SSEStream{conn: conn, opt: opt}
+	s := &SSEStream{conn: conn, opt: opt}
+	if opt.StallTimeout > 0 {
+		s.stallAt = time.Now().Add(opt.StallTimeout)
+	}
+	return s
 }
 
 // Terminal reports whether the turn ended on a terminal event. A false here
@@ -113,7 +164,8 @@ func (s *SSEStream) Frames() int {
 }
 
 // Err returns the read error that ended the stream, if any. io.EOF is reported
-// as nil — a clean terminal event is not an error.
+// as nil — a clean terminal event is not an error. ErrStalled is reported as
+// itself, which is also what keeps a parked connection out of the pool.
 func (s *SSEStream) Err() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -155,14 +207,17 @@ func (s *SSEStream) Read(p []byte) (int, error) {
 // fillLocked pulls one upstream frame and renders it into pending.
 func (s *SSEStream) fillLocked() error {
 	for {
-		if s.opt.ReadTimeout > 0 {
-			if err := s.conn.SetReadDeadline(time.Now().Add(s.opt.ReadTimeout)); err != nil {
+		// The stall budget has to bound the read as well as the frames, or a
+		// backend that parks a turn and then stops heartbeating too would sit
+		// here for the whole ReadTimeout. Whichever deadline comes first wins.
+		if deadline, ok := s.readDeadlineLocked(); ok {
+			if err := s.conn.SetReadDeadline(deadline); err != nil {
 				return err
 			}
 		}
 		mt, data, err := s.conn.ReadMessage()
 		if err != nil {
-			return err
+			return s.classifyReadErrLocked(err)
 		}
 		if mt != TextMessage || len(data) == 0 {
 			// Binary and control frames carry nothing the SSE pipeline can
@@ -172,6 +227,9 @@ func (s *SSEStream) fillLocked() error {
 		}
 		s.frames++
 		typ := eventType(data)
+		if err := s.noteStallProgressLocked(data); err != nil {
+			return err
+		}
 		if terminalEventTypes[typ] {
 			s.terminal = true
 			s.done = true
@@ -179,6 +237,54 @@ func (s *SSEStream) fillLocked() error {
 		s.pending = appendSSEEvent(s.pending, typ, data)
 		return nil
 	}
+}
+
+// readDeadlineLocked picks the earlier of the per-frame deadline and what is
+// left of the stall budget.
+func (s *SSEStream) readDeadlineLocked() (time.Time, bool) {
+	var deadline time.Time
+	if s.opt.ReadTimeout > 0 {
+		deadline = time.Now().Add(s.opt.ReadTimeout)
+	}
+	if !s.stallAt.IsZero() && (deadline.IsZero() || s.stallAt.Before(deadline)) {
+		deadline = s.stallAt
+	}
+	return deadline, !deadline.IsZero()
+}
+
+// classifyReadErrLocked names a read that timed out while the stall budget was
+// still running for what it is. The distinction is what the caller keys its
+// failover on, and a bare i/o timeout would send a parked turn down the
+// truncated-stream path instead.
+func (s *SSEStream) classifyReadErrLocked(err error) error {
+	if s.stallAt.IsZero() || time.Now().Before(s.stallAt) {
+		return err
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return ErrStalled
+	}
+	return err
+}
+
+// noteStallProgressLocked retires the stall budget on the first content-bearing
+// frame, and abandons the turn when a content-free one arrives past it.
+//
+// Checking on arrival matters as much as the deadline above: a keepalive every
+// 30s keeps resetting the read deadline, so without this a parked turn is
+// perfectly capable of never once reaching it.
+func (s *SSEStream) noteStallProgressLocked(data []byte) error {
+	if s.stallAt.IsZero() {
+		return nil
+	}
+	if s.opt.ContentFree == nil || !s.opt.ContentFree(data) {
+		s.stallAt = time.Time{}
+		return nil
+	}
+	if !time.Now().Before(s.stallAt) {
+		return ErrStalled
+	}
+	return nil
 }
 
 // appendSSEEvent renders one frame as an SSE event. The event line is emitted
