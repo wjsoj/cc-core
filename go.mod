@@ -8,10 +8,12 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/refraction-networking/utls v1.8.2
 	github.com/sirupsen/logrus v1.9.4
+	github.com/tiktoken-go/tokenizer v0.7.0
 	golang.org/x/net v0.54.0
 )
 
 require (
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
