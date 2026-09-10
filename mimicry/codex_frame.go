@@ -212,7 +212,7 @@ func RewriteCodexClientFrame(frame []byte, id CodexFrameIdentity) ([]byte, error
 		// the third-party client the rebinding exists for — returning early
 		// here used to skip it, so the one case the doc promised to cover was
 		// the one case that leaked.
-		return rebindCodexPromptCacheKey(out, norm.SessionID), nil
+		return ensureCodexReasoningContext(rebindCodexPromptCacheKey(out, norm.SessionID)), nil
 	}
 
 	// Read the client's ids, then map each to ours. Anything the client did not
@@ -293,8 +293,97 @@ func RewriteCodexClientFrame(frame []byte, id CodexFrameIdentity) ([]byte, error
 	// Everything below addresses a specific top-level key, so none of it can
 	// reach into user prose.
 	out = rebindCodexPromptCacheKey(out, norm.SessionID)
+	out = ensureCodexReasoningContext(out)
 	return out, nil
 }
+
+// ensureCodexReasoningContext guarantees `reasoning.context == "all_turns"`.
+//
+// It pairs with the Responses-Lite switch this file sets a few lines above.
+// That switch is not free: the backend answers a Lite request whose
+// reasoning.context is anything else with
+//
+//	400 invalid_request_error / unsupported_value
+//	"X-OpenAI-Internal-Codex-Responses-Lite requires `reasoning.context` to be `all_turns`."
+//
+// and every genuine frame in the archive satisfies it — five of five
+// response.create frames in crack/codexapp0.147.0 carry the Lite switch and
+// `context: "all_turns"` together, and neither ever appears without the other.
+// Setting the switch for a client that did not send the field therefore
+// manufactures a combination no real client emits, and the turn is rejected
+// outright. Production: 63 of them in six hours, across every credential and
+// every Lite model, from third-party clients that send a bare Responses body.
+//
+// A missing `reasoning` object gets a minimal one carrying only `context`. No
+// effort and no summary are invented: the point is to satisfy the contract we
+// imposed, not to choose a reasoning budget on the caller's behalf.
+func ensureCodexReasoningContext(frame []byte) []byte {
+	start, end, ok := topLevelValueSpan(frame, "reasoning")
+	if !ok {
+		return insertCodexReasoning(frame)
+	}
+	value := bytes.TrimSpace(frame[start:end])
+	if len(value) == 0 || value[0] != '{' {
+		// Present but not an object — `null` is what the archive shows on some
+		// frames. Replace the whole value; a Lite turn needs the field either
+		// way, and there is nothing in a null to preserve.
+		return replaceSpan(frame, start, end, []byte(codexReasoningAllTurnsObject))
+	}
+	if csStart, csEnd, hasContext := topLevelValueSpan(value, "context"); hasContext {
+		if string(bytes.TrimSpace(value[csStart:csEnd])) == `"`+codexReasoningContextAllTurns+`"` {
+			return frame
+		}
+		fixed := replaceSpan(value, csStart, csEnd, []byte(`"`+codexReasoningContextAllTurns+`"`))
+		return replaceSpan(frame, start, end, fixed)
+	}
+	// Object without the key: splice the member in after the opening brace.
+	// The caller's own key order inside `reasoning` is not part of the captured
+	// shape (client_metadata's isn't either), but the FRAME's top-level order
+	// is, which is why none of this re-encodes the frame through a map.
+	member := []byte(`"context":"` + codexReasoningContextAllTurns + `",`)
+	return replaceSpan(frame, start+1, start+1, member)
+}
+
+// insertCodexReasoning adds a minimal reasoning object at the captured
+// position: `reasoning` sits between `input`/`include` and `text` in every
+// archived frame. Falling back to just-before-client_metadata and then to the
+// end keeps an unusual frame well-formed.
+func insertCodexReasoning(b []byte) []byte {
+	member := append([]byte(`"reasoning":`+codexReasoningAllTurnsObject), ',')
+	// Anchored on the canonical order in codex_frame_build.go: reasoning sits
+	// after parallel_tool_calls and before store. Insert it ahead of whichever
+	// of its successors appears first, so a frame that never reaches
+	// CanonicalizeCodexFrameKeys still carries the captured shape.
+	for _, before := range []string{
+		"store", "stream", "stream_options", "include",
+		"prompt_cache_key", "text", "generate", "client_metadata",
+	} {
+		if start, _, ok := topLevelValueSpan(b, before); ok {
+			keyStart := bytes.LastIndex(b[:start], []byte(`"`+before+`"`))
+			if keyStart < 0 {
+				continue
+			}
+			return replaceSpan(b, keyStart, keyStart, member)
+		}
+	}
+	end := bytes.LastIndexByte(b, '}')
+	if end < 0 {
+		return b
+	}
+	trailing := bytes.TrimSpace(b[:end])
+	if len(trailing) == 0 || trailing[len(trailing)-1] == '{' {
+		return replaceSpan(b, end, end, member[:len(member)-1])
+	}
+	return replaceSpan(b, end, end, append([]byte(","), member[:len(member)-1]...))
+}
+
+// codexReasoningAllTurnsObject is the minimal reasoning object: only the field
+// the Lite switch requires. No effort and no summary are invented — the point
+// is to satisfy the contract we imposed, not to choose a reasoning budget on
+// the caller's behalf.
+const codexReasoningAllTurnsObject = `{"context":"` + codexReasoningContextAllTurns + `"}`
+
+const codexReasoningContextAllTurns = "all_turns"
 
 // overwriteCodexClientMetadata replaces the identity fields of an existing
 // client_metadata, keeping any key the client sent that we have no opinion

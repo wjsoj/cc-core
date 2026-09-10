@@ -851,7 +851,11 @@ func TestPromptCacheKeyInsertKeepsCapturedOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"type", "model", "input", "include", "prompt_cache_key", "text", "client_metadata"}
+	// `reasoning` is in the list because every frame now carries one: the
+	// Responses-Lite switch requires reasoning.context == "all_turns", and a
+	// frame without it is rejected. It has to land in its captured slot —
+	// after input, before include — not wherever the insert happened to fit.
+	want := []string{"type", "model", "input", "reasoning", "include", "prompt_cache_key", "text", "client_metadata"}
 	got := topLevelKeyOrder(t, string(out))
 	if len(got) != len(want) {
 		t.Fatalf("key order = %v, want %v", got, want)
@@ -860,5 +864,64 @@ func TestPromptCacheKeyInsertKeepsCapturedOrder(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("key %d = %q, want %q (full: %v)", i, got[i], want[i], got)
 		}
+	}
+}
+
+// The Responses-Lite switch this file sets unconditionally is not free: the
+// backend rejects a Lite request whose reasoning.context is anything but
+// "all_turns" with 400 unsupported_value. Every genuine frame in the archive
+// satisfies it — five of five response.create frames in crack/codexapp0.147.0
+// carry the switch and `context: "all_turns"` together, neither ever alone —
+// so setting the switch for a client that omitted the field manufactures a
+// combination no real client emits. Production: 63 rejections in six hours,
+// across every credential and every Lite model.
+func TestFrameGuaranteesReasoningContextForResponsesLite(t *testing.T) {
+	id, err := CodexFrameIdentity{
+		AccountKey: "acct",
+		SessionID:  "3f2b1a44-5c6d-4e8f-9a0b-1c2d3e4f5a6b",
+	}.Normalized()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name, reasoning, wantEffort string
+	}{
+		{"absent", "", ""},
+		{"null", `"reasoning":null,`, ""},
+		{"present without context", `"reasoning":{"effort":"medium"},`, "medium"},
+		{"wrong context", `"reasoning":{"effort":"low","context":"single_turn"},`, "low"},
+		{"already correct", `"reasoning":{"effort":"high","context":"all_turns"},`, "high"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			frame := []byte(`{"type":"response.create","model":"gpt-5.6-sol",` + tc.reasoning +
+				`"input":[],"client_metadata":{}}`)
+			out, err := RewriteCodexClientFrame(frame, id)
+			if err != nil {
+				t.Fatalf("rewrite: %v", err)
+			}
+
+			var got struct {
+				Reasoning struct {
+					Context string `json:"context"`
+					Effort  string `json:"effort"`
+				} `json:"reasoning"`
+				ClientMetadata map[string]any `json:"client_metadata"`
+			}
+			if err := json.Unmarshal(out, &got); err != nil {
+				t.Fatalf("output is not JSON: %v (%s)", err, out)
+			}
+			if got.Reasoning.Context != "all_turns" {
+				t.Errorf("reasoning.context = %q, want all_turns — the Lite switch would 400 this turn",
+					got.Reasoning.Context)
+			}
+			if got.Reasoning.Effort != tc.wantEffort {
+				t.Errorf("reasoning.effort = %q, want %q: the caller's budget must not be rewritten",
+					got.Reasoning.Effort, tc.wantEffort)
+			}
+			if got.ClientMetadata["ws_request_header_x_openai_internal_codex_responses_lite"] != "true" {
+				t.Error("the Lite switch went missing; this test only means something while it is set")
+			}
+		})
 	}
 }
