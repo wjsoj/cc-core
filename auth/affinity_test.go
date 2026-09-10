@@ -132,3 +132,61 @@ func TestAffinityDisabled(t *testing.T) {
 		t.Fatalf("TTL 0 still steered the conversation to %s; want schedule-from-scratch (%s)", got, natural)
 	}
 }
+
+// A capacity refusal must not migrate the conversation.
+//
+// The pool used to rewrite both the sticky binding and the hour-long affinity
+// memory whenever a credential was excluded, so ONE refusal handed the whole
+// conversation to an account whose prompt cache had never seen it. During a
+// capacity storm — 2.3 refusals per completed request — that shuffled every
+// conversation across the pool every turn: production cache hit rate fell from
+// 89.1% to 64.4% and the uncached prefill per turn rose from 9k to 25k tokens,
+// which is a bigger and more expensive request arriving at a backend that is
+// already refusing the expensive ones.
+func TestCapacitySpilloverDoesNotMoveTheConversationHome(t *testing.T) {
+	p := affinityPool(t, 3)
+
+	home := acquire(t, p, "slot")
+	// The turn is refused and retried; the loop excludes the credential it just
+	// tried, exactly as forwardWithFailover does.
+	spill := acquire(t, p, "slot", home)
+	if spill == home {
+		t.Fatal("the exclusion was ignored")
+	}
+	// The NEXT turn carries no exclusion. It must come home.
+	if back := acquire(t, p, "slot"); back != home {
+		t.Fatalf("conversation migrated to %s after one capacity refusal; it belongs to %s "+
+			"and that is where its prompt cache is", back, home)
+	}
+}
+
+// Repeated refusals must not accumulate into a migration either: a storm is a
+// long run of exactly the event the test above covers once.
+func TestRepeatedSpilloversStillComeHome(t *testing.T) {
+	p := affinityPool(t, 3)
+
+	home := acquire(t, p, "slot")
+	for i := 0; i < 5; i++ {
+		acquire(t, p, "slot", home)
+	}
+	if back := acquire(t, p, "slot"); back != home {
+		t.Fatalf("five refusals migrated the conversation to %s; it belongs to %s", back, home)
+	}
+}
+
+// A home that is genuinely gone — not merely stepped around — must be replaced,
+// or a dead credential would pin a conversation forever.
+func TestAnUnhealthyHomeIsReplacedAndTheReplacementSticks(t *testing.T) {
+	p := affinityPool(t, 3)
+
+	home := acquire(t, p, "slot")
+	p.FindByID(home).MarkHardFailure("revoked")
+
+	next := acquire(t, p, "slot")
+	if next == home {
+		t.Fatal("kept a hard-failed credential as the home")
+	}
+	if again := acquire(t, p, "slot"); again != next {
+		t.Fatalf("the new home did not stick: got %s, want %s", again, next)
+	}
+}
