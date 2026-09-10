@@ -60,7 +60,7 @@ func TestCodexRefreshGrantIdentifiesItselfAsTheActiveClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	applyCodexRefreshGrantHeaders(req)
+	applyCodexRefreshGrantHeaders(req, "")
 
 	if got := req.Header.Get("Content-Type"); got != "application/json" {
 		t.Errorf("Content-Type = %q, want application/json (the refresh grant is JSON)", got)

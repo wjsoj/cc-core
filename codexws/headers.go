@@ -138,7 +138,13 @@ func BuildUpstreamHeadersWithOptions(opts UpstreamHeaderOptions) http.Header {
 	if beta == "" {
 		beta = CodexOpenAIBetaWS
 	}
-	profile := mimicry.DefaultCodexProfile()
+	// The default is bound to the account's machine — see mimicry.CodexProfileFor.
+	//
+	// An explicit Profile is taken EXACTLY as given, host included. A caller
+	// that builds a whole profile has chosen the whole identity, and re-binding
+	// its host here would leave no way to pin one — which the capture-parity
+	// tests need, since they compare against a specific captured machine.
+	profile := mimicry.CodexProfileFor(opts.AccountID)
 	if opts.Profile != nil {
 		profile = *opts.Profile
 	}

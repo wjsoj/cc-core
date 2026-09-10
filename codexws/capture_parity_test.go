@@ -67,6 +67,12 @@ func parityProfiles() []struct {
 }
 
 func buildParityHeadersFor(profile mimicry.CodexClientProfile) map[string][]string {
+	// Pinned to the host every capture was taken on. The header builder now
+	// binds a profile to the account's machine, so without this the comparison
+	// would be against whichever machine the literal "acct-uuid" happens to
+	// hash to — and would fail or pass for reasons that have nothing to do with
+	// the parity being asserted.
+	profile = profile.WithHost(mimicry.CodexCapturedHostProfile)
 	return BuildUpstreamHeadersWithOptions(UpstreamHeaderOptions{
 		Profile:     &profile,
 		AccessToken: "tok",

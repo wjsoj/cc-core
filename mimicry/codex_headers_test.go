@@ -17,11 +17,13 @@ func TestApplyCodexCLIHeadersSendsNoLegacyBeta(t *testing.T) {
 	if got := req.Header.Get("OpenAI-Beta"); got != "" {
 		t.Errorf("OpenAI-Beta = %q; the HTTP path must send none", got)
 	}
-	// The default identity is codex-tui as of 2026-09-05 (it was Codex Desktop
-	// until gpt-6-astra's 0.153.0 floor forced the flip — see
-	// DefaultCodexProfile). Assert through the profile rather than a named
-	// constant so this test follows the default instead of pinning it twice.
-	def := DefaultCodexProfile()
+	// Assert through the profile rather than a named constant so this test
+	// follows the default instead of pinning it twice — and through
+	// CodexProfileFor with THIS request's account, because the User-Agent now
+	// carries the machine that account claims. DefaultCodexProfile() alone
+	// would compare against whichever host the pool's first entry happens to
+	// be, which is a different assertion than the one this test is making.
+	def := CodexProfileFor("acct")
 	if got := req.Header.Get("User-Agent"); got != def.UserAgent {
 		t.Errorf("User-Agent = %q, want the default profile's %q", got, def.UserAgent)
 	}

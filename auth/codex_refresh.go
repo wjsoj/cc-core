@@ -73,7 +73,7 @@ func truncateForReason(body []byte) string {
 // applyCodexRefreshGrantHeaders shapes the refresh_token grant (row `01`).
 // This is the ONE grant that identifies itself: JSON body, Desktop originator,
 // Desktop UA (the full one — see above).
-func applyCodexRefreshGrantHeaders(req *http.Request) {
+func applyCodexRefreshGrantHeaders(req *http.Request, accountID string) {
 	// The identity comes from the ACTIVE profile, not from the captured one.
 	//
 	// crack/codexapp0.153.4/rows/01 shows a Codex Desktop refresh because the
@@ -86,7 +86,7 @@ func applyCodexRefreshGrantHeaders(req *http.Request) {
 	// as codex-tui while refreshing the same credential's token as Codex
 	// Desktop: one account presenting two clients, which no real installation
 	// does and which is a single join away from being obvious.
-	profile := mimicry.DefaultCodexProfile()
+	profile := mimicry.CodexProfileFor(accountID)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Originator", profile.Originator)
@@ -176,6 +176,10 @@ func (a *Auth) refreshCodexLocked(ctx context.Context, useUTLS bool) error {
 	if refresh == "" {
 		return fmt.Errorf("no refresh token")
 	}
+	// The machine this credential claims, so the refresh presents the same host
+	// as the turns do. A credential whose User-Agent changes between refreshing
+	// its token and using it is one account on two machines.
+	hostAccountID, _ := a.CodexIdentity()
 
 	body := buildCodexRefreshBody(refresh)
 	client := ClientFor(a.ProxyURL, useUTLS)
@@ -187,7 +191,7 @@ func (a *Auth) refreshCodexLocked(ctx context.Context, useUTLS bool) error {
 		if rerr != nil {
 			return nil, rerr
 		}
-		applyCodexRefreshGrantHeaders(r)
+		applyCodexRefreshGrantHeaders(r, hostAccountID)
 		return r, nil
 	}
 

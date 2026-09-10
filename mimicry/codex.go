@@ -253,7 +253,7 @@ func validHeaderValue(s string) bool {
 // pass a stable one through ApplyCodexHeadersWithSession — see the session-id
 // note there for what a per-request id costs.
 func ApplyCodexCLIHeaders(req *http.Request, accessToken, accountID string, isCompact bool, model, serviceTier string) {
-	ApplyCodexHeadersWithProfile(req, DefaultCodexProfile(), accessToken, accountID, isCompact, model, serviceTier)
+	ApplyCodexHeadersWithProfile(req, CodexProfileFor(accountID), accessToken, accountID, isCompact, model, serviceTier)
 }
 
 // ApplyCodexHeadersWithProfile is ApplyCodexCLIHeaders with an explicit client
