@@ -175,7 +175,7 @@ func (a *Auth) FetchCodexUsage(ctx context.Context, useUTLS bool) (*CodexUsageIn
 		r.Header.Set("Authorization", "Bearer "+token)
 		r.Header.Set("Accept", "*/*")
 		r.Header.Set("Accept-Encoding", "identity")
-		r.Header.Set("User-Agent", mimicry.CodexUsageUserAgent)
+		r.Header.Set("User-Agent", mimicry.CodexUsageUserAgent(accountID))
 		if accountID != "" {
 			r.Header.Set("Chatgpt-Account-Id", accountID)
 		}

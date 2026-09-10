@@ -339,11 +339,21 @@ func setCodexHeader(h http.Header, name, value string) {
 	h[name] = []string{value}
 }
 
-// CodexUsageUserAgent is the User-Agent the Codex CLI sends on its
-// GET /backend-api/wham/usage probe — the same codex-tui UA as the request
-// path, NOT the web portal's Chrome UA. The CLI's usage call carries only
-// Authorization + Chatgpt-Account-Id + this UA (no oai-client-* headers).
-const CodexUsageUserAgent = CodexCLIUserAgent
+// CodexUsageUserAgent is the User-Agent for the GET /backend-api/wham/usage
+// probe: the SAME identity that credential uses everywhere else, not the web
+// portal's Chrome UA and not a second client.
+//
+// The wham/* endpoints carry whatever client is asking — the CLI capture shows
+// a codex-tui UA (crack/codexv0.153.4/rows/30) and the Desktop capture a
+// Desktop one (crack/codexapp0.153.4/rows/21) — with no `originator` at all.
+// Pinning the CLI constant here therefore made every deployment whose default
+// is Desktop probe its own quota as codex-tui, so one chatgpt-account-id
+// appeared as two different clients. That is precisely the join
+// applyCodexRefreshGrantHeaders refuses to hand over on the token endpoint,
+// given away on a probe that runs on a timer for every credential.
+func CodexUsageUserAgent(accountID string) string {
+	return CodexProfileFor(accountID).UserAgent
+}
 
 // CodexModelsUserAgent is the User-Agent for GET /backend-api/codex/models.
 //

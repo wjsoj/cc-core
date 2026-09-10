@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/wjsoj/cc-core/mimicry"
 )
 
 // Codex "rate-limit reset credit" endpoints. These back the ChatGPT/Codex
@@ -33,15 +35,12 @@ const (
 	codexWhamResetConsumeURL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume"
 
 	// The rate-limit reset credit ("quota reset card") is redeemed from the
-	// Codex Desktop app, not the codex-tui CLI. The wham/usage probe can pass
-	// with the minimal CLI header set, but the credits/consume endpoints are
-	// most reliable when the request presents as Codex Desktop — this mirrors
-	// the proven sub2api header set (originator "Codex Desktop", openai-beta
-	// "codex-1", the browser sec-fetch-* markers) paired with the Chrome UA that
-	// matches this package's HelloChrome_Auto uTLS fingerprint.
-	codexDesktopOriginator = "Codex Desktop"
-	codexDesktopOpenAIBeta = "codex-1"
-	codexDesktopLanguage   = "en-US"
+	// The browser-shaped header set that used to live here — originator
+	// "Codex Desktop" over a Chrome User-Agent, openai-beta "codex-1", three
+	// sec-fetch-* markers and a priority header — was copied from another
+	// proxy's implementation, and another proxy is not ground truth.
+	// crack/codexv0.153.4/rows/31 is: the wham credits endpoint takes the same
+	// five-header shape as wham/usage. See applyCodexWhamHeaders.
 )
 
 // CodexResetCreditDetail is the sanitized metadata for a single available reset
@@ -195,17 +194,23 @@ func (a *Auth) prepareCodexWhamCall(ctx context.Context, useUTLS bool) (token, a
 // consistent past Cloudflare. (FetchCodexUsage deliberately keeps the codex-tui
 // CLI identity for wham/usage — a different, lower-stakes probe.)
 func applyCodexWhamHeaders(r *http.Request, token, accountID string) {
+	// The captured shape, not a browser's.
+	//
+	// This used to send a Chrome User-Agent alongside `Originator: Codex
+	// Desktop`, plus openai-beta, oai-language, three sec-fetch-* and a
+	// priority header — a header set copied from another proxy rather than
+	// from a capture. crack/codexv0.153.4/rows/31 shows the real thing is the
+	// same five-header shape as wham/usage: the client's own User-Agent,
+	// Authorization, Chatgpt-Account-Id, `Accept: */*`, and no originator.
+	//
+	// The old set was self-contradicting on its own: a Chrome UA with
+	// `Originator: Codex Desktop` is exactly the mismatch codex_identity.go
+	// warns answers 404, and `OpenAI-Beta: codex-1` is a value that appears
+	// nowhere in any capture.
 	r.Header.Set("Authorization", "Bearer "+token)
-	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Accept", "*/*")
 	r.Header.Set("Accept-Encoding", "identity")
-	r.Header.Set("User-Agent", browserUA)
-	r.Header.Set("Originator", codexDesktopOriginator)
-	r.Header.Set("OpenAI-Beta", codexDesktopOpenAIBeta)
-	r.Header.Set("Oai-Language", codexDesktopLanguage)
-	r.Header.Set("Sec-Fetch-Site", "none")
-	r.Header.Set("Sec-Fetch-Mode", "no-cors")
-	r.Header.Set("Sec-Fetch-Dest", "empty")
-	r.Header.Set("Priority", "u=4, i")
+	r.Header.Set("User-Agent", mimicry.CodexUsageUserAgent(accountID))
 	if accountID != "" {
 		r.Header.Set("Chatgpt-Account-Id", accountID)
 	}

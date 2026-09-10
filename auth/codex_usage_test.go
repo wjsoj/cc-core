@@ -3,6 +3,8 @@ package auth
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/wjsoj/cc-core/mimicry"
 )
 
 // TestCodexUsageDecodeRateLimitReachedTypeShapes pins the fix for the
@@ -31,5 +33,22 @@ func TestCodexUsageDecodeRateLimitReachedTypeShapes(t *testing.T) {
 				t.Fatalf("plan_type not decoded: %q", info.PlanType)
 			}
 		})
+	}
+}
+
+// The quota probe must present the SAME client as everything else that
+// credential does.
+//
+// It used to pin the codex-tui constant, so a deployment whose default is
+// Codex Desktop probed its own quota as a second client — one
+// chatgpt-account-id appearing as two clients, on a probe that runs on a timer
+// for every credential. That is the join applyCodexRefreshGrantHeaders refuses
+// to hand over on the token endpoint, given away for free here.
+func TestQuotaProbePresentsTheSameClientAsEverythingElse(t *testing.T) {
+	for _, accountID := range []string{"", "acct-a", "acct-b", "acct-c"} {
+		want := mimicry.CodexProfileFor(accountID).UserAgent
+		if got := mimicry.CodexUsageUserAgent(accountID); got != want {
+			t.Errorf("account %q: probe UA = %q, want the credential's own %q", accountID, got, want)
+		}
 	}
 }
