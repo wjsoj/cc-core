@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -146,4 +147,80 @@ func (w syncWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.buf.Write(p)
+}
+
+// The real assertion, run without blocking: keepalives write bytes and commit
+// the headers, but leave WroteAny false so the caller can still roll back.
+func TestKeepaliveBytesCommitHeadersButNotContent(t *testing.T) {
+	var buf bytes.Buffer
+	first := true
+	res := Relay(&buf, nil, RelayOptions{
+		KeepaliveIdle:      10 * time.Millisecond,
+		KeepalivePayload:   []byte(":\n\n"),
+		PreOutputKeepalive: true,
+		Next: func() ([]byte, bool, error) {
+			if first {
+				first = false
+				time.Sleep(60 * time.Millisecond) // let the keepalive fire
+				return nil, false, nil
+			}
+			return nil, false, io.EOF
+		},
+	})
+
+	if res.Bytes == 0 {
+		t.Fatal("no keepalive was written; the connection would have looked hung")
+	}
+	if !res.HeadersSent {
+		t.Error("HeadersSent is false after bytes went out; the caller would try to set a status it no longer owns")
+	}
+	if res.WroteAny {
+		t.Error("a keepalive set WroteAny — the caller would think content reached the client and refuse to fail over")
+	}
+	// Several may have fired; every one of them must be a bare SSE comment and
+	// nothing else, or something the client would try to parse has leaked out.
+	got := buf.String()
+	if n := strings.Count(got, ":\n\n"); n == 0 || strings.ReplaceAll(got, ":\n\n", "") != "" {
+		t.Errorf("wrote %q, want only SSE comment keepalives", got)
+	}
+}
+
+// Default off: a caller that has not opted in keeps the completely write-free
+// window it was written against.
+func TestKeepaliveStaysOffBeforeTheFirstByteByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	first := true
+	res := Relay(&buf, nil, RelayOptions{
+		KeepaliveIdle:    10 * time.Millisecond,
+		KeepalivePayload: []byte(":\n\n"),
+		Next: func() ([]byte, bool, error) {
+			if first {
+				first = false
+				time.Sleep(60 * time.Millisecond)
+				return nil, false, nil
+			}
+			return nil, false, io.EOF
+		},
+	})
+	if res.Bytes != 0 || res.HeadersSent {
+		t.Fatalf("wrote %d bytes before any content with PreOutputKeepalive off: %q", res.Bytes, buf.String())
+	}
+}
+
+// Real content still sets both.
+func TestContentSetsBothFlags(t *testing.T) {
+	var buf bytes.Buffer
+	first := true
+	res := Relay(&buf, nil, RelayOptions{
+		Next: func() ([]byte, bool, error) {
+			if first {
+				first = false
+				return []byte("data: hi\n\n"), false, nil
+			}
+			return nil, false, io.EOF
+		},
+	})
+	if !res.WroteAny || !res.HeadersSent {
+		t.Fatalf("content left WroteAny=%v HeadersSent=%v", res.WroteAny, res.HeadersSent)
+	}
 }

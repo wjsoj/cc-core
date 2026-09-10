@@ -11,8 +11,14 @@ import (
 // transparent retry (nothing reached the client yet — WroteAny is false) and a
 // logged give-up (bytes already committed downstream — uninterruptible).
 type RelayResult struct {
-	SawTerminal bool  // a terminal event was observed (Next reported terminal=true)
-	WroteAny    bool  // at least one byte was committed downstream
+	SawTerminal bool // a terminal event was observed (Next reported terminal=true)
+	// WroteAny reports whether any CONTENT reached the client — the question a
+	// failover decision turns on. Keepalive bytes do not set it.
+	WroteAny bool
+	// HeadersSent reports whether ANY byte went out, keepalive included, so the
+	// HTTP status and headers are no longer the caller's to choose. With
+	// PreOutputKeepalive on, a late failure must be surfaced in band.
+	HeadersSent bool
 	Bytes       int64 // bytes written downstream (diagnostics)
 	Err         error // underlying read error when the stream broke early; nil on clean terminal
 }
@@ -46,6 +52,26 @@ type RelayOptions struct {
 	// KeepalivePayload is the raw bytes emitted as a keepalive (e.g. an SSE
 	// comment ":\n\n" or a synthetic ping event). Required when KeepaliveIdle>0.
 	KeepalivePayload []byte
+
+	// PreOutputKeepalive starts the keepalive BEFORE the first real byte.
+	//
+	// Off by default, and the default is the conservative one: a caller that
+	// buffers a preamble to keep a failover available gets a completely
+	// write-free window, so a rollback is invisible to the client and the HTTP
+	// status is still ours to choose.
+	//
+	// The cost of that window is silence, and under an upstream capacity storm
+	// the silence is long. Measured against production: a bare direct call is
+	// told "server_is_overloaded" 1.9 seconds in and can back off on its own,
+	// while the same turn through a failing-over proxy leaves the socket silent
+	// for tens of seconds — indistinguishable, from the client's side, from a
+	// hang. Turning this on trades the HTTP status for a live connection: the
+	// caller must surface a late failure as an in-band error instead.
+	//
+	// Failover itself is NOT foreclosed. Keepalive bytes do not set WroteAny —
+	// only real content does — so "has anything the client can use gone out?"
+	// still answers correctly.
+	PreOutputKeepalive bool
 }
 
 // Relay copies a stream to w (flushing via flush after each write, if non-nil),
@@ -61,7 +87,13 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
 	committed := false
 	lastWrite := time.Now()
 
-	write := func(b []byte) {
+	// Two different questions, kept apart:
+	//   committed  — have any bytes (keepalive included) gone out, so the HTTP
+	//                status and headers are no longer ours to choose?
+	//   WroteAny   — has any CONTENT gone out, so a failover would be visible?
+	// They were one flag while the keepalive could not run before the first real
+	// byte. PreOutputKeepalive separates them.
+	write := func(b []byte, isContent bool) {
 		mu.Lock()
 		defer mu.Unlock()
 		if !committed {
@@ -69,6 +101,9 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
 				opt.Commit()
 			}
 			committed = true
+			res.HeadersSent = true
+		}
+		if isContent {
 			res.WroteAny = true
 		}
 		n, _ := w.Write(b)
@@ -94,12 +129,10 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
 				case <-t.C:
 					mu.Lock()
 					idle := time.Since(lastWrite)
-					active := committed
+					active := committed || opt.PreOutputKeepalive
 					mu.Unlock()
-					// Only after the first real byte: the pre-first-byte window
-					// must stay write-free so the caller can still fail over.
 					if active && idle >= opt.KeepaliveIdle {
-						write(opt.KeepalivePayload)
+						write(opt.KeepalivePayload, false)
 					}
 				}
 			}
@@ -113,7 +146,7 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
 	for {
 		out, terminal, err := opt.Next()
 		if len(out) > 0 {
-			write(out)
+			write(out, true)
 		}
 		if terminal {
 			res.SawTerminal = true
