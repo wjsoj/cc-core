@@ -97,23 +97,8 @@ type session struct {
 	sessionID   string // client per-window slot id; "" = one slot per token
 	provider    string // canonical provider id; sessions are scoped per-provider
 	authID      string // empty = never assigned
-	// homeAuthID is the credential this conversation BELONGS to, as opposed to
-	// the one currently serving it.
-	//
-	// The two diverge exactly when a turn is forced off its credential by an
-	// exclusion — the caller tried it this request and it refused. That refusal
-	// is about the moment, not about the conversation, and rewriting the home
-	// on the strength of it hands the whole conversation to an account whose
-	// prompt cache has never seen it. Production: during a capacity storm the
-	// cache hit rate fell from 89.1% to 64.4% and the uncached prefill per turn
-	// rose from 9k to 25k tokens, which is a bigger, more expensive request
-	// arriving at a backend that is already refusing the expensive ones.
-	//
-	// Empty = never assigned, or the home was genuinely lost (unhealthy, gone,
-	// group-disallowed) rather than merely stepped around.
-	homeAuthID string
-	kind       Kind
-	lastSeen   time.Time
+	kind        Kind
+	lastSeen    time.Time
 }
 
 // slotKey builds the per-slot sessions-map key. A non-empty sessionID makes
@@ -389,7 +374,6 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 		// an unusable memory costs nothing but a map lookup.
 		if e, hit := p.affinity[sessionKey]; hit && now.Before(e.exp) {
 			s.authID, s.kind = e.authID, KindOAuth
-			s.homeAuthID = e.authID
 		}
 		p.sessions[sessionKey] = s
 	}
@@ -401,28 +385,6 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 	// group-scoped OAuth is available to upgrade to. Without that upgrade
 	// check a group client stays pinned to public for the whole active
 	// window even if its own credentials regain capacity.
-	// homeLost records that this slot's home became unusable — unhealthy, gone,
-	// or group-disallowed — rather than merely being excluded for one request.
-	// Only the first kind may move the home.
-	homeLost := false
-
-	// A slot serving on something other than its home returns to the home as
-	// soon as the home is available again — which, on the turn after a
-	// spillover, is immediately: the exclusion list belongs to ONE request, and
-	// the next request arrives with an empty one.
-	//
-	// Gating this on the current credential also being excluded was the first
-	// attempt, and it never fired: on a clean turn nothing is excluded, so the
-	// conversation stayed wherever the last refusal had pushed it. The tests
-	// caught it.
-	//
-	// Costs a map lookup when the home is unusable, because the sticky branch
-	// below re-validates it — health, group, model, capacity — exactly as it
-	// does a live pick.
-	if !opts.APIKeyOnly && s.homeAuthID != "" && s.homeAuthID != s.authID && !excluded[s.homeAuthID] {
-		s.authID, s.kind = s.homeAuthID, KindOAuth
-	}
-
 	if !opts.APIKeyOnly && s.authID != "" && s.kind == KindOAuth && !excluded[s.authID] {
 		if a := p.findOAuthLocked(s.authID); a != nil && allowed(a.Group) && NormalizeProvider(a.Provider) == provider && p.oauthUsableLocked(a, now, clientModel) {
 			// Upgrade sticky pick to the client's own group when one becomes
@@ -451,26 +413,17 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 				s.authID = ""
 			}
 		} else if s.authID != "" {
-			// Previous OAuth is unhealthy/gone/group-disallowed; reassign. This
-			// is the case where the home really is lost, as opposed to merely
-			// stepped around for one request, so the next pick inherits it.
-			if s.authID == s.homeAuthID {
-				homeLost = true
-			}
+			// Previous OAuth is unhealthy/gone/group-disallowed; reassign.
 			s.authID = ""
 		}
 	} else if opts.APIKeyOnly {
 		// A local request-preparation failure must not bounce through more OAuth
 		// credentials: the failure is about the request/identity binding, not an
 		// upstream credential. Clear stickiness and proceed to API keys only.
-		// The home is untouched: this request is not going to OAuth at all, and
-		// the conversation still belongs where it belonged.
 		s.authID = ""
 	} else if excluded[s.authID] {
 		// Sticky pick was just tried and failed — release it so the next
-		// pickOAuthLocked is free to pick anything else. The HOME is kept: this
-		// is a spillover for one request, and the next turn comes back to the
-		// account that holds this conversation's cache.
+		// pickOAuthLocked is free to pick anything else.
 		s.authID = ""
 	}
 
@@ -494,14 +447,7 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 				s.authID = chosen.ID
 				s.kind = KindOAuth
 				s.lastSeen = now
-				// The home moves only when there is no home to keep. A slot
-				// that still has one is spilling over for this request, and
-				// rewriting it here — together with the affinity memory — is
-				// what turned one capacity refusal into a permanent migration.
-				if s.homeAuthID == "" || homeLost {
-					s.homeAuthID = chosen.ID
-					p.rememberAffinityLocked(sessionKey, chosen.ID, now)
-				}
+				p.rememberAffinityLocked(sessionKey, chosen.ID, now)
 				p.mu.Unlock()
 				if err := chosen.EnsureFresh(ctx, 5*time.Minute, p.useUTLS); err != nil {
 					log.Warnf("auth: ensure-fresh %s failed, excluding: %v", chosen.ID, err)
