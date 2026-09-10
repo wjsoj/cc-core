@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -345,5 +346,50 @@ func TestStallStaysArmedUntilDisarmed(t *testing.T) {
 
 	if _, err := io.ReadAll(s); !errors.Is(err, ErrStalled) {
 		t.Fatalf("read error = %v, want ErrStalled", err)
+	}
+}
+
+// A WebSocket frame has no line discipline, so nothing stops the backend from
+// sending pretty-printed JSON — and it does, for its error frames. Rendered
+// verbatim after "data: " those bytes are not SSE at all: the continuation
+// lines carry no "data:" prefix, so a line-oriented reader downstream sees a
+// payload of "{" and then garbage.
+//
+// In the proxy that defeated every classifier at once. "{" has no type, so the
+// frame was not content-free, was not an error worth failing over, and became
+// the first bytes written downstream — committing the response and turning a
+// retryable upstream error into a truncated stream the user had to see.
+func TestPrettyPrintedFrameStaysOnOneDataLine(t *testing.T) {
+	pretty := "{\n  \"type\": \"error\",\n  \"error\": {\n    \"code\": \"server_is_overloaded\"\n  }\n}"
+	got := string(appendSSEEvent(nil, "error", []byte(pretty)))
+
+	want := `event: error` + "\n" +
+		`data: {"type":"error","error":{"code":"server_is_overloaded"}}` + "\n\n"
+	if got != want {
+		t.Fatalf("frame did not flatten onto one data line:\n got %q\nwant %q", got, want)
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(got, "\n\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "event: ") && !strings.HasPrefix(line, "data: ") {
+			t.Fatalf("line %q carries neither an event: nor a data: prefix", line)
+		}
+	}
+}
+
+// A payload that is not JSON still must not break the framing.
+func TestNonJSONFrameLosesOnlyItsNewlines(t *testing.T) {
+	got := string(appendSSEEvent(nil, "", []byte("not json\nsecond line")))
+	if got != "data: not json second line\n\n" {
+		t.Fatalf("non-JSON payload broke the framing: %q", got)
+	}
+}
+
+// The common case must not pay for the fix.
+func TestSingleLineFrameIsUnchanged(t *testing.T) {
+	got := string(appendSSEEvent(nil, "response.completed", []byte(`{"type":"response.completed"}`)))
+	if got != "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n" {
+		t.Fatalf("single-line frame was rewritten: %q", got)
 	}
 }

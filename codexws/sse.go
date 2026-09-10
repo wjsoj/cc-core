@@ -1,6 +1,7 @@
 package codexws
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -319,6 +320,21 @@ func (s *SSEStream) DisarmStall() {
 // whenever the frame declares a type, because the HTTP backend emits one and
 // downstream Codex clients read it; a frame with no type degrades to a bare
 // data line rather than inventing an event name.
+//
+// The payload is flattened onto ONE data line first. A WebSocket frame carries
+// no line discipline, so nothing stops the backend from sending pretty-printed
+// JSON — and it does, for its error frames. Splatting that after "data: "
+// produces bytes that are not SSE at all: the continuation lines carry no
+// "data:" prefix, so every line-oriented reader downstream sees a data payload
+// of "{" followed by garbage.
+//
+// That is not a cosmetic problem. In the proxy it defeated every classifier at
+// once: "{" does not parse, so the frame had no type, was not recognised as
+// content-free, was not recognised as an error worth failing over, and instead
+// became the first bytes written downstream — committing the response and
+// turning an upstream error that another credential could have served into a
+// truncated stream the user had to see. It ran at 25-40% of turns for a whole
+// afternoon while three separate fixes went looking for it upstream of here.
 func appendSSEEvent(dst []byte, typ string, payload []byte) []byte {
 	if typ != "" {
 		dst = append(dst, "event: "...)
@@ -326,7 +342,31 @@ func appendSSEEvent(dst []byte, typ string, payload []byte) []byte {
 		dst = append(dst, '\n')
 	}
 	dst = append(dst, "data: "...)
-	dst = append(dst, payload...)
+	dst = appendOneLine(dst, payload)
 	dst = append(dst, '\n', '\n')
+	return dst
+}
+
+// appendOneLine appends payload with its line structure removed.
+//
+// JSON is re-encoded compactly, which is exactly right: whitespace between
+// tokens carries no meaning, and every reader on the other side expects the
+// one-line form the HTTP transport sends. A payload that is not JSON keeps its
+// bytes and only loses its newlines, because the alternative — dropping it, or
+// letting it break the framing — is worse than a run-on line.
+func appendOneLine(dst, payload []byte) []byte {
+	if bytes.IndexByte(payload, '\n') < 0 && bytes.IndexByte(payload, '\r') < 0 {
+		return append(dst, payload...)
+	}
+	var buf bytes.Buffer
+	if json.Compact(&buf, payload) == nil {
+		return append(dst, buf.Bytes()...)
+	}
+	for _, b := range payload {
+		if b == '\n' || b == '\r' {
+			b = ' '
+		}
+		dst = append(dst, b)
+	}
 	return dst
 }
