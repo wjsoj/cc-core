@@ -318,7 +318,7 @@ func TestDisarmStallLeavesOnlyTheReadTimeout(t *testing.T) {
 		StallTimeout: 20 * time.Millisecond,
 		ContentFree:  contentFreeForTest,
 	})
-	s.DisarmStall()
+	s.RelaxStall(0)
 
 	_, err := io.ReadAll(s)
 	if errors.Is(err, ErrStalled) {
@@ -391,5 +391,51 @@ func TestSingleLineFrameIsUnchanged(t *testing.T) {
 	got := string(appendSSEEvent(nil, "response.completed", []byte(`{"type":"response.completed"}`)))
 	if got != "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n" {
 		t.Fatalf("single-line frame was rewritten: %q", got)
+	}
+}
+
+// A committed turn that upstream parks must still end.
+//
+// Retiring the budget outright at commit was the wrong lesson from the
+// truncation story, and cost a second afternoon. ReadTimeout bounds the gap
+// between FRAMES, not between content-bearing ones, and a parked turn is not
+// silent — the backend heartbeats `keepalive` about every 30s, which resets
+// that deadline forever. Production ran one such turn for 669 seconds: first
+// byte at 4.2s, nothing after it, and the client gave up before the proxy did.
+func TestRelaxedStallStillEndsAParkedTurn(t *testing.T) {
+	// Heartbeats every 20ms keep ReadTimeout (200ms) alive indefinitely; only
+	// the relaxed content-idle budget (80ms) can end this turn.
+	conn := &heartbeatConn{gap: 20 * time.Millisecond}
+	s := NewSSEStream(conn, SSEStreamOptions{
+		ReadTimeout:  200 * time.Millisecond,
+		StallTimeout: 20 * time.Millisecond,
+		ContentFree:  contentFreeForTest,
+	})
+	s.RelaxStall(80 * time.Millisecond)
+
+	start := time.Now()
+	_, err := io.ReadAll(s)
+	if !errors.Is(err, ErrStalled) {
+		t.Fatalf("a parked committed turn ran without a bound: err = %v", err)
+	}
+	if el := time.Since(start); el < 60*time.Millisecond {
+		t.Fatalf("the relaxed budget fired after %v, want at least the 80ms it was widened to", el)
+	}
+}
+
+// Widening must actually widen: the original budget must no longer cut the turn.
+func TestRelaxStallWidensRatherThanKeepsTheOldBudget(t *testing.T) {
+	conn := &heartbeatConn{gap: 20 * time.Millisecond}
+	s := NewSSEStream(conn, SSEStreamOptions{
+		ReadTimeout:  500 * time.Millisecond,
+		StallTimeout: 30 * time.Millisecond,
+		ContentFree:  contentFreeForTest,
+	})
+	s.RelaxStall(250 * time.Millisecond)
+
+	start := time.Now()
+	_, _ = io.ReadAll(s)
+	if el := time.Since(start); el < 200*time.Millisecond {
+		t.Fatalf("turn ended after %v — the 30ms budget was still in force", el)
 	}
 }

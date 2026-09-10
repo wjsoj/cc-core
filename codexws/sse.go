@@ -298,22 +298,37 @@ func (s *SSEStream) noteStallProgressLocked(data []byte) error {
 	return nil
 }
 
-// DisarmStall retires the stall budget for the rest of this turn.
+// RelaxStall widens the stall budget to d for the rest of the turn, or retires
+// it entirely when d <= 0.
 //
 // The budget exists to turn a parked turn into a failover, and a failover is
 // only available while nothing has reached the client. Once the caller has
-// committed the response the budget can no longer buy anything: aborting the
+// committed the response a 120s budget can no longer buy anything: aborting the
 // read converts a turn that was merely slow into a truncated stream the user
-// has to see, which is strictly worse than waiting for the backend to schedule
-// it. Production made the point in one afternoon — 141 of 326 truncated
+// has to see. Production made the point in one afternoon — 141 of 326 truncated
 // streams were a committed response cut at the budget.
 //
+// Retiring it OUTRIGHT was the wrong lesson, and cost a second afternoon.
+// ReadTimeout bounds the gap between frames, not between content-bearing ones,
+// and a parked turn is not silent: the backend heartbeats `keepalive` roughly
+// every 30s, which resets that deadline forever. A committed turn that upstream
+// then parked therefore had NO bound at all — production showed one running 669
+// seconds before the client gave up, first byte at 4.2s and nothing after it.
+//
+// So: widen, do not retire. Long enough that a slow model is never cut, short
+// enough that a parked one does not outlive the user's patience.
+//
 // Callers commit lazily, so the call site is the moment the first byte is
-// written downstream. After this only ReadTimeout bounds the turn.
-func (s *SSEStream) DisarmStall() {
+// written downstream.
+func (s *SSEStream) RelaxStall(d time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.stallAt = time.Time{}
+	if d <= 0 {
+		s.stallAt = time.Time{}
+		return
+	}
+	s.opt.StallTimeout = d
+	s.stallAt = time.Now().Add(d)
 }
 
 // appendSSEEvent renders one frame as an SSE event. The event line is emitted
