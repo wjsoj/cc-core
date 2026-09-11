@@ -47,8 +47,45 @@ type CodexSubscriptionInfo struct {
 	// LastActive is accounts/check → accounts[<id>].last_active_subscription.
 	LastActive *CodexLastActiveSubscription `json:"last_active_subscription,omitempty"`
 
+	// PaymentMethods is what pays for this subscription, from
+	// /backend-api/payments/payment_methods.
+	//
+	// Useful to an operator for one blunt reason: a fleet of subscriptions
+	// often shares a handful of cards, so one expiring or failing card takes
+	// several accounts down together, and nothing else in this view shows that
+	// grouping. Never carries a full number — Stripe returns only the brand,
+	// last four digits and expiry, which is exactly enough to tell two cards
+	// apart and not enough to use one.
+	PaymentMethods []CodexPaymentMethod `json:"payment_methods,omitempty"`
+
 	// Updated is when we last successfully fetched this view.
 	Updated time.Time `json:"updated"`
+}
+
+// CodexPaymentMethod is one card (or other instrument) on the billing account.
+type CodexPaymentMethod struct {
+	ID   string `json:"id"`
+	Type string `json:"type"` // "card", and whatever else the account carries
+	// Brand / Last4 / ExpMonth / ExpYear are empty for a non-card instrument.
+	Brand    string `json:"brand,omitempty"`
+	Last4    string `json:"last4,omitempty"`
+	ExpMonth int    `json:"exp_month,omitempty"`
+	ExpYear  int    `json:"exp_year,omitempty"`
+	// Default marks the instrument the next renewal will be charged to, when
+	// the payload says which.
+	Default bool `json:"default,omitempty"`
+}
+
+// Expired reports whether the card's own expiry has passed. A renewal charged
+// to an expired card is the most common way a healthy-looking subscription
+// turns delinquent.
+func (m CodexPaymentMethod) Expired(now time.Time) bool {
+	if m.ExpYear == 0 || m.ExpMonth == 0 {
+		return false
+	}
+	// A card is valid through the END of its expiry month.
+	end := time.Date(m.ExpYear, time.Month(m.ExpMonth), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+	return !now.UTC().Before(end)
 }
 
 // CodexSubscriptionPortal mirrors GET /backend-api/subscriptions?account_id=.
@@ -175,6 +212,12 @@ type CodexLastActiveSubscription struct {
 const (
 	codexSubscriptionsURL = "https://chatgpt.com/backend-api/subscriptions"
 	codexAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
+	// codexPaymentMethodsURL is the only place the card behind a subscription
+	// is visible. The invoice list looks like the obvious source and is not:
+	// its `charge` and `payment_intent` are bare Stripe ids and its
+	// `default_payment_method` is null, so an operator chasing "which card
+	// pays for this account" through /invoices finds nothing.
+	codexPaymentMethodsURL = "https://chatgpt.com/backend-api/payments/payment_methods"
 )
 
 // FetchCodexSubscription queries both billing endpoints and stores the merged
@@ -249,6 +292,14 @@ func (a *Auth) FetchCodexSubscription(ctx context.Context, useUTLS bool) (*Codex
 	if info.Portal == nil && checkAccountID != "" && checkAccountID != accountID {
 		if p, err := fetchCodexPortal(ctx, client, token, checkAccountID); err == nil {
 			info.Portal = p
+		}
+	}
+
+	// Best-effort: a card lookup that fails must not lose the plan state, which
+	// is what the rest of the proxy actually schedules on.
+	if accountID != "" {
+		if pms, err := fetchCodexPaymentMethods(ctx, client, token, accountID); err == nil {
+			info.PaymentMethods = pms
 		}
 	}
 
@@ -575,4 +626,50 @@ func (s *CodexSubscriptionInfo) AtRisk() (atRisk bool, reason string, deadline t
 		return false, "", time.Time{}
 	}
 	return true, "will_not_renew", deadline
+}
+
+// fetchCodexPaymentMethods reads the cards on the billing account.
+//
+// The payload is {"payment_methods":[{id,type,card:{brand,last4,exp_month,
+// exp_year}}]}; the card block is absent for a non-card instrument, which is
+// why the fields are flattened here rather than kept nested — a caller asking
+// "which card" wants one shape, not two.
+func fetchCodexPaymentMethods(ctx context.Context, client *http.Client, token, accountID string) ([]CodexPaymentMethod, error) {
+	body, err := codexBillingGET(ctx, client, token, accountID,
+		codexPaymentMethodsURL+"?account_id="+url.QueryEscape(accountID))
+	if err != nil {
+		return nil, err
+	}
+	var payload struct {
+		PaymentMethods []struct {
+			ID        string `json:"id"`
+			Type      string `json:"type"`
+			IsDefault *bool  `json:"is_default"`
+			Default   *bool  `json:"default"`
+			Card      *struct {
+				Brand    string `json:"brand"`
+				Last4    string `json:"last4"`
+				ExpMonth int    `json:"exp_month"`
+				ExpYear  int    `json:"exp_year"`
+			} `json:"card"`
+		} `json:"payment_methods"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("payment_methods decode: %w", err)
+	}
+	out := make([]CodexPaymentMethod, 0, len(payload.PaymentMethods))
+	for _, m := range payload.PaymentMethods {
+		pm := CodexPaymentMethod{ID: m.ID, Type: m.Type}
+		if m.IsDefault != nil {
+			pm.Default = *m.IsDefault
+		} else if m.Default != nil {
+			pm.Default = *m.Default
+		}
+		if m.Card != nil {
+			pm.Brand, pm.Last4 = m.Card.Brand, m.Card.Last4
+			pm.ExpMonth, pm.ExpYear = m.Card.ExpMonth, m.Card.ExpYear
+		}
+		out = append(out, pm)
+	}
+	return out, nil
 }

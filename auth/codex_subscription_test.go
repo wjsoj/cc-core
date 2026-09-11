@@ -408,3 +408,64 @@ func decodeAccountsCheckForTest(t *testing.T, body, accountID string) (
 	t.Helper()
 	return parseCodexAccountsCheck([]byte(body), accountID)
 }
+
+// The card payload is flattened, and the two shapes the field can take are
+// both handled: a card instrument and one that carries no card block.
+func TestPaymentMethodsFlattenTheCardBlock(t *testing.T) {
+	body := []byte(`{"payment_methods":[
+		{"id":"pm_1","type":"card","is_default":true,
+		 "card":{"exp_month":9,"exp_year":2030,"brand":"visa","last4":"7219"}},
+		{"id":"pm_2","type":"link"}
+	]}`)
+	var payload struct {
+		PaymentMethods []struct {
+			ID        string `json:"id"`
+			Type      string `json:"type"`
+			IsDefault *bool  `json:"is_default"`
+			Card      *struct {
+				Brand    string `json:"brand"`
+				Last4    string `json:"last4"`
+				ExpMonth int    `json:"exp_month"`
+				ExpYear  int    `json:"exp_year"`
+			} `json:"card"`
+		} `json:"payment_methods"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("the captured shape no longer decodes: %v", err)
+	}
+	if len(payload.PaymentMethods) != 2 {
+		t.Fatalf("got %d methods, want 2", len(payload.PaymentMethods))
+	}
+	if c := payload.PaymentMethods[0].Card; c == nil || c.Last4 != "7219" || c.Brand != "visa" {
+		t.Errorf("card block did not decode: %+v", c)
+	}
+	if payload.PaymentMethods[1].Card != nil {
+		t.Error("a non-card instrument must decode with no card block, not a zero one")
+	}
+}
+
+// A card is valid through the END of its expiry month — treating the 1st as
+// the cutoff would report every card as dead for the month it is still good.
+func TestCardExpiryIsEndOfMonth(t *testing.T) {
+	m := CodexPaymentMethod{ExpMonth: 9, ExpYear: 2026}
+	for _, tc := range []struct {
+		when string
+		want bool
+	}{
+		{"2026-09-01T00:00:00Z", false},
+		{"2026-09-30T23:59:59Z", false},
+		{"2026-10-01T00:00:00Z", true},
+		{"2027-01-01T00:00:00Z", true},
+	} {
+		at, err := time.Parse(time.RFC3339, tc.when)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := m.Expired(at); got != tc.want {
+			t.Errorf("09/2026 card at %s: expired=%v, want %v", tc.when, got, tc.want)
+		}
+	}
+	if (CodexPaymentMethod{}).Expired(time.Now()) {
+		t.Error("an instrument with no expiry must not read as expired")
+	}
+}
