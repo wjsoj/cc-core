@@ -224,3 +224,90 @@ func TestContentSetsBothFlags(t *testing.T) {
 		t.Fatalf("content left WroteAny=%v HeadersSent=%v", res.WroteAny, res.HeadersSent)
 	}
 }
+
+// The pre-output silence budget is its own number, and it has to be the one
+// that fires.
+//
+// After content has started a keepalive stops an intermediary reaping an idle
+// socket, and ten seconds is generous. Before content has started it tells the
+// caller the request is alive, and the bar there is what the caller would have
+// seen talking to the vendor directly — `response.created` at 1.7-2.7 seconds.
+// Sharing one field meant the first sign of life came at ten seconds, over
+// exactly the window where most turns finish thinking, so in production the
+// feature never fired at all.
+func TestPreOutputKeepaliveUsesItsOwnBudget(t *testing.T) {
+	var buf bytes.Buffer
+	first := true
+	res := Relay(&buf, nil, RelayOptions{
+		KeepaliveIdle:          10 * time.Second, // would never fire in this test
+		PreOutputKeepaliveIdle: 20 * time.Millisecond,
+		KeepalivePayload:       []byte(":\n\n"),
+		PreOutputKeepalive:     true,
+		Next: func() ([]byte, bool, error) {
+			if first {
+				first = false
+				time.Sleep(120 * time.Millisecond)
+				return nil, false, nil
+			}
+			return nil, false, io.EOF
+		},
+	})
+
+	if res.Bytes == 0 {
+		t.Fatal("no keepalive fired: the pre-output budget was ignored and the socket stayed silent")
+	}
+	if res.WroteAny {
+		t.Error("a keepalive still set WroteAny")
+	}
+}
+
+// Unset falls back to KeepaliveIdle, so a caller that opts into the pre-output
+// keepalive without naming a budget keeps the old cadence rather than getting
+// a zero-length one.
+func TestPreOutputBudgetFallsBackToTheMainOne(t *testing.T) {
+	var buf bytes.Buffer
+	first := true
+	res := Relay(&buf, nil, RelayOptions{
+		KeepaliveIdle:      20 * time.Millisecond,
+		KeepalivePayload:   []byte(":\n\n"),
+		PreOutputKeepalive: true,
+		Next: func() ([]byte, bool, error) {
+			if first {
+				first = false
+				time.Sleep(120 * time.Millisecond)
+				return nil, false, nil
+			}
+			return nil, false, io.EOF
+		},
+	})
+	if res.Bytes == 0 {
+		t.Fatal("no keepalive fired with the budget left to fall back")
+	}
+}
+
+// Once content has started the POST-commit budget takes over, so a fast
+// pre-output cadence does not turn into a flood mid-stream.
+func TestPostCommitBudgetTakesOverAfterContent(t *testing.T) {
+	var buf bytes.Buffer
+	step := 0
+	Relay(&buf, nil, RelayOptions{
+		KeepaliveIdle:          10 * time.Second,
+		PreOutputKeepaliveIdle: 10 * time.Millisecond,
+		KeepalivePayload:       []byte(":\n\n"),
+		PreOutputKeepalive:     true,
+		Next: func() ([]byte, bool, error) {
+			step++
+			switch step {
+			case 1:
+				return []byte("data: hi\n\n"), false, nil
+			case 2:
+				time.Sleep(120 * time.Millisecond) // long gap AFTER content
+				return nil, false, nil
+			}
+			return nil, false, io.EOF
+		},
+	})
+	if n := strings.Count(buf.String(), ":\n\n"); n != 0 {
+		t.Fatalf("%d keepalive(s) fired after content on a 10s post-commit budget", n)
+	}
+}

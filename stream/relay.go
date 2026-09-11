@@ -72,6 +72,20 @@ type RelayOptions struct {
 	// only real content does — so "has anything the client can use gone out?"
 	// still answers correctly.
 	PreOutputKeepalive bool
+
+	// PreOutputKeepaliveIdle is the silence budget BEFORE the first content
+	// byte. Zero falls back to KeepaliveIdle. Ignored unless
+	// PreOutputKeepalive is set.
+	//
+	// It wants a different number from the post-commit one, which is why it is
+	// a different field. After content has started, a keepalive exists to stop
+	// an intermediary reaping an idle socket, and ten seconds is generous for
+	// that. Before content has started it exists to tell the caller the request
+	// is alive — and the bar there is set by what the caller would have seen
+	// talking to the vendor directly, which is `response.created` at 1.7-2.7
+	// seconds. A ten-second first sign of life is indistinguishable from a hang
+	// over exactly the window where most turns finish thinking.
+	PreOutputKeepaliveIdle time.Duration
 }
 
 // Relay copies a stream to w (flushing via flush after each write, if non-nil),
@@ -115,12 +129,23 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
 	}
 
 	if opt.KeepaliveIdle > 0 && len(opt.KeepalivePayload) > 0 {
+		preIdle := opt.PreOutputKeepaliveIdle
+		if preIdle <= 0 {
+			preIdle = opt.KeepaliveIdle
+		}
+		tick := opt.KeepaliveIdle / 5
+		if opt.PreOutputKeepalive && preIdle/5 < tick {
+			tick = preIdle / 5
+		}
+		if tick <= 0 {
+			tick = time.Millisecond
+		}
 		done := make(chan struct{})
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			t := time.NewTicker(opt.KeepaliveIdle / 5)
+			t := time.NewTicker(tick)
 			defer t.Stop()
 			for {
 				select {
@@ -129,9 +154,14 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
 				case <-t.C:
 					mu.Lock()
 					idle := time.Since(lastWrite)
+					started := res.WroteAny
 					active := committed || opt.PreOutputKeepalive
 					mu.Unlock()
-					if active && idle >= opt.KeepaliveIdle {
+					budget := opt.KeepaliveIdle
+					if !started && opt.PreOutputKeepalive {
+						budget = preIdle
+					}
+					if active && idle >= budget {
 						write(opt.KeepalivePayload, false)
 					}
 				}
