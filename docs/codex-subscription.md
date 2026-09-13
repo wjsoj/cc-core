@@ -192,9 +192,23 @@ CLI never touches.
   emits `…+00:00`. Both are RFC3339 and both parse into `time.Time`, but a
   hand-rolled `strings.HasSuffix(s, "Z")` check would break on one of them.
 - **Unix seconds vs RFC3339 in the same feature.** `grace_period_end_timestamp`
-  and `became_delinquent_timestamp` are unix seconds (`*int64`), while every
-  other time here is an RFC3339 string. That asymmetry is upstream's, kept
-  verbatim rather than normalised so the structs stay a mirror of the JSON.
+  and `became_delinquent_timestamp` are unix seconds, while every other time
+  here is an RFC3339 string. That asymmetry is upstream's, kept verbatim rather
+  than normalised so the structs stay a mirror of the JSON.
+- **…and the two delinquency timestamps are not reliably numbers.** Both
+  captures above come from a *healthy* account, where they are `null` — so the
+  numeric typing was never exercised against a live value. The first delinquent
+  account probed in production answered with them **quoted**, and a decode error
+  fails the whole fetch, so one field nothing schedules on blanked the entire
+  billing view (plan, term, card) on both endpoints at once:
+  `cannot unmarshal string into Go struct field
+  CodexSubscriptionPortal.became_delinquent_timestamp of type int64`. They are
+  now `*CodexUnixTime`, which accepts a number, a quoted number (fractional
+  seconds included) and an RFC3339 string, treats `""` like `null`, and still
+  errors on anything else — tolerance, not silence. It marshals back out as a
+  bare number, which is what the admin SPA reads. If you add another
+  `*_timestamp` field here, use this type: a shape that only appears on an
+  unhealthy account cannot be confirmed from a healthy capture.
 - **`accounts/check` returns the same account twice** — once under its id and
   once under `"default"`. Harmless for personal accounts; for a token that can
   see several accounts (personal + team) the selection order matters, or the

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -240,7 +241,7 @@ func TestCodexSubscriptionAtRisk(t *testing.T) {
 		t.Error("renewing account must not be at risk")
 	}
 
-	grace := int64(1788517337)
+	grace := CodexUnixTime(1788517337)
 	delinquent := &CodexSubscriptionInfo{
 		Portal: &CodexSubscriptionPortal{
 			ActiveUntil: end, WillRenew: true,
@@ -251,7 +252,7 @@ func TestCodexSubscriptionAtRisk(t *testing.T) {
 	if !risk || reason != "delinquent" {
 		t.Errorf("delinquent: risk=%v reason=%q", risk, reason)
 	}
-	if !deadline.Equal(time.Unix(grace, 0)) {
+	if !deadline.Equal(time.Unix(int64(grace), 0)) {
 		t.Errorf("deadline should be grace-period end, got %v", deadline)
 	}
 
@@ -468,4 +469,114 @@ func TestCardExpiryIsEndOfMonth(t *testing.T) {
 	if (CodexPaymentMethod{}).Expired(time.Now()) {
 		t.Error("an instrument with no expiry must not read as expired")
 	}
+}
+
+// TestCodexDelinquentTimestampShapes pins the decode of the two delinquency
+// timestamps against every shape chatgpt.com has been seen to send.
+//
+// Regression: both captures in this file come from a healthy account, where
+// these fields are null, so *int64 was never exercised against a live value.
+// A delinquent account answered with them quoted, and since a decode error
+// fails the whole fetch, the portal AND accounts/check both died on it —
+// leaving the billing view blank for precisely the accounts it exists to
+// warn about ("cannot unmarshal string into Go struct field
+// CodexSubscriptionPortal.became_delinquent_timestamp of type int64").
+func TestCodexDelinquentTimestampShapes(t *testing.T) {
+	const want = int64(1788517337)
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want *int64
+	}{
+		{"null", `null`, nil},
+		{"number", `1788517337`, &[]int64{want}[0]},
+		{"float", `1788517337.581586`, &[]int64{want}[0]},
+		{"quoted number", `"1788517337"`, &[]int64{want}[0]},
+		{"quoted float", `"1788517337.581586"`, &[]int64{want}[0]},
+		{"rfc3339 Z", `"2026-09-04T10:22:17Z"`, &[]int64{want}[0]},
+		{"rfc3339 offset", `"2026-09-04T10:22:17+00:00"`, &[]int64{want}[0]},
+		{"rfc3339 micros", `"2026-09-04T10:22:17.581586Z"`, &[]int64{want}[0]},
+		{"empty string", `""`, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"id":"sub-0000","plan_type":"pro","is_delinquent":true,` +
+				`"became_delinquent_timestamp":` + tc.raw +
+				`,"grace_period_end_timestamp":` + tc.raw + `}`
+
+			var p CodexSubscriptionPortal
+			if err := json.Unmarshal([]byte(body), &p); err != nil {
+				t.Fatalf("portal decode: %v", err)
+			}
+			// The rest of the payload must survive: the whole point is that a
+			// surprising timestamp cannot cost us the plan and the term.
+			if p.PlanType != "pro" || !p.IsDelinquent {
+				t.Fatalf("payload lost: plan=%q delinquent=%v", p.PlanType, p.IsDelinquent)
+			}
+			for field, got := range map[string]*CodexUnixTime{
+				"became_delinquent_timestamp": p.BecameDelinquentTimestamp,
+				"grace_period_end_timestamp":  p.GracePeriodEndTimestamp,
+			} {
+				switch {
+				case tc.want == nil && got != nil && *got != 0:
+					t.Errorf("%s = %d, want unset", field, *got)
+				case tc.want != nil && (got == nil || int64(*got) != *tc.want):
+					t.Errorf("%s = %s, want %d", field, showUnix(got), *tc.want)
+				}
+			}
+
+			var e CodexEntitlement
+			if err := json.Unmarshal([]byte(body), &e); err != nil {
+				t.Fatalf("entitlement decode: %v", err)
+			}
+
+			// And the deadline AtRisk reports has to come out the same
+			// regardless of which shape carried it.
+			if tc.want != nil {
+				info := &CodexSubscriptionInfo{Portal: &p}
+				risk, reason, deadline := info.AtRisk()
+				if !risk || reason != "delinquent" {
+					t.Fatalf("AtRisk = %v/%q", risk, reason)
+				}
+				if !deadline.Equal(time.Unix(*tc.want, 0)) {
+					t.Errorf("deadline = %v, want %v", deadline, time.Unix(*tc.want, 0))
+				}
+			}
+		})
+	}
+}
+
+// TestCodexUnixTimeRejectsGarbage keeps the tolerance from becoming silence:
+// a shape nobody anticipated must still surface as an error rather than
+// decoding to the epoch.
+func TestCodexUnixTimeRejectsGarbage(t *testing.T) {
+	var p CodexSubscriptionPortal
+	err := json.Unmarshal([]byte(`{"grace_period_end_timestamp":"next tuesday"}`), &p)
+	if err == nil {
+		t.Fatal("an unparseable timestamp must not decode silently")
+	}
+	if !strings.Contains(err.Error(), "next tuesday") {
+		t.Errorf("error should name the offending value, got %v", err)
+	}
+}
+
+// TestCodexUnixTimeMarshalsAsSeconds guards the admin SPA, which reads
+// grace_period_end_timestamp as a number of seconds and multiplies by 1000.
+func TestCodexUnixTimeMarshalsAsSeconds(t *testing.T) {
+	g := CodexUnixTime(1788517337)
+	b, err := json.Marshal(&CodexSubscriptionPortal{GracePeriodEndTimestamp: &g})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"grace_period_end_timestamp":1788517337`) {
+		t.Errorf("grace period must stay a bare number, got %s", b)
+	}
+}
+
+// showUnix renders a *CodexUnixTime for a failure message; %v on the pointer
+// prints an address, which says nothing about what decoded.
+func showUnix(t *CodexUnixTime) string {
+	if t == nil {
+		return "<unset>"
+	}
+	return strconv.FormatInt(int64(*t), 10)
 }

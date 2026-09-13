@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -88,6 +89,95 @@ func (m CodexPaymentMethod) Expired(now time.Time) bool {
 	return !now.UTC().Before(end)
 }
 
+// CodexUnixTime is a unix-seconds timestamp on a chatgpt.com billing payload,
+// decoded from whatever shape the backend happens to send for it.
+//
+// The delinquency timestamps are typed as numbers everywhere they were
+// captured — but every capture was taken from a *healthy* account, where both
+// of them are `null`, so the numeric typing was never actually exercised
+// against a live value. The first delinquent account to be probed answered
+// with them QUOTED, which a plain *int64 rejects:
+//
+//	json: cannot unmarshal string into Go struct field
+//	CodexSubscriptionPortal.became_delinquent_timestamp of type int64
+//
+// and because a decode error fails the whole request, one cosmetic field
+// nobody schedules on took down the entire billing view — plan, term, card —
+// for exactly the accounts the view exists to warn about. Hence: accept a
+// number, a quoted number (fractional seconds included) and an RFC3339
+// string, and treat "" like null. Anything else still errors, so a genuinely
+// new shape is loud rather than silently zero.
+type CodexUnixTime int64
+
+// Time converts to a time.Time; the zero value converts to the zero Time
+// rather than to 1970.
+func (t CodexUnixTime) Time() time.Time {
+	if t == 0 {
+		return time.Time{}
+	}
+	return time.Unix(int64(t), 0)
+}
+
+// codexTimeLayouts are the string forms observed on (or plausible for) these
+// endpoints. accounts/check writes offsets as "+00:00" while /subscriptions
+// writes "Z", and both are RFC3339, so one layout covers them; the bare-date
+// and space-separated forms are cheap insurance.
+var codexTimeLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02 15:04:05.999999999Z07:00",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02",
+}
+
+func (t *CodexUnixTime) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	// A `null` field never reaches here (encoding/json nils the pointer
+	// instead), but a null inside a non-pointer field would.
+	if s == "" || s == "null" {
+		return nil
+	}
+	if s[0] == '"' {
+		var str string
+		if err := json.Unmarshal(b, &str); err != nil {
+			return err
+		}
+		str = strings.TrimSpace(str)
+		if str == "" {
+			return nil
+		}
+		if secs, ok := parseUnixSeconds(str); ok {
+			*t = CodexUnixTime(secs)
+			return nil
+		}
+		for _, layout := range codexTimeLayouts {
+			if ts, err := time.Parse(layout, str); err == nil {
+				*t = CodexUnixTime(ts.Unix())
+				return nil
+			}
+		}
+		return fmt.Errorf("unrecognised timestamp %q", str)
+	}
+	secs, ok := parseUnixSeconds(s)
+	if !ok {
+		return fmt.Errorf("unrecognised timestamp %s", s)
+	}
+	*t = CodexUnixTime(secs)
+	return nil
+}
+
+// parseUnixSeconds accepts "1788517337" and "1788517337.581586" alike —
+// Stripe-derived numbers reach this API in both forms.
+func parseUnixSeconds(s string) (int64, bool) {
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return n, true
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return int64(f), true
+	}
+	return 0, false
+}
+
 // CodexSubscriptionPortal mirrors GET /backend-api/subscriptions?account_id=.
 //
 // Timestamps here are RFC3339 strings, unlike the unix seconds wham/usage
@@ -114,9 +204,9 @@ type CodexSubscriptionPortal struct {
 	// until GracePeriodEndTimestamp, then loses entitlement. This is the
 	// earliest warning a proxy gets that a credential is about to die for
 	// billing reasons rather than quota reasons.
-	IsDelinquent              bool   `json:"is_delinquent"`
-	BecameDelinquentTimestamp *int64 `json:"became_delinquent_timestamp,omitempty"`
-	GracePeriodEndTimestamp   *int64 `json:"grace_period_end_timestamp,omitempty"`
+	IsDelinquent              bool           `json:"is_delinquent"`
+	BecameDelinquentTimestamp *CodexUnixTime `json:"became_delinquent_timestamp,omitempty"`
+	GracePeriodEndTimestamp   *CodexUnixTime `json:"grace_period_end_timestamp,omitempty"`
 
 	IsProcessorStripe bool `json:"is_processor_stripe"`
 
@@ -156,9 +246,9 @@ type CodexEntitlement struct {
 	// Trial shape is uncaptured (null on every account seen so far).
 	Trial json.RawMessage `json:"trial,omitempty"`
 
-	IsDelinquent              bool   `json:"is_delinquent"`
-	BecameDelinquentTimestamp *int64 `json:"became_delinquent_timestamp,omitempty"`
-	GracePeriodEndTimestamp   *int64 `json:"grace_period_end_timestamp,omitempty"`
+	IsDelinquent              bool           `json:"is_delinquent"`
+	BecameDelinquentTimestamp *CodexUnixTime `json:"became_delinquent_timestamp,omitempty"`
+	GracePeriodEndTimestamp   *CodexUnixTime `json:"grace_period_end_timestamp,omitempty"`
 }
 
 // CodexDiscount is one entry of entitlement.applied_discounts[].
@@ -593,14 +683,14 @@ func (s *CodexSubscriptionInfo) AtRisk() (atRisk bool, reason string, deadline t
 	delinquent := (s.Portal != nil && s.Portal.IsDelinquent) ||
 		(s.Entitlement != nil && s.Entitlement.IsDelinquent)
 	if delinquent {
-		var grace *int64
+		var grace *CodexUnixTime
 		if s.Portal != nil && s.Portal.GracePeriodEndTimestamp != nil {
 			grace = s.Portal.GracePeriodEndTimestamp
 		} else if s.Entitlement != nil && s.Entitlement.GracePeriodEndTimestamp != nil {
 			grace = s.Entitlement.GracePeriodEndTimestamp
 		}
 		if grace != nil && *grace > 0 {
-			return true, "delinquent", time.Unix(*grace, 0)
+			return true, "delinquent", grace.Time()
 		}
 		return true, "delinquent", s.ExpiresAt()
 	}
