@@ -4,18 +4,16 @@ package checkout
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"golang.org/x/net/proxy"
+	"github.com/wjsoj/cc-core/auth"
 )
 
 // Client has one immutable egress path for its entire lifetime. Neither proxy
@@ -27,41 +25,56 @@ type Client struct{ http *http.Client }
 // failures never fall back to direct connections.
 // socks5 and socks5h BOTH resolve upstream hostnames at the proxy. The proxy
 // hostname itself, if not an IP literal, must be resolved locally.
+//
+// The validation below is stricter than auth.ValidateProxyURL (which also
+// accepts http/https proxies and is more permissive on shape) — this is the
+// security boundary for a visitor-supplied proxy URL on a public endpoint,
+// and it stays exactly as it always has. Only the transport built AFTER
+// validation passes changed — see newHTTPClient.
 func NewClient(proxyURL string) (*Client, error) {
 	proxyURL = strings.TrimSpace(proxyURL)
-	if proxyURL == "" {
-		return newHTTPClient((&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext), nil
-	}
-	u, err := url.Parse(proxyURL)
-	if err != nil || u == nil || (u.Scheme != "socks5" && u.Scheme != "socks5h") || u.Hostname() == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
-		return nil, errors.New("必须配置 socks5://[用户名:密码@]主机:端口")
-	}
-	port, err := strconv.Atoi(u.Port())
-	if err != nil || port < 1 || port > 65535 {
-		return nil, errors.New("SOCKS5 端口无效")
-	}
-	var auth *proxy.Auth
-	if u.User != nil {
-		password, _ := u.User.Password()
-		if len(u.User.Username()) == 0 || len(u.User.Username()) > 255 || len(password) > 255 {
-			return nil, errors.New("SOCKS5 凭据格式无效")
+	if proxyURL != "" {
+		u, err := url.Parse(proxyURL)
+		if err != nil || u == nil || (u.Scheme != "socks5" && u.Scheme != "socks5h") || u.Hostname() == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+			return nil, errors.New("必须配置 socks5://[用户名:密码@]主机:端口")
 		}
-		auth = &proxy.Auth{User: u.User.Username(), Password: password}
+		port, err := strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return nil, errors.New("SOCKS5 端口无效")
+		}
+		if u.User != nil {
+			password, _ := u.User.Password()
+			if len(u.User.Username()) == 0 || len(u.User.Username()) > 255 || len(password) > 255 {
+				return nil, errors.New("SOCKS5 凭据格式无效")
+			}
+		}
 	}
-	d, err := proxy.SOCKS5("tcp", u.Host, auth, &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second})
-	if err != nil {
-		return nil, errors.New("SOCKS5 配置无效")
-	}
-	cd, ok := d.(proxy.ContextDialer)
-	if !ok {
-		return nil, errors.New("SOCKS5 不支持取消请求")
-	}
-	return newHTTPClient(cd.DialContext), nil
+	return newHTTPClient(proxyURL), nil
 }
 
-func newHTTPClient(dial func(context.Context, string, string) (net.Conn, error)) *Client {
-	tr := &http.Transport{Proxy: nil, DialContext: dial, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 45 * time.Second, IdleConnTimeout: 30 * time.Second, MaxConnsPerHost: 8, MaxIdleConns: 8, ForceAttemptHTTP2: true}
-	return &Client{http: &http.Client{Transport: tr, Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+// newHTTPClient uses auth.NewPlainHTTPClient(proxyURL, true) instead of a
+// bespoke crypto/tls transport. chatgpt.com sits behind Cloudflare, which
+// JA3/JA4-fingerprints the TLS ClientHello — a plain Go crypto/tls handshake
+// gets 403'd even when every HTTP header on the request claims to be Chrome
+// (see auth.NewPlainHTTPClient's own doc comment, which names this exact
+// failure). Confirmed against chatgpt.com in production on 2026-09-15: both
+// the subscription probe (headers already Chrome-shaped, via cc-core/auth)
+// and Create() (this package's own request()) got an HTML Cloudflare
+// challenge page instead of a JSON response, from the same plain-TLS root
+// cause, before this changed.
+//
+// NewPlainHTTPClient — not the pooled, cached ClientFor — matches how this
+// Client is actually used: checkout.NewClient is already called fresh per
+// gptpay request and torn down at the end of it (Service.client / Close),
+// so there is no cross-request connection here to pool in the first place.
+// Pooled reuse is also documented as the cause of "connection reset by
+// peer" against chatgpt.com/backend-api specifically (ClientFor's own doc
+// comment), which this sidesteps by construction.
+func newHTTPClient(proxyURL string) *Client {
+	c := auth.NewPlainHTTPClient(proxyURL, true)
+	c.Timeout = 60 * time.Second
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &Client{http: c}
 }
 
 func (c *Client) Close() { c.http.CloseIdleConnections() }
