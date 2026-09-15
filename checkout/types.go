@@ -109,6 +109,8 @@ type Auth struct {
 	Token     string
 	UserID    string
 	AccountID string
+	// Optional browser timezone for read-only subscription lookup; not identity.
+	TimezoneOffsetMinutes int
 }
 
 func ParseAuth(raw string) (Auth, error) {

@@ -3,6 +3,9 @@ package checkout
 import (
 	"context"
 	"errors"
+	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/wjsoj/cc-core/auth"
 )
@@ -27,5 +30,22 @@ func (c *Client) Subscription(ctx context.Context, a Auth) (*auth.CodexSubscript
 	if !validToken(a.Token) {
 		return nil, errors.New("登录态无效")
 	}
-	return auth.FetchCodexSubscriptionWithClient(ctx, c.http, a.Token, a.AccountID)
+	info, err := auth.FetchCodexSubscriptionWithClient(ctx, c.http, a.Token, a.AccountID,
+		auth.SubscriptionBrowserContext{TimezoneOffsetMinutes: a.TimezoneOffsetMinutes})
+	if err != nil {
+		// The shared admin probe includes upstream snippets and transport errors.
+		// They can contain HTML, endpoint URLs and proxy credentials; never send
+		// those verbatim through GPTPay's public API.
+		codes := subscriptionHTTPStatus.FindAllString(err.Error(), -1)
+		if len(codes) > 0 {
+			return nil, fmt.Errorf("订阅查询被上游拒绝（%s）；未获取到账单数据", strings.Join(codes, ", "))
+		}
+		if ctx.Err() != nil {
+			return nil, errors.New("订阅查询超时或已取消；未获取到账单数据")
+		}
+		return nil, errors.New("订阅查询网络或响应解析失败；未获取到账单数据")
+	}
+	return info, nil
 }
+
+var subscriptionHTTPStatus = regexp.MustCompile(`HTTP [1-5][0-9]{2}`)

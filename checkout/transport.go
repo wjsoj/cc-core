@@ -53,15 +53,10 @@ func NewClient(proxyURL string) (*Client, error) {
 }
 
 // newHTTPClient uses auth.NewPlainHTTPClient(proxyURL, true) instead of a
-// bespoke crypto/tls transport. chatgpt.com sits behind Cloudflare, which
-// JA3/JA4-fingerprints the TLS ClientHello — a plain Go crypto/tls handshake
-// gets 403'd even when every HTTP header on the request claims to be Chrome
-// (see auth.NewPlainHTTPClient's own doc comment, which names this exact
-// failure). Confirmed against chatgpt.com in production on 2026-09-15: both
-// the subscription probe (headers already Chrome-shaped, via cc-core/auth)
-// and Create() (this package's own request()) got an HTML Cloudflare
-// challenge page instead of a JSON response, from the same plain-TLS root
-// cause, before this changed.
+// bespoke crypto/tls transport. Earlier requests returned 403 HTML, but this
+// alone does not establish the cause or prove that changing TLS fixes it.
+// Browser verification, authorization and payment eligibility remain upstream
+// decisions. This client neither solves challenges nor retries around them.
 //
 // NewPlainHTTPClient — not the pooled, cached ClientFor — matches how this
 // Client is actually used: checkout.NewClient is already called fresh per
@@ -96,6 +91,10 @@ func (c *Client) request(ctx context.Context, token, target string, body io.Read
 	// Prevent automatic replay of financial POSTs even if a transport supports it.
 	req.GetBody = nil
 	req.Header.Set("User-Agent", "GPTPay/1.0")
+	req.Header.Set("Accept", "application/json")
+	// The shared transport does not guarantee automatic decompression. Request
+	// identity rather than advertising browser encodings we cannot decode.
+	req.Header.Set("Accept-Encoding", "identity")
 	if token != "" && u.Host == "chatgpt.com" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -106,17 +105,21 @@ func (c *Client) request(ctx context.Context, token, target string, body io.Read
 		}
 		req.Header.Set("Content-Type", ct)
 	}
+	operation := paymentOperation(u.Host, u.Path)
 	res, err := c.http.Do(req)
 	if err != nil {
-		return errors.New("所选网络请求失败；如已提交付款，只能查询结果，勿重复支付")
+		return &UpstreamError{Operation: operation, Kind: "network"}
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return errors.New("支付上游拒绝请求 (HTTP " + strconv.Itoa(res.StatusCode) + ")；未确认支付成功")
+		return paymentFailure(operation, res.StatusCode, res.Header)
+	}
+	if res.Header.Get("Cf-Mitigated") == "challenge" {
+		return paymentFailure(operation, res.StatusCode, res.Header)
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 2*1024*1024+1))
 	if err != nil || len(raw) > 2*1024*1024 || json.Unmarshal(raw, out) != nil {
-		return errors.New("支付上游响应无效；未确认支付成功")
+		return &UpstreamError{Operation: operation, Kind: "invalid_response", Status: res.StatusCode}
 	}
 	return nil
 }

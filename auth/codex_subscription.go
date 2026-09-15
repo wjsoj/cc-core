@@ -332,9 +332,14 @@ var (
 //
 // Partial success is a success — see FetchCodexSubscription's doc comment,
 // which this shares in full.
-func FetchCodexSubscriptionWithClient(ctx context.Context, client *http.Client, token, accountID string) (*CodexSubscriptionInfo, error) {
+func FetchCodexSubscriptionWithClient(ctx context.Context, client *http.Client, token, accountID string, browser ...SubscriptionBrowserContext) (*CodexSubscriptionInfo, error) {
 	if token == "" {
 		return nil, fmt.Errorf("empty access token")
+	}
+	var err error
+	ctx, err = subscriptionBrowserContext(ctx, browser)
+	if err != nil {
+		return nil, err
 	}
 
 	info := &CodexSubscriptionInfo{}
@@ -368,7 +373,7 @@ func FetchCodexSubscriptionWithClient(ctx context.Context, client *http.Client, 
 
 	// Best-effort: a card lookup that fails must not lose the plan state, which
 	// is what the rest of the proxy actually schedules on.
-	if accountID != "" {
+	if accountID != "" && len(browser) == 0 {
 		if pms, err := fetchCodexPaymentMethods(ctx, client, token, accountID); err == nil {
 			info.PaymentMethods = pms
 		}
@@ -579,6 +584,9 @@ func codexBillingGET(ctx context.Context, client *http.Client, token, accountID,
 		r.Header.Set("Referer", "https://chatgpt.com/")
 		if accountID != "" {
 			r.Header.Set("Chatgpt-Account-Id", accountID)
+		}
+		if browser, ok := ctx.Value(subscriptionBrowserKey{}).(SubscriptionBrowserContext); ok {
+			applySubscriptionBrowserHeaders(r, browser)
 		}
 		return r, nil
 	}
