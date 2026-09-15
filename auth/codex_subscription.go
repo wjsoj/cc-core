@@ -299,7 +299,10 @@ type CodexLastActiveSubscription struct {
 
 // ChatGPT web-portal billing endpoints. Pinned alongside codexWhamUsageURL
 // for the same reason: every upstream shape this package speaks is pinned.
-const (
+//
+// var, not const, solely so tests can point them at an httptest server —
+// nothing in production ever reassigns them.
+var (
 	codexSubscriptionsURL = "https://chatgpt.com/backend-api/subscriptions"
 	codexAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
 	// codexPaymentMethodsURL is the only place the card behind a subscription
@@ -309,6 +312,71 @@ const (
 	// pays for this account" through /invoices finds nothing.
 	codexPaymentMethodsURL = "https://chatgpt.com/backend-api/payments/payment_methods"
 )
+
+// FetchCodexSubscriptionWithClient does the actual two-endpoint probe and
+// merge, without any pooled-credential machinery: no refresh, no health
+// state, no storing the result anywhere. It exists so a caller holding a bare
+// access token — one that never goes through the credential pool at all,
+// such as a session a visitor pasted into a throwaway checkout form — can
+// still get the same billing view FetchCodexSubscription gives a stored
+// credential, through the exact same tested request shape (headers, retry
+// policy, the quoted-delinquency-timestamp decode quirk) rather than a
+// second, drifting implementation of it.
+//
+// client is caller-supplied rather than built from a stored ProxyURL via
+// ClientFor, deliberately: an ad-hoc caller may need to route through a
+// proxy of ITS OWN choosing and pinning (DNS-rebinding protection, public-IP
+// enforcement, whatever its own trust boundary requires) that has nothing to
+// do with this package's credential-file-configured proxies. Passing the
+// client keeps that boundary the caller's problem, not this function's.
+//
+// Partial success is a success — see FetchCodexSubscription's doc comment,
+// which this shares in full.
+func FetchCodexSubscriptionWithClient(ctx context.Context, client *http.Client, token, accountID string) (*CodexSubscriptionInfo, error) {
+	if token == "" {
+		return nil, fmt.Errorf("empty access token")
+	}
+
+	info := &CodexSubscriptionInfo{}
+	var portalErr, checkErr error
+
+	// /subscriptions is account-scoped and returns an error envelope rather
+	// than a payload when account_id is missing, so skip it when we have no
+	// id instead of burning a request on a guaranteed failure.
+	if accountID != "" {
+		info.Portal, portalErr = fetchCodexPortal(ctx, client, token, accountID)
+	} else {
+		portalErr = fmt.Errorf("subscriptions: credential carries no chatgpt account id")
+	}
+
+	var checkAccountID string
+	info.Entitlement, info.Account, info.LastActive, checkAccountID, checkErr =
+		fetchCodexAccountsCheck(ctx, client, token, accountID)
+
+	if portalErr != nil && checkErr != nil {
+		return nil, fmt.Errorf("codex subscription probe failed: subscriptions: %v; accounts/check: %w", portalErr, checkErr)
+	}
+
+	// A credential whose JWT predates an account switch can hold a stale or
+	// empty account id; accounts/check reports the real one. Retry the portal
+	// call once with it rather than returning a half-empty view.
+	if info.Portal == nil && checkAccountID != "" && checkAccountID != accountID {
+		if p, err := fetchCodexPortal(ctx, client, token, checkAccountID); err == nil {
+			info.Portal = p
+		}
+	}
+
+	// Best-effort: a card lookup that fails must not lose the plan state, which
+	// is what the rest of the proxy actually schedules on.
+	if accountID != "" {
+		if pms, err := fetchCodexPaymentMethods(ctx, client, token, accountID); err == nil {
+			info.PaymentMethods = pms
+		}
+	}
+
+	info.Updated = time.Now()
+	return info, nil
+}
 
 // FetchCodexSubscription queries both billing endpoints and stores the merged
 // result on the Auth. Safe to call from any goroutine; refreshes the access
@@ -356,44 +424,10 @@ func (a *Auth) FetchCodexSubscription(ctx context.Context, useUTLS bool) (*Codex
 	// applies doubly here since this makes two requests in a row.
 	client := ClientFor(a.ProxyURL, useUTLS)
 
-	info := &CodexSubscriptionInfo{}
-	var portalErr, checkErr error
-
-	// /subscriptions is account-scoped and returns an error envelope rather
-	// than a payload when account_id is missing, so skip it when we have no
-	// id instead of burning a request on a guaranteed failure.
-	if accountID != "" {
-		info.Portal, portalErr = fetchCodexPortal(ctx, client, token, accountID)
-	} else {
-		portalErr = fmt.Errorf("subscriptions: credential carries no chatgpt account id")
+	info, err := FetchCodexSubscriptionWithClient(ctx, client, token, accountID)
+	if err != nil {
+		return nil, err
 	}
-
-	var checkAccountID string
-	info.Entitlement, info.Account, info.LastActive, checkAccountID, checkErr =
-		fetchCodexAccountsCheck(ctx, client, token, accountID)
-
-	if portalErr != nil && checkErr != nil {
-		return nil, fmt.Errorf("codex subscription probe failed: subscriptions: %v; accounts/check: %w", portalErr, checkErr)
-	}
-
-	// A credential whose JWT predates an account switch can hold a stale or
-	// empty account id; accounts/check reports the real one. Retry the portal
-	// call once with it rather than returning a half-empty view.
-	if info.Portal == nil && checkAccountID != "" && checkAccountID != accountID {
-		if p, err := fetchCodexPortal(ctx, client, token, checkAccountID); err == nil {
-			info.Portal = p
-		}
-	}
-
-	// Best-effort: a card lookup that fails must not lose the plan state, which
-	// is what the rest of the proxy actually schedules on.
-	if accountID != "" {
-		if pms, err := fetchCodexPaymentMethods(ctx, client, token, accountID); err == nil {
-			info.PaymentMethods = pms
-		}
-	}
-
-	info.Updated = time.Now()
 
 	a.mu.Lock()
 	a.CodexSubscription = info

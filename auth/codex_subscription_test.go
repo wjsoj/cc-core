@@ -315,6 +315,86 @@ func TestCodexSubscriptionAtRisk(t *testing.T) {
 	}
 }
 
+// TestFetchCodexSubscriptionWithClientMerges exercises the extracted
+// orchestration function (FetchCodexSubscriptionWithClient) against fake
+// /subscriptions and accounts/check endpoints, standing in for what used to
+// only be reachable through the pooled (*Auth).FetchCodexSubscription. This
+// is the entry point a bare access token — one that never touches the
+// credential pool, such as a session pasted into a throwaway checkout form —
+// actually calls.
+func TestFetchCodexSubscriptionWithClientMerges(t *testing.T) {
+	var gotAccountHeader string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/backend-api/subscriptions", func(w http.ResponseWriter, r *http.Request) {
+		gotAccountHeader = r.Header.Get("Chatgpt-Account-Id")
+		if r.URL.Query().Get("account_id") != "acct-0000" {
+			t.Errorf("subscriptions account_id = %q", r.URL.Query().Get("account_id"))
+		}
+		_, _ = w.Write([]byte(portalCapture))
+	})
+	mux.HandleFunc("/backend-api/accounts/check/v4-2023-04-27", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(accountsCheckCapture))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	restore := setCodexBillingURLsForTest(srv.URL)
+	defer restore()
+
+	info, err := FetchCodexSubscriptionWithClient(context.Background(), srv.Client(), "tok", "acct-0000")
+	if err != nil {
+		t.Fatalf("FetchCodexSubscriptionWithClient: %v", err)
+	}
+	if gotAccountHeader != "acct-0000" {
+		t.Errorf("Chatgpt-Account-Id header = %q", gotAccountHeader)
+	}
+	if info.Portal == nil || info.Portal.PlanType != "plus" {
+		t.Fatalf("portal not merged in: %+v", info.Portal)
+	}
+	if info.Entitlement == nil || !info.Entitlement.HasActiveSubscription {
+		t.Fatalf("entitlement not merged in: %+v", info.Entitlement)
+	}
+	if info.Account == nil || !info.Account.HasPreviouslyPaidSubscription {
+		t.Fatalf("account not merged in: %+v", info.Account)
+	}
+	if info.Updated.IsZero() {
+		t.Error("Updated must be stamped")
+	}
+
+	// Empty token is the one thing this entry point must reject itself,
+	// since it has no pooled credential to have validated it earlier.
+	if _, err := FetchCodexSubscriptionWithClient(context.Background(), srv.Client(), "", "acct-0000"); err == nil {
+		t.Fatal("empty token must be rejected")
+	}
+}
+
+// TestFetchCodexSubscriptionWithClientPartialFailure pins the "one endpoint
+// down is not a failure" contract for the extracted function specifically —
+// the merge behavior must survive having moved out of the pooled method.
+func TestFetchCodexSubscriptionWithClientPartialFailure(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/backend-api/subscriptions", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/backend-api/accounts/check/v4-2023-04-27", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(accountsCheckCapture))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	restore := setCodexBillingURLsForTest(srv.URL)
+	defer restore()
+
+	info, err := FetchCodexSubscriptionWithClient(context.Background(), srv.Client(), "tok", "acct-0000")
+	if err != nil {
+		t.Fatalf("one failing endpoint must not fail the whole probe: %v", err)
+	}
+	if info.Portal != nil {
+		t.Error("failed portal call must leave Portal nil, not a partial struct")
+	}
+	if info.Entitlement == nil {
+		t.Error("the endpoint that succeeded must still be reported")
+	}
+}
+
 // TestCodexBillingRequestIdentity pins the request identity of the billing
 // probes. Leaving User-Agent unset does not omit it — Go substitutes
 // "Go-http-client/…", which on an OAuth subscription account is the single
@@ -399,6 +479,17 @@ func TestCodexAccountsCheckSelectsPaidAccount(t *testing.T) {
 	if !ent.HasActiveSubscription {
 		t.Error("selected entitlement should be the active one")
 	}
+}
+
+// setCodexBillingURLsForTest points the two billing endpoint vars at an
+// httptest server for the duration of the test, restoring the real
+// chatgpt.com URLs on return. Table-driven so a third endpoint added later
+// only needs a line here, not a new helper.
+func setCodexBillingURLsForTest(base string) (restore func()) {
+	prevSub, prevCheck := codexSubscriptionsURL, codexAccountsCheckURL
+	codexSubscriptionsURL = base + "/backend-api/subscriptions"
+	codexAccountsCheckURL = base + "/backend-api/accounts/check/v4-2023-04-27"
+	return func() { codexSubscriptionsURL, codexAccountsCheckURL = prevSub, prevCheck }
 }
 
 // decodeAccountsCheckForTest exercises the real selection logic against a
