@@ -57,6 +57,17 @@ func TestJSONKeepaliveHeartbeatsThenDeliversValidJSON(t *testing.T) {
 	}
 }
 
+func TestJSONKeepaliveStartWritesABodyByteImmediately(t *testing.T) {
+	rec := httptest.NewRecorder()
+	k := NewJSONKeepalive(context.Background(), rec)
+	k.Interval = time.Hour
+	k.Start(nil)
+	if rec.Body.String() != " " || !rec.Flushed {
+		t.Fatalf("Start must write and flush one byte at once: %q flushed=%v", rec.Body.String(), rec.Flushed)
+	}
+	k.Stop()
+}
+
 func TestJSONKeepaliveUncommittedIsPlainReply(t *testing.T) {
 	rec := httptest.NewRecorder()
 	k := NewJSONKeepalive(context.Background(), rec)

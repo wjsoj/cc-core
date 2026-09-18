@@ -63,6 +63,10 @@ func (k *JSONKeepalive) Start(commit func()) {
 	}
 	k.w.Header().Set("Content-Type", "application/json")
 	k.w.WriteHeader(http.StatusOK)
+	// A body byte now, not just the status: a compressing proxy in front
+	// (Caddy's encode) holds the headers until the first body write, so a bare
+	// WriteHeader+Flush reaches nobody until the first tick.
+	_, _ = k.w.Write([]byte(" "))
 	k.flush()
 	k.stop, k.done = make(chan struct{}), make(chan struct{})
 	go k.run()
