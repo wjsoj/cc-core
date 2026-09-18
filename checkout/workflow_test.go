@@ -46,7 +46,7 @@ func (s *scenario) client() *Client {
 		case strings.HasSuffix(r.URL.Path, "/oaics_fixture"):
 			out = map[string]any{"status": "open", "payment_status": "unpaid", "plan_name": "chatgptplusplan", "publishable_key": "pk_live_fixture"}
 			if s.paid {
-				out = map[string]string{"status": "complete", "payment_status": "paid"}
+				out = map[string]any{"status": "complete", "payment_status": "paid", "plan_name": "chatgptplusplan", "amount_total": 2000, "currency": "usd", "metadata": map[string]string{"user_ref": "user_fixture", "account_id": "acct_fixture"}}
 			}
 		case strings.HasSuffix(r.URL.Path, "/taxes"):
 			s.taxes++

@@ -96,23 +96,16 @@ func (c *Client) Quote(ctx context.Context, a Auth, s Session, sel Selection, b 
 
 // Ledger persists only a pre-confirm guard. An exclusive, fsynced file survives
 // restarts and coordinates multiple processes. Ambiguous attempts never retry.
-type Ledger struct{ dir string }
+type Ledger struct {
+	dir     string
+	network *networkBinding
+}
 
 // Owns permits read-only recovery after a server/browser restart using the same
 // access token. A refreshed token requires official account recovery instead.
 func (l *Ledger) Owns(a Auth, s Session) bool {
-	if s.Validate() != nil {
-		return false
-	}
-	sum := sha256.Sum256([]byte(s.Entity + ":" + s.ID))
-	b, err := os.ReadFile(filepath.Join(l.dir, hex.EncodeToString(sum[:])+".json"))
-	if err != nil {
-		return false
-	}
-	var record struct {
-		Owner string `json:"owner"`
-	}
-	return json.Unmarshal(b, &record) == nil && record.Owner == Owner(a)
+	_, err := l.readAttempt(a, s)
+	return err == nil
 }
 
 func NewLedger(dir string) (*Ledger, error) {
@@ -128,6 +121,24 @@ func NewLedger(dir string) (*Ledger, error) {
 	}
 	return &Ledger{dir: dir}, nil
 }
+
+// BeginAttempt durably reserves a single confirmation attempt before a browser
+// or other executor performs a financial action. It shares the protocol Pay
+// guard, including across processes and restarts. A failure never authorizes a
+// click; an existing/partially written guard must not be deleted to retry.
+// Callers must first revalidate the displayed quote with the authenticated
+// upstream. This method validates structure and binding, not upstream truth.
+func (l *Ledger) BeginAttempt(a Auth, q Quote) error {
+	if l == nil || !validToken(a.Token) || q.Session.Validate() != nil || q.Selection.Validate() != nil ||
+		q.Billing.Validate(q.Selection.Country) != nil || q.Amount <= 0 || q.Amount > 999999999 ||
+		!time.Now().Before(q.Expires) || q.UserID == "" ||
+		a.UserID != "" && a.UserID != q.UserID || a.AccountID != "" && a.AccountID != q.AccountID ||
+		!regexp.MustCompile(`^pk_live_[A-Za-z0-9]+$`).MatchString(q.Key) {
+		return errors.New("缺少有效报价、账号或持久化防重付记录")
+	}
+	return l.claim(a, q)
+}
+
 func (l *Ledger) claim(a Auth, q Quote) error {
 	sum := sha256.Sum256([]byte(q.Session.Entity + ":" + q.Session.ID))
 	name := filepath.Join(l.dir, hex.EncodeToString(sum[:])+".json")
@@ -135,7 +146,10 @@ func (l *Ledger) claim(a Auth, q Quote) error {
 	if err != nil {
 		return errors.New("已有付款确认记录或无法写入记录；只可查询状态，不可重复付款")
 	}
-	data := map[string]any{"session": q.Session, "owner": Owner(a), "amount_minor": q.Amount, "currency": q.Selection.Currency, "plan": q.Selection.Plan, "phase": "confirm_started"}
+	data := map[string]any{"session": q.Session, "owner": Owner(a), "amount_minor": q.Amount, "currency": q.Selection.Currency, "plan": q.Selection.Plan, "phase": "confirm_started", "user_id": q.UserID, "account_id": q.AccountID}
+	if l.network != nil {
+		data["network"] = l.network
+	}
 	err = json.NewEncoder(f).Encode(data)
 	if err == nil {
 		err = f.Sync()
@@ -156,8 +170,10 @@ func (l *Ledger) claim(a Auth, q Quote) error {
 }
 
 type PaymentResult struct {
-	State string `json:"state"`
-	Paid  bool   `json:"paid"`
+	State     string `json:"state"`
+	Paid      bool   `json:"paid"`
+	ErrorCode string `json:"error_code,omitempty"`
+	Message   string `json:"message,omitempty"`
 }
 
 // Pay requires the exact, previously displayed quote. Never call it again after
@@ -227,29 +243,25 @@ func (c *Client) Pay(ctx context.Context, a Auth, q Quote, card Card, ledger *Le
 	if err != nil || ret.Scheme != "https" || ret.Host != "chatgpt.com" || ret.Path != "/checkout/verify" || ret.User != nil || ret.Fragment != "" {
 		return out, errors.New("付款回跳地址无效；仅查询状态")
 	}
-	var intent struct {
-		Status string `json:"status"`
-	}
+	var intent PaymentIntent
 	err = c.stripe(ctx, "payment_intents/"+strings.Split(confirm.Secret, "_secret_")[0]+"/confirm", url.Values{"return_url": {confirm.Return}, "confirmation_token": {token.ID}, "key": {q.Key}, "client_secret": {confirm.Secret}, "_stripe_version": {"2025-03-31.basil"}}, &intent)
 	if err != nil {
 		return out, err
 	}
+	out = intent.Result()
 	switch intent.Status {
 	case "requires_action", "requires_payment_method", "canceled":
-		out.State = intent.Status
 		return out, nil
 	case "succeeded", "processing":
-		out.State = "processing"
 	default:
 		return out, errors.New("支付结果未知；仅查询状态")
 	}
-	status, err := c.Status(ctx, a, q.Session)
+	result, err := c.Reconcile(ctx, a, q.Session, ledger)
 	if err != nil {
 		return out, err
 	}
-	if status.Paid() {
-		out.State = "paid"
-		out.Paid = true
+	if result.Paid {
+		return result, nil
 	}
 	return out, nil
 }

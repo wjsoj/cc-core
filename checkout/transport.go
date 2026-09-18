@@ -20,6 +20,21 @@ import (
 // environment variables nor NO_PROXY are consulted.
 type Client struct{ http *http.Client }
 
+// NewClientWithTransport allows a trusted in-process execution adapter (for
+// example an isolated browser) to reuse the quote and status validation logic.
+// The adapter is responsible for its own egress policy and credential isolation.
+// Do not construct transports from untrusted visitor input. All destination,
+// response-size, redirect and no-replay checks in Client still apply.
+func NewClientWithTransport(transport http.RoundTripper) (*Client, error) {
+	if transport == nil {
+		return nil, errors.New("缺少结账执行适配器")
+	}
+	return &Client{http: &http.Client{
+		Transport: transport, Timeout: 60 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}, nil
+}
+
 // NewClient uses direct connections when proxyURL is empty, otherwise the
 // specified SOCKS5 endpoint exclusively (optionally user:password). Proxy
 // failures never fall back to direct connections.
