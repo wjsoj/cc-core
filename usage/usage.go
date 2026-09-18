@@ -100,6 +100,15 @@ type Counts struct {
 	// must also be non-zero for the split rate to apply. Left at zero, this
 	// is pure observability.
 	CacheCreate1hTokens int64 `json:"cache_create_1h_tokens,omitempty"`
+
+	// ImageGen* are the tokens an OpenAI Responses turn spent in its
+	// image_generation built-in, reported apart from `usage` under
+	// `response.tool_usage.image_gen`. They are an independent axis — NOT part
+	// of InputTokens/OutputTokens — billed at the image model's card
+	// (pricing.ImageGenPrice), never the turn's chat model.
+	ImageGenTextInputTokens  int64 `json:"image_gen_text_input_tokens,omitempty"`
+	ImageGenImageInputTokens int64 `json:"image_gen_image_input_tokens,omitempty"`
+	ImageGenOutputTokens     int64 `json:"image_gen_output_tokens,omitempty"`
 }
 
 func (c *Counts) Add(o Counts) {
@@ -108,8 +117,16 @@ func (c *Counts) Add(o Counts) {
 	c.CacheCreateTokens += o.CacheCreateTokens
 	c.CacheCreate1hTokens += o.CacheCreate1hTokens
 	c.CacheReadTokens += o.CacheReadTokens
+	c.ImageGenTextInputTokens += o.ImageGenTextInputTokens
+	c.ImageGenImageInputTokens += o.ImageGenImageInputTokens
+	c.ImageGenOutputTokens += o.ImageGenOutputTokens
 	c.Requests += o.Requests
 	c.Errors += o.Errors
+}
+
+// HasImageGen reports whether any image_generation usage was observed.
+func (c Counts) HasImageGen() bool {
+	return c.ImageGenTextInputTokens > 0 || c.ImageGenImageInputTokens > 0 || c.ImageGenOutputTokens > 0
 }
 
 // CacheCreate5hTokens returns the 5-minute-TTL portion of the cache writes —

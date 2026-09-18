@@ -38,8 +38,13 @@ func ResponsesToChatCompletion(response []byte, model string, created int64) ([]
 
 	var text, reasoning strings.Builder
 	toolCalls := make([]map[string]any, 0, 2)
+	var images []any
 	for _, item := range resp.Output {
 		switch item.Type {
+		case "image_generation_call":
+			if img := chatImagePart(item.Result, item.OutputFormat); img != nil {
+				images = append(images, img)
+			}
 		case "message":
 			for _, part := range item.Content {
 				switch part.Type {
@@ -78,6 +83,9 @@ func ResponsesToChatCompletion(response []byte, model string, created int64) ([]
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
 	}
+	if len(images) > 0 {
+		message["images"] = images
+	}
 	incompleteReason := ""
 	if resp.IncompleteDetails != nil {
 		incompleteReason = resp.IncompleteDetails.Reason
@@ -108,13 +116,34 @@ type responsesOutputItem struct {
 	Name      string `json:"name"`
 	CallID    string `json:"call_id"`
 	Arguments string `json:"arguments"`
-	Content   []struct {
+	// image_generation_call: base64 image and its encoding.
+	Result       string `json:"result"`
+	OutputFormat string `json:"output_format"`
+	Content      []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
 	Summary []struct {
 		Text string `json:"text"`
 	} `json:"summary"`
+}
+
+// chatImagePart renders a generated image the way Chat Completions relays
+// carry one (the OpenRouter convention CLIProxyAPI also emits): an image_url
+// part holding a data URI. Chat has no native image output, so without this a
+// chat client asking for an image received an empty message and nothing else.
+func chatImagePart(b64, format string) map[string]any {
+	if b64 == "" {
+		return nil
+	}
+	mime := "image/png"
+	switch strings.ToLower(format) {
+	case "jpeg", "jpg":
+		mime = "image/jpeg"
+	case "webp":
+		mime = "image/webp"
+	}
+	return map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:" + mime + ";base64," + b64}}
 }
 
 // finishReason maps a Responses terminal status onto the Chat Completions
@@ -251,11 +280,13 @@ func (st *StreamState) Translate(payload []byte) (frames [][]byte, terminal bool
 		ItemID      string `json:"item_id"`
 		OutputIndex *int   `json:"output_index"`
 		Item        struct {
-			ID        string `json:"id"`
-			Type      string `json:"type"`
-			Name      string `json:"name"`
-			CallID    string `json:"call_id"`
-			Arguments string `json:"arguments"`
+			ID           string `json:"id"`
+			Type         string `json:"type"`
+			Name         string `json:"name"`
+			CallID       string `json:"call_id"`
+			Arguments    string `json:"arguments"`
+			Result       string `json:"result"`
+			OutputFormat string `json:"output_format"`
 		} `json:"item"`
 		Usage    *ResponsesUsage    `json:"usage"`
 		Response *responsesEnvelope `json:"response"`
@@ -300,6 +331,18 @@ func (st *StreamState) Translate(payload []byte) (frames [][]byte, terminal bool
 			"index": idx, "id": ev.Item.CallID, "type": "function",
 			"function": map[string]any{"name": ev.Item.Name, "arguments": ""},
 		}}}, nil))
+	case "response.output_item.done":
+		// Only the finished image: partial_image previews would each render as
+		// a separate picture in a chat client.
+		if ev.Item.Type != "image_generation_call" {
+			return nil, false
+		}
+		img := chatImagePart(ev.Item.Result, ev.Item.OutputFormat)
+		if img == nil {
+			return nil, false
+		}
+		emitRole()
+		frames = append(frames, st.frame(map[string]any{"images": []any{img}}, nil))
 	case "response.function_call_arguments.delta":
 		if ev.Delta == "" {
 			return nil, false

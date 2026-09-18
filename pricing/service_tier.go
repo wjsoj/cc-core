@@ -33,9 +33,14 @@ type CostResult struct {
 // CostWithOptions computes the base token bill and then applies exactly one
 // service-tier adjustment. The caller applies its user/group multiplier AFTER
 // this result, once. Cost's existing signature remains the Standard-only API.
+//
+// Image-generation tokens are added after the tier adjustment: the tier is a
+// property of the chat model's run, and the image card has no tier variants.
 func (c *Catalog) CostWithOptions(provider, model string, counts usage.Counts, opts CostOptions) CostResult {
-	result := CostResult{CostUSD: c.Cost(provider, model, counts)}
+	images := c.imageGen.Cost(counts)
+	result := CostResult{CostUSD: c.Lookup(provider, model).Cost(counts)}
 	if canonicalProvider(provider) != ProviderOpenAI {
+		result.CostUSD += images
 		return result
 	}
 	result.Tier = servicetier.ResolveOpenAI(opts.ServiceTier, opts.ResponseServiceTier, opts.CodexOAuth)
@@ -46,6 +51,7 @@ func (c *Catalog) CostWithOptions(provider, model string, counts usage.Counts, o
 	case servicetier.Flex:
 		result.CostUSD *= policy.FlexMultiplier
 	}
+	result.CostUSD += images
 	return result
 }
 

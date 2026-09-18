@@ -110,6 +110,30 @@ type Config struct {
 	ProviderDefaults map[string]ModelPrice       `yaml:"provider_defaults" json:"provider_defaults"`
 	Models           map[string]ModelPrice       `yaml:"models" json:"models"`
 	ServiceTiers     map[string]ServiceTierPrice `yaml:"service_tiers,omitempty" json:"service_tiers,omitempty"`
+	// ImageGen overrides DefaultImageGenPrice; zero keeps the default.
+	ImageGen ImageGenPrice `yaml:"image_gen,omitempty" json:"image_gen,omitempty"`
+}
+
+// ImageGenPrice prices usage.Counts' ImageGen* axis — OpenAI image generation,
+// whether reached as the Responses image_generation built-in or the Images API.
+type ImageGenPrice struct {
+	TextInputPer1M  float64 `yaml:"text_input_per_1m" json:"text_input_per_1m"`
+	ImageInputPer1M float64 `yaml:"image_input_per_1m" json:"image_input_per_1m"`
+	OutputPer1M     float64 `yaml:"output_per_1m" json:"output_per_1m"`
+}
+
+// DefaultImageGenPrice is gpt-image-2 at standard tier, developers.openai.com
+// pricing page as of 2026-09: text in $5, image in $8, image out $30 per 1M.
+// gpt-image-2 has no text-output rate, so all output bills as image output.
+// The upstream never says which image model a Codex turn used; gpt-image-2 is
+// what the ChatGPT backend serves and what every sibling relay assumes.
+var DefaultImageGenPrice = ImageGenPrice{TextInputPer1M: 5.00, ImageInputPer1M: 8.00, OutputPer1M: 30.00}
+
+// Cost returns USD for the ImageGen* tokens in c; every other field is ignored.
+func (p ImageGenPrice) Cost(c usage.Counts) float64 {
+	return (float64(c.ImageGenTextInputTokens)*p.TextInputPer1M +
+		float64(c.ImageGenImageInputTokens)*p.ImageInputPer1M +
+		float64(c.ImageGenOutputTokens)*p.OutputPer1M) / 1_000_000
 }
 
 // Catalog resolves (provider, model) to a price card, with four-level
@@ -119,6 +143,7 @@ type Catalog struct {
 	providerDefaults map[string]ModelPrice
 	serviceTiers     map[string]ServiceTierPrice
 	models           map[string]ModelPrice // key = "provider/model" (lowercase)
+	imageGen         ImageGenPrice
 }
 
 // NewCatalog merges the user config (may be zero-valued) on top of the
@@ -149,8 +174,15 @@ func NewCatalog(c Config) *Catalog {
 	if nonZero(c.Default) {
 		cat.defaultPrice = c.Default
 	}
+	cat.imageGen = DefaultImageGenPrice
+	if c.ImageGen != (ImageGenPrice{}) {
+		cat.imageGen = c.ImageGen
+	}
 	return cat
 }
+
+// ImageGen returns the image-generation price card in effect.
+func (c *Catalog) ImageGen() ImageGenPrice { return c.imageGen }
 
 // StripContextModeSuffix removes a trailing "[value]" context-mode label from
 // a model name, preserving case and everything else: "claude-opus-5[1m]" →
@@ -226,9 +258,10 @@ func normalizeLookupModel(model string) string {
 	return m
 }
 
-// Cost is a convenience shortcut — Lookup(provider, model).Cost(counts).
+// Cost is Lookup(provider, model).Cost(counts) plus any image-generation
+// tokens, which bill at the image card whatever the turn's chat model is.
 func (c *Catalog) Cost(provider, model string, counts usage.Counts) float64 {
-	return c.Lookup(provider, model).Cost(counts)
+	return c.Lookup(provider, model).Cost(counts) + c.imageGen.Cost(counts)
 }
 
 // Models returns a copy of the registered model → price map. Keys are in

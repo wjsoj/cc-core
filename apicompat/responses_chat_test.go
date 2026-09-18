@@ -1,6 +1,8 @@
 package apicompat
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -328,5 +330,55 @@ func TestStreamFinalizeClosesTruncatedStream(t *testing.T) {
 	// Finalize is idempotent — a late terminal event must not double-close.
 	if extra := st.Finalize(); extra != nil {
 		t.Errorf("second Finalize emitted %q", extra)
+	}
+}
+
+func TestResponsesToChatCompletionCarriesGeneratedImage(t *testing.T) {
+	out, err := ResponsesToChatCompletion([]byte(`{"id":"resp_1","status":"completed","output":[`+
+		`{"type":"image_generation_call","id":"ig_1","status":"completed","result":"iVBORw0K","output_format":"png"},`+
+		`{"type":"message","content":[{"type":"output_text","text":"Here it is."}]}]}`), "gpt-5.6-sol", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+				Images  []struct {
+					Type     string `json:"type"`
+					ImageURL struct {
+						URL string `json:"url"`
+					} `json:"image_url"`
+				} `json:"images"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		t.Fatal(err)
+	}
+	m := v.Choices[0].Message
+	if m.Content != "Here it is." || len(m.Images) != 1 || m.Images[0].Type != "image_url" || m.Images[0].ImageURL.URL != "data:image/png;base64,iVBORw0K" {
+		t.Fatalf("got %s", out)
+	}
+}
+
+func TestStreamStateEmitsFinishedImageOnly(t *testing.T) {
+	st := NewStreamState("m", false, 1)
+	var got [][]byte
+	for _, ev := range []string{
+		`{"type":"response.output_item.added","output_index":0,"item":{"type":"image_generation_call","id":"ig"}}`,
+		`{"type":"response.image_generation_call.partial_image","output_index":0,"partial_image_b64":"PARTIAL"}`,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"ig","result":"FINAL","output_format":"webp"}}`,
+		`{"type":"response.output_item.done","output_index":1,"item":{"type":"message"}}`,
+	} {
+		frames, _ := st.Translate([]byte(ev))
+		got = append(got, frames...)
+	}
+	joined := string(bytes.Join(got, nil))
+	if strings.Contains(joined, "PARTIAL") {
+		t.Fatalf("partial preview leaked: %s", joined)
+	}
+	if !strings.Contains(joined, `"images":[{"image_url":{"url":"data:image/webp;base64,FINAL"},"type":"image_url"}]`) {
+		t.Fatalf("final image missing: %s", joined)
 	}
 }
