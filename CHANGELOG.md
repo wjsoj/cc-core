@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.8.137 — align Codex OAuth agent APIs with CLIProxyAPI
+
+- Add shared request preparation for Chat Completions and Responses, including
+  precise JSON schemas, model effort suffixes and Codex-only normalization.
+- Reconstruct terminal Responses output and streaming tool arguments without
+  replaying deltas; preserve incomplete results and refusal text.
+- Surface failed, cancelled and truncated streams as errors instead of successful
+  completions, including numeric WebSocket error envelopes.
+- Add mock-upstream regression coverage for both consuming applications.
+
+See [the alignment contract](docs/codex-oauth-alignment.md) for scope and
+validation details. OAuth identity, refresh and billing policies are unchanged.
+
 ## v0.8.105 — align the Codex OAuth legs with the captured client
 
 From a live Codex Desktop capture spanning a complete re-login, archived at

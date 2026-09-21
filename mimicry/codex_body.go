@@ -15,7 +15,10 @@ package mimicry
 // per-function notes below.
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/url"
 	"strings"
 
@@ -101,7 +104,7 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 		return sanitizeCodexCompactRequestBody(body)
 	}
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := decodeCodexObject(body, &raw); err != nil {
 		return body, "", err
 	}
 	// Strip thinking suffix from model. CLIProxyAPI uses "model-name(value)"
@@ -111,6 +114,7 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 	if m, ok := raw["model"].(string); ok {
 		baseModel = StripThinkingSuffix(m)
 		raw["model"] = baseModel
+		applyCodexReasoningSuffix(raw, m)
 	}
 
 	// Always stream upstream — the backend only emits completed responses
@@ -136,6 +140,8 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 	// and may correlate with CF rate-limit bursts.
 	for _, k := range []string{
 		"prompt_cache_retention",
+		"prompt_cache_options",
+		"generate",
 		"safety_identifier",
 		"stream_options",
 		"max_output_tokens",
@@ -184,6 +190,7 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 			}
 		}
 		filterCodexInputItems(items)
+		stripCodexCacheBreakpoints(items)
 	}
 
 	// Normalize legacy/preview built-in tool type aliases.
@@ -197,6 +204,12 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 	// Ensure image_generation tool is present (matches vendor CLI; skipped
 	// on *-spark models where the backend rejects it).
 	raw["tools"] = ensureImageGenerationTool(raw["tools"], baseModel)
+	// Responses-Lite requires false even when a generic agent omits this flag.
+	if codexResponsesLiteModel(baseModel) {
+		raw["parallel_tool_calls"] = false
+	} else if tools, ok := raw["tools"].([]any); ok && len(tools) == 0 {
+		delete(raw, "parallel_tool_calls")
+	}
 
 	out, err := json.Marshal(raw)
 	return out, baseModel, err
@@ -214,12 +227,13 @@ func SanitizeCodexRequestBody(body []byte, clientPath string) ([]byte, string, e
 // `gpt-5.3-codex(high)` → `gpt-5.3-codex` for billing/upstream consistency.
 func sanitizeCodexCompactRequestBody(body []byte) ([]byte, string, error) {
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := decodeCodexObject(body, &raw); err != nil {
 		return body, "", err
 	}
 	baseModel := ""
 	if m, ok := raw["model"].(string); ok {
 		baseModel = StripThinkingSuffix(m)
+		applyCodexReasoningSuffix(raw, m)
 	}
 	out := map[string]any{}
 	for _, k := range []string{
@@ -241,6 +255,9 @@ func sanitizeCodexCompactRequestBody(body []byte) ([]byte, string, error) {
 			continue
 		}
 		out[k] = v
+	}
+	if out["instructions"] == nil {
+		out["instructions"] = ""
 	}
 	encoded, err := json.Marshal(out)
 	return encoded, baseModel, err
@@ -400,10 +417,79 @@ func ensureImageGenerationTool(current any, baseModel string) any {
 	}
 	for _, t := range arr {
 		if tm, _ := t.(map[string]any); tm != nil {
-			if typ, _ := tm["type"].(string); typ == "image_generation" {
+			if typ, _ := tm["type"].(string); typ == "image_generation" || codexImageFunction(tm) {
 				return arr
 			}
 		}
 	}
 	return append(arr, imageTool)
+}
+
+// decodeCodexObject preserves integer-valued tool schemas and rejects null and
+// multiple JSON values before a caller can accidentally forward an invalid body.
+func decodeCodexObject(body []byte, dst *map[string]any) error {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if *dst == nil {
+		return fmt.Errorf("request body must be a JSON object")
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("request body must contain one JSON object")
+	}
+	return nil
+}
+
+// Like CLIProxyAPI's thinking pipeline, an explicit model suffix overrides the
+// body effort. Unknown suffixes retain the existing model-alias behaviour.
+func applyCodexReasoningSuffix(raw map[string]any, model string) {
+	base := StripThinkingSuffix(model)
+	if base == model {
+		return
+	}
+	effort := strings.ToLower(model[len(base)+1 : len(model)-1])
+	switch effort {
+	case "none", "minimal", "low", "medium", "high", "xhigh":
+		reasoning, _ := raw["reasoning"].(map[string]any)
+		if reasoning == nil {
+			reasoning = map[string]any{}
+		}
+		reasoning["effort"] = effort
+		raw["reasoning"] = reasoning
+	}
+}
+
+// Strip only protocol fields, never similarly named keys inside tool results.
+func stripCodexCacheBreakpoints(items []any) {
+	for _, item := range items {
+		m, _ := item.(map[string]any)
+		delete(m, "prompt_cache_breakpoint")
+		for _, key := range []string{"content", "output"} {
+			parts, _ := m[key].([]any)
+			for _, part := range parts {
+				if p, ok := part.(map[string]any); ok {
+					delete(p, "prompt_cache_breakpoint")
+				}
+			}
+		}
+	}
+}
+
+func codexImageFunction(tool map[string]any) bool {
+	if tool["type"] == "function" && tool["name"] == "image_gen.imagegen" {
+		return true
+	}
+	if tool["type"] == "namespace" && tool["name"] == "image_gen" {
+		nested, _ := tool["tools"].([]any)
+		for _, value := range nested {
+			fn, _ := value.(map[string]any)
+			if fn["type"] == "function" && fn["name"] == "imagegen" {
+				return true
+			}
+		}
+	}
+	return false
 }

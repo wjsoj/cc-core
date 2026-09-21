@@ -25,6 +25,7 @@
 package apicompat
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -59,7 +60,12 @@ const minMaxOutputTokens = 128
 // may well accept the same body.
 func ChatCompletionsToResponses(body []byte) ([]byte, error) {
 	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	if !json.Valid(body) {
+		return nil, fmt.Errorf("invalid chat/completions JSON")
+	}
+	if err := dec.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode chat/completions body: %w", err)
 	}
 	msgs, _ := raw["messages"].([]any)
@@ -153,11 +159,15 @@ func isReasoningModel(model string) bool {
 // no cap.
 func maxOutputTokens(raw map[string]any) (int, bool) {
 	n := 0
-	if v, ok := raw["max_tokens"].(float64); ok && v > 0 {
-		n = int(v)
+	if v, ok := raw["max_tokens"].(json.Number); ok {
+		if parsed, err := v.Int64(); err == nil && parsed > 0 {
+			n = int(parsed)
+		}
 	}
-	if v, ok := raw["max_completion_tokens"].(float64); ok && v > 0 {
-		n = int(v)
+	if v, ok := raw["max_completion_tokens"].(json.Number); ok {
+		if parsed, err := v.Int64(); err == nil && parsed > 0 {
+			n = int(parsed)
+		}
 	}
 	if n <= 0 {
 		return 0, false

@@ -22,6 +22,9 @@ import (
 // alias to a different name and clients match on what they asked for. created
 // is supplied by the caller so the value stays deterministic under test.
 func ResponsesToChatCompletion(response []byte, model string, created int64) ([]byte, error) {
+	if failure := ResponseFailure(response); failure != nil {
+		return nil, failure
+	}
 	var resp struct {
 		ID                string `json:"id"`
 		Model             string `json:"model"`
@@ -36,7 +39,7 @@ func ResponsesToChatCompletion(response []byte, model string, created int64) ([]
 		return nil, fmt.Errorf("decode responses object: %w", err)
 	}
 
-	var text, reasoning strings.Builder
+	var text, reasoning, refusal strings.Builder
 	toolCalls := make([]map[string]any, 0, 2)
 	var images []any
 	for _, item := range resp.Output {
@@ -50,6 +53,8 @@ func ResponsesToChatCompletion(response []byte, model string, created int64) ([]
 				switch part.Type {
 				case "output_text", "text":
 					text.WriteString(part.Text)
+				case "refusal":
+					refusal.WriteString(part.Refusal)
 				}
 			}
 		case "reasoning":
@@ -77,6 +82,9 @@ func ResponsesToChatCompletion(response []byte, model string, created int64) ([]
 	}
 
 	message := map[string]any{"role": "assistant", "content": text.String()}
+	if refusal.Len() > 0 {
+		message["refusal"] = refusal.String()
+	}
 	if reasoning.Len() > 0 {
 		message["reasoning_content"] = reasoning.String()
 	}
@@ -112,6 +120,7 @@ func ResponsesToChatCompletion(response []byte, model string, created int64) ([]
 }
 
 type responsesOutputItem struct {
+	ID        string `json:"id"`
 	Type      string `json:"type"`
 	Name      string `json:"name"`
 	CallID    string `json:"call_id"`
@@ -120,8 +129,9 @@ type responsesOutputItem struct {
 	Result       string `json:"result"`
 	OutputFormat string `json:"output_format"`
 	Content      []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type    string `json:"type"`
+		Text    string `json:"text"`
+		Refusal string `json:"refusal"`
 	} `json:"content"`
 	Summary []struct {
 		Text string `json:"text"`
@@ -242,6 +252,9 @@ type StreamState struct {
 	// tracked because backends are inconsistent about which they populate.
 	toolIndexByOutput map[int]int
 	toolIndexByItem   map[string]int
+	toolHeaders       map[int]bool
+	toolArguments     map[int]string
+	nextToolIndex     int
 }
 
 // NewStreamState returns a stream converter for one request. includeUsage
@@ -256,6 +269,8 @@ func NewStreamState(model string, includeUsage bool, created int64) *StreamState
 		includeUsage:      includeUsage,
 		toolIndexByOutput: map[int]int{},
 		toolIndexByItem:   map[string]int{},
+		toolHeaders:       map[int]bool{},
+		toolArguments:     map[int]string{},
 	}
 }
 
@@ -274,22 +289,22 @@ func IsDoneFrame(frame []byte) bool { return bytes.Equal(frame, DoneFrame) }
 // lifecycle chatter (response.in_progress, *.done, content_part.*) that has no
 // Chat representation and must not reach the client as empty frames.
 func (st *StreamState) Translate(payload []byte) (frames [][]byte, terminal bool) {
+	if st.finalized {
+		return nil, false
+	}
+	if failure := ResponseFailure(payload); failure != nil {
+		st.finalized = true
+		return failure.frames(), true
+	}
 	var ev struct {
-		Type        string `json:"type"`
-		Delta       string `json:"delta"`
-		ItemID      string `json:"item_id"`
-		OutputIndex *int   `json:"output_index"`
-		Item        struct {
-			ID           string `json:"id"`
-			Type         string `json:"type"`
-			Name         string `json:"name"`
-			CallID       string `json:"call_id"`
-			Arguments    string `json:"arguments"`
-			Result       string `json:"result"`
-			OutputFormat string `json:"output_format"`
-		} `json:"item"`
-		Usage    *ResponsesUsage    `json:"usage"`
-		Response *responsesEnvelope `json:"response"`
+		Type        string              `json:"type"`
+		Delta       string              `json:"delta"`
+		ItemID      string              `json:"item_id"`
+		OutputIndex *int                `json:"output_index"`
+		Item        responsesOutputItem `json:"item"`
+		Arguments   string              `json:"arguments"`
+		Usage       *ResponsesUsage     `json:"usage"`
+		Response    *responsesEnvelope  `json:"response"`
 	}
 	if json.Unmarshal(payload, &ev) != nil {
 		return nil, false
@@ -321,28 +336,25 @@ func (st *StreamState) Translate(payload []byte) (frames [][]byte, terminal bool
 		}
 		emitRole()
 		frames = append(frames, st.frame(map[string]any{"reasoning_content": ev.Delta}, nil))
-	case "response.output_item.added":
-		if ev.Item.Type != "function_call" {
-			return nil, false
+	case "response.refusal.delta":
+		if ev.Delta != "" {
+			emitRole()
+			frames = append(frames, st.frame(map[string]any{"refusal": ev.Delta}, nil))
 		}
+	case "response.output_item.added", "response.output_item.done":
+		if ev.Item.Type == "function_call" {
+			emitRole()
+			frames = append(frames, st.toolFrames(ev.Item, ev.OutputIndex)...)
+		} else if ev.Type == "response.output_item.done" && ev.Item.Type == "image_generation_call" {
+			if img := chatImagePart(ev.Item.Result, ev.Item.OutputFormat); img != nil {
+				emitRole()
+				frames = append(frames, st.frame(map[string]any{"images": []any{img}}, nil))
+			}
+		}
+	case "response.function_call_arguments.done":
+		idx := st.newToolIndex(ev.OutputIndex, ev.ItemID)
 		emitRole()
-		idx := st.newToolIndex(ev.OutputIndex, ev.Item.ID)
-		frames = append(frames, st.frame(map[string]any{"tool_calls": []any{map[string]any{
-			"index": idx, "id": ev.Item.CallID, "type": "function",
-			"function": map[string]any{"name": ev.Item.Name, "arguments": ""},
-		}}}, nil))
-	case "response.output_item.done":
-		// Only the finished image: partial_image previews would each render as
-		// a separate picture in a chat client.
-		if ev.Item.Type != "image_generation_call" {
-			return nil, false
-		}
-		img := chatImagePart(ev.Item.Result, ev.Item.OutputFormat)
-		if img == nil {
-			return nil, false
-		}
-		emitRole()
-		frames = append(frames, st.frame(map[string]any{"images": []any{img}}, nil))
+		frames = append(frames, st.remainingArguments(idx, ev.Arguments)...)
 	case "response.function_call_arguments.delta":
 		if ev.Delta == "" {
 			return nil, false
@@ -354,6 +366,7 @@ func (st *StreamState) Translate(payload []byte) (frames [][]byte, terminal bool
 			idx = st.newToolIndex(ev.OutputIndex, ev.ItemID)
 			emitRole()
 		}
+		st.toolArguments[idx] += ev.Delta
 		frames = append(frames, st.frame(map[string]any{"tool_calls": []any{map[string]any{
 			"index": idx, "function": map[string]any{"arguments": ev.Delta},
 		}}}, nil))
@@ -364,15 +377,14 @@ func (st *StreamState) Translate(payload []byte) (frames [][]byte, terminal bool
 	return frames, false
 }
 
-// Finalize closes a stream whose upstream ended without a terminal event, so
-// the client still receives a well-formed finish frame and [DONE] instead of a
-// truncated stream it will report as a disconnect. Returns nil if the stream
-// was already terminated.
+// Finalize reports a truncated stream as an error, never as a successful stop.
+// Returns nil if the stream was already terminated.
 func (st *StreamState) Finalize() [][]byte {
 	if st.finalized {
 		return nil
 	}
-	return st.finish("response.completed", nil, nil)
+	st.finalized = true
+	return (&ResponseError{Type: "server_error", Code: "incomplete_stream", Message: "The upstream stream ended before a terminal response."}).frames()
 }
 
 // responsesEnvelope is the `response` object carried by lifecycle events.
@@ -382,7 +394,8 @@ type responsesEnvelope struct {
 	IncompleteDetails *struct {
 		Reason string `json:"reason"`
 	} `json:"incomplete_details"`
-	Usage *ResponsesUsage `json:"usage"`
+	Usage  *ResponsesUsage       `json:"usage"`
+	Output []responsesOutputItem `json:"output"`
 }
 
 func (st *StreamState) finish(evType string, usage *ResponsesUsage, response *responsesEnvelope) [][]byte {
@@ -409,6 +422,13 @@ func (st *StreamState) finish(evType string, usage *ResponsesUsage, response *re
 		st.roleSent = true
 		frames = append(frames, st.frame(map[string]any{"role": "assistant", "content": ""}, nil))
 	}
+	if response != nil {
+		for i, item := range response.Output {
+			if item.Type == "function_call" {
+				frames = append(frames, st.toolFrames(item, &i)...)
+			}
+		}
+	}
 	frames = append(frames, st.frame(map[string]any{}, finishReason(status, incompleteReason, st.sawToolCall)))
 	if st.includeUsage && st.usage != nil {
 		if payload, err := json.Marshal(map[string]any{
@@ -425,9 +445,16 @@ func (st *StreamState) finish(evType string, usage *ResponsesUsage, response *re
 // call and records it under both identifiers the backend may use later.
 func (st *StreamState) newToolIndex(outputIndex *int, itemID string) int {
 	if idx, ok := st.lookupToolIndex(outputIndex, itemID); ok {
+		if outputIndex != nil {
+			st.toolIndexByOutput[*outputIndex] = idx
+		}
+		if itemID != "" {
+			st.toolIndexByItem[itemID] = idx
+		}
 		return idx
 	}
-	idx := max(len(st.toolIndexByOutput), len(st.toolIndexByItem))
+	idx := st.nextToolIndex
+	st.nextToolIndex++
 	if outputIndex != nil {
 		st.toolIndexByOutput[*outputIndex] = idx
 	}
@@ -469,4 +496,30 @@ func sseFrame(payload []byte) []byte {
 	out = append(out, "data: "...)
 	out = append(out, payload...)
 	return append(out, '\n', '\n')
+}
+
+// A backend may send arguments only in added/done or in the terminal output.
+// Emit the missing suffix, never the whole arguments twice after deltas.
+func (st *StreamState) toolFrames(item responsesOutputItem, outputIndex *int) [][]byte {
+	idx := st.newToolIndex(outputIndex, item.ID)
+	var frames [][]byte
+	if !st.toolHeaders[idx] && item.Name != "" && item.CallID != "" {
+		st.toolHeaders[idx] = true
+		frames = append(frames, st.frame(map[string]any{"tool_calls": []any{map[string]any{
+			"index": idx, "id": item.CallID, "type": "function",
+			"function": map[string]any{"name": item.Name, "arguments": ""},
+		}}}, nil))
+	}
+	return append(frames, st.remainingArguments(idx, item.Arguments)...)
+}
+
+func (st *StreamState) remainingArguments(idx int, full string) [][]byte {
+	sent := st.toolArguments[idx]
+	if full == "" || !strings.HasPrefix(full, sent) || full == sent {
+		return nil
+	}
+	st.toolArguments[idx] = full
+	return [][]byte{st.frame(map[string]any{"tool_calls": []any{map[string]any{
+		"index": idx, "function": map[string]any{"arguments": strings.TrimPrefix(full, sent)},
+	}}}, nil)}
 }

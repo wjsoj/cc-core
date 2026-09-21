@@ -75,6 +75,14 @@ Header + body shaping that makes a forwarded request look like a real Claude Cod
 
 The bootstrap burst + heartbeats a real client emits at startup (GrowthBook, oauth/account/settings, bootstrap, quota probe, mcp-registry, `event_logging /v2/batch`), each with its own captured `User-Agent` / `Anthropic-Beta`. Per-account host telemetry comes from `auth.HostProfile`. API-key credentials never trigger it.
 
+### `codexoauth` / `apicompat`
+
+Shared Codex OAuth request preparation and terminal-output reconstruction, plus
+Chat Completions / Responses request and response conversion. Both consuming
+apps use the same protocol contract for agent traffic. See
+[Codex OAuth API alignment](docs/codex-oauth-alignment.md) for behaviour,
+regression coverage, and the local-workspace/release workflow.
+
 ### `stream` / `codexws`
 
 `stream` is a framework-agnostic SSE relay (keepalive, lazy commit, terminal detection, gzip/br decompression) that the forks' streamers wrap. `codexws` is the Codex-over-WebSocket upstream transport.
