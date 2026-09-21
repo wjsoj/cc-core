@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.138 — explicit API-key pause policy
+
+- Persist a per-credential `explicit_failures_only` option for API-key relays.
+- Separate ambiguous model/transport errors from explicit authentication,
+  balance and rate-limit failures without changing default or OAuth behavior.
+- Cover classification and persistence with regression tests.
+
 ## v0.8.137 — align Codex OAuth agent APIs with CLIProxyAPI
 
 - Add shared request preparation for Chat Completions and Responses, including

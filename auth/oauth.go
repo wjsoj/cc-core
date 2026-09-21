@@ -283,23 +283,25 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 		priceMultiplier = v
 	}
 	relayPeer, _ := raw["relay_peer"].(bool)
+	explicitFailuresOnly, _ := raw["explicit_failures_only"].(bool)
 	return &Auth{
-		ID:              filepath.Base(path),
-		Kind:            KindAPIKey,
-		Provider:        provider,
-		Label:           label,
-		AccessToken:     apiKey,
-		ProxyURL:        proxyURL,
-		BaseURL:         baseURL,
-		FilePath:        path,
-		Disabled:        disabled,
-		LastQuotaHit:    parseQuotaHit(raw),
-		Group:           NormalizeGroup(group),
-		ModelMap:        modelMap,
-		StripThinking:   stripThinking,
-		Order:           order,
-		PriceMultiplier: priceMultiplier,
-		RelayPeer:       relayPeer,
+		ID:                   filepath.Base(path),
+		Kind:                 KindAPIKey,
+		Provider:             provider,
+		Label:                label,
+		AccessToken:          apiKey,
+		ProxyURL:             proxyURL,
+		BaseURL:              baseURL,
+		FilePath:             path,
+		Disabled:             disabled,
+		LastQuotaHit:         parseQuotaHit(raw),
+		Group:                NormalizeGroup(group),
+		ModelMap:             modelMap,
+		StripThinking:        stripThinking,
+		Order:                order,
+		PriceMultiplier:      priceMultiplier,
+		RelayPeer:            relayPeer,
+		ExplicitFailuresOnly: explicitFailuresOnly,
 	}, nil
 }
 
@@ -492,6 +494,11 @@ func saveAuth(a *Auth) error {
 			raw["type"] = "apikey"
 		}
 		raw["api_key"] = a.AccessToken
+		if a.ExplicitFailuresOnly {
+			raw["explicit_failures_only"] = true
+		} else {
+			delete(raw, "explicit_failures_only")
+		}
 		if a.RelayPeer {
 			raw["relay_peer"] = true
 		} else {

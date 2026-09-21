@@ -168,6 +168,10 @@ type Auth struct {
 	// OAuth: to any other upstream the headers are noise that leaks topology.
 	// Append-only field — old credential files default to false.
 	RelayPeer bool
+	// ExplicitFailuresOnly opts this API-key relay out of channel-wide pauses
+	// inferred from ambiguous transport, model availability or 5xx errors.
+	// Explicit authentication, balance and rate-limit failures still count.
+	ExplicitFailuresOnly bool
 
 	// Source file for OAuth and file-backed APIKey credentials.
 	FilePath string
@@ -438,42 +442,43 @@ func (a *Auth) Snapshot() AuthInfo {
 		}
 	}
 	return AuthInfo{
-		ID:                  a.ID,
-		Kind:                a.Kind,
-		Provider:            a.Provider,
-		Label:               a.Label,
-		Email:               a.Email,
-		ExpiresAt:           a.ExpiresAt,
-		ProxyURL:            a.ProxyURL,
-		MaxConcurrent:       a.MaxConcurrent,
-		Disabled:            a.Disabled,
-		QuotaExceededAt:     a.QuotaExceededAt,
-		QuotaResetAt:        a.QuotaResetAt,
-		QuotaUsageLimit:     health.UsageLimit,
-		LastQuotaHit:        a.LastQuotaHit,
-		FilePath:            a.FilePath,
-		BaseURL:             a.BaseURL,
-		Group:               a.Group,
-		Order:               a.Order,
-		PriceMultiplier:     a.PriceMultiplier,
-		RelayPeer:           a.RelayPeer,
-		QuarantineUntil:     a.QuarantineUntil,
-		QuarantineStrikes:   a.QuarantineStrikes,
-		State:               health.State,
-		ConsecutiveFailures: health.ConsecutiveFailures,
-		Consecutive429s:     health.Consecutive429s,
-		Consecutive401s:     health.Consecutive401s,
-		LastFailure:         health.LastFailure,
-		LastFailureReason:   health.LastFailureReason,
-		LastSuccess:         health.LastSuccess,
-		HardFailureAt:       health.HardFailureAt,
-		ModelMap:            mm,
-		CodexRateLimits:     rl,
-		CodexRateLimitsAt:   a.CodexRateLimitsAt,
-		CodexUsage:          a.CodexUsage,
-		CodexUsageAt:        a.CodexUsageAt,
-		CodexSubscription:   a.CodexSubscription,
-		CodexSubscriptionAt: a.CodexSubscriptionAt,
+		ID:                   a.ID,
+		Kind:                 a.Kind,
+		Provider:             a.Provider,
+		Label:                a.Label,
+		Email:                a.Email,
+		ExpiresAt:            a.ExpiresAt,
+		ProxyURL:             a.ProxyURL,
+		MaxConcurrent:        a.MaxConcurrent,
+		Disabled:             a.Disabled,
+		QuotaExceededAt:      a.QuotaExceededAt,
+		QuotaResetAt:         a.QuotaResetAt,
+		QuotaUsageLimit:      health.UsageLimit,
+		LastQuotaHit:         a.LastQuotaHit,
+		FilePath:             a.FilePath,
+		BaseURL:              a.BaseURL,
+		Group:                a.Group,
+		Order:                a.Order,
+		PriceMultiplier:      a.PriceMultiplier,
+		ExplicitFailuresOnly: a.ExplicitFailuresOnly,
+		RelayPeer:            a.RelayPeer,
+		QuarantineUntil:      a.QuarantineUntil,
+		QuarantineStrikes:    a.QuarantineStrikes,
+		State:                health.State,
+		ConsecutiveFailures:  health.ConsecutiveFailures,
+		Consecutive429s:      health.Consecutive429s,
+		Consecutive401s:      health.Consecutive401s,
+		LastFailure:          health.LastFailure,
+		LastFailureReason:    health.LastFailureReason,
+		LastSuccess:          health.LastSuccess,
+		HardFailureAt:        health.HardFailureAt,
+		ModelMap:             mm,
+		CodexRateLimits:      rl,
+		CodexRateLimitsAt:    a.CodexRateLimitsAt,
+		CodexUsage:           a.CodexUsage,
+		CodexUsageAt:         a.CodexUsageAt,
+		CodexSubscription:    a.CodexSubscription,
+		CodexSubscriptionAt:  a.CodexSubscriptionAt,
 	}
 }
 
@@ -494,13 +499,14 @@ type AuthInfo struct {
 	// HealthReport.UsageLimit.
 	QuotaUsageLimit bool
 	// LastQuotaHit outlives the two fields above: see Auth.LastQuotaHit.
-	LastQuotaHit    QuotaHit
-	FilePath        string
-	BaseURL         string
-	Group           string
-	Order           int
-	PriceMultiplier float64
-	RelayPeer       bool
+	LastQuotaHit         QuotaHit
+	FilePath             string
+	BaseURL              string
+	Group                string
+	Order                int
+	PriceMultiplier      float64
+	RelayPeer            bool
+	ExplicitFailuresOnly bool
 	// QuarantineUntil / QuarantineStrikes expose the API-key circuit breaker
 	// so the admin panel can show a paused channel instead of leaving it
 	// looking healthy while it silently serves no traffic. Zero deadline =
