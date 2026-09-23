@@ -313,6 +313,8 @@ func TestOpenAICatalogMatchesPublishedRates(t *testing.T) {
 		want  ModelPrice
 	}{
 		{"gpt-6-astra", ModelPrice{InputPer1M: 10.00, OutputPer1M: 50.00, CacheReadPer1M: 1.00, CacheCreatePer1M: 12.50}},
+		{"gpt-6-sol", ModelPrice{InputPer1M: 2.00, OutputPer1M: 10.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50}},
+		{"gpt-6-luna", ModelPrice{InputPer1M: 0.10, OutputPer1M: 0.50, CacheReadPer1M: 0.01, CacheCreatePer1M: 0.125}},
 		{"gpt-5.6", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}},
 		{"gpt-5.6-sol", ModelPrice{InputPer1M: 5.00, OutputPer1M: 30.00, CacheReadPer1M: 0.50, CacheCreatePer1M: 6.25}},
 		{"gpt-5.6-terra", ModelPrice{InputPer1M: 2.00, OutputPer1M: 12.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50}},

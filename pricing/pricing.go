@@ -493,6 +493,11 @@ var builtIn = map[string]ModelPrice{
 	// guess looks verified; they need a published rate or an operational
 	// confirmation of what they alias.
 	ProviderOpenAI + "/gpt-6-astra": {InputPer1M: 10.00, OutputPer1M: 50.00, CacheReadPer1M: 1.00, CacheCreatePer1M: 12.50},
+	// GPT-6 Sol and Luna: published Standard API rates. OAuth subscription
+	// usage does not publish a separate per-token rate, so deployments that
+	// need a plan-specific notional cost can override these cards in config.
+	ProviderOpenAI + "/gpt-6-sol":  {InputPer1M: 2.00, OutputPer1M: 10.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50},
+	ProviderOpenAI + "/gpt-6-luna": {InputPer1M: 0.10, OutputPer1M: 0.50, CacheReadPer1M: 0.01, CacheCreatePer1M: 0.125},
 
 	// Frontier — GPT-5.6 line. `gpt-5.6` is the published alias for sol.
 	//

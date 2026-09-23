@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.139 — add GPT-6 Sol and Luna pricing
+
+- Add published Standard API price cards for `gpt-6-sol` and `gpt-6-luna`,
+  including cached input and cache-write rates.
+- Document that OAuth subscription usage has no separate published per-token
+  rate; deployments can override these notional prices in configuration.
+
 ## v0.8.138 — explicit API-key pause policy
 
 - Persist a per-credential `explicit_failures_only` option for API-key relays.
