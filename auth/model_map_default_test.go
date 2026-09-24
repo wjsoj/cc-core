@@ -55,6 +55,8 @@ func TestOAuthModelMapDefault(t *testing.T) {
 		{"claude-opus-5", "claude-opus-5"},
 		{"claude-sonnet-5", "claude-sonnet-5"},
 		{"claude-opus-5[1m]", "claude-opus-5[1m]"},
+		{"claude-opus-5-5", "claude-opus-5-5"},
+		{"claude-opus-5-5[1m]", "claude-opus-5-5[1m]"},
 		// Out of scope by design: fable is API-key-only premium, haiku is a
 		// separate price tier that mimicry treats differently.
 		{"claude-fable-5", "claude-fable-5"},

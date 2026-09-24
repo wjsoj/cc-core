@@ -57,8 +57,9 @@ type ModelPrice struct {
 	//
 	// ZERO MEANS "DO NOT DISTINGUISH" — every 1h token then bills at
 	// CacheCreatePer1M, which is exactly the pre-existing behaviour. All
-	// built-in cards ship with it zero, so adding this field changes no
-	// invoice by itself. It is opt-in per deployment via config.yaml.
+	// legacy built-in cards ship with it zero, so adding this field changes no
+	// existing invoice by itself. Opus 5.5 ships its official 1h rate; legacy
+	// models remain opt-in per deployment via config.yaml.
 	//
 	// Anthropic's published ladder (independently confirmed against LiteLLM's
 	// model_prices_and_context_window.json, field
@@ -71,7 +72,7 @@ type ModelPrice struct {
 	// so the calibrated values, should an operator choose to enable the split:
 	//
 	//	haiku-4-5   2.00    sonnet-4-6  6.00    sonnet-5 (intro)  4.00
-	//	opus-*     10.00    fable-5    20.00
+	//	opus-4/5   10.00    opus-5-5    8.00    fable-5    20.00
 	//
 	// Enabling this is a PRICE CHANGE, not a bug fix: on the current traffic
 	// mix cache writes are ~54% of the official-cost base, so switching the
@@ -393,6 +394,17 @@ var builtIn = map[string]ModelPrice{
 		OutputPer1M:      25.00,
 		CacheReadPer1M:   0.50,
 		CacheCreatePer1M: 6.25,
+	},
+	// Official standard API rates, verified 2026-09-24:
+	// https://platform.claude.com/docs/en/about-claude/pricing
+	// Reads are 0.05x input (not the older Opus 0.1x); full 1M context
+	// uses this card. The explicit entry prevents fallback to opus-5.
+	ProviderAnthropic + "/claude-opus-5-5": {
+		InputPer1M:         4.00,
+		OutputPer1M:        20.00,
+		CacheReadPer1M:     0.20,
+		CacheCreatePer1M:   5.00,
+		CacheCreate1hPer1M: 8.00,
 	},
 	// claude-fable-5 is the premium tier — exactly 2× opus-4-8, which also
 	// satisfies Anthropic's standard cache ratios (read 0.1× input, write

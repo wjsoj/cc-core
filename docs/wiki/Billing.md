@@ -337,6 +337,7 @@ flowchart TD
 | `anthropic/claude-opus-4-7` | 5.00 | 25.00 | 0.50 | 6.25 | `:329` |
 | `anthropic/claude-opus-4-8` | 5.00 | 25.00 | 0.50 | 6.25 | `:335` |
 | `anthropic/claude-opus-5` | 5.00 | 25.00 | 0.50 | 6.25 | `:347` |
+| `anthropic/claude-opus-5-5` | 4.00 | 20.00 | 0.20 | 5.00 | 1h 写入另计 8.00；见 [Opus 5.5](../claude-opus-5-5.md) |
 | `anthropic/claude-fable-5` | 10.00 | 50.00 | 1.00 | 12.50 | `:357` |
 | `anthropic/claude-sonnet-4-6` | 3.00 | 15.00 | 0.30 | 3.75 | `:363` |
 | `anthropic/claude-sonnet-5` | 3.00 | 15.00 | 0.30 | 3.75 | `:381` |
@@ -409,7 +410,7 @@ flowchart TD
 
 ### 1h 缓存写入拆分
 
-`CacheCreate1hPer1M`（`pricing/pricing.go:56-86`）默认 0，**所有内置卡都是 0**，因此这个字段的加入本身不改任何账单，是 per-deployment 的 config.yaml opt-in。
+`CacheCreate1hPer1M`（`pricing/pricing.go:56-86`）默认 0，旧模型内置卡保持 0，是 per-deployment 的 config.yaml opt-in。2026-09-24 新增的 `claude-opus-5-5` 独立卡按官方价格内置 8.00，仅对上游明确报告的 1h 写入部分生效；不改变旧模型账单。
 
 Anthropic 公开阶梯（与 LiteLLM `cache_creation_input_token_cost_above_1hr` 交叉验证）：`cache read = 0.10 × input`、`5m write = 1.25 × input`、`1h write = 2.00 × input`。若运营方选择启用，标定值为：
 
@@ -418,7 +419,8 @@ Anthropic 公开阶梯（与 LiteLLM `cache_creation_input_token_cost_above_1hr`
 | haiku-4-5 | 2.00 |
 | sonnet-4-6 | 6.00 |
 | sonnet-5（标价，同 sonnet-4-6） | 6.00 |
-| opus-* | 10.00 |
+| opus-4-* / opus-5 | 10.00 |
+| opus-5-5（新模型已内置；缓存读取为输入价的 0.05×） | 8.00 |
 | fable-5 | 20.00 |
 
 ⚠️ 启用它是**调价，不是修 bug**：当前流量结构下缓存写入约占官方成本基数的 54%，整个目录从 1.25× 切到 2.00× 会把计费成本抬高约三分之一。要按 provider 逐个审慎决定并对外公告。

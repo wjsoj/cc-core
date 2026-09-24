@@ -39,7 +39,7 @@ func TestLookupExactMatch(t *testing.T) {
 	}
 }
 
-// TestOpusTierCardsAreIdentical pins every Opus-tier model to the same card.
+// TestOpusTierCardsAreIdentical pins legacy Opus-tier models to the same card.
 // The regression this guards is silent: a missing entry doesn't error, it falls
 // through to builtInProviderDefaults[anthropic] (the Sonnet card) and
 // undercharges by 5/3 with no signal anywhere.
@@ -209,7 +209,7 @@ func TestStripContextModeSuffix(t *testing.T) {
 
 // TestCacheCreate1hIsOptOutByDefault is the load-bearing guarantee of the whole
 // feature: shipping the CacheCreate1hPer1M axis must not move a single invoice.
-// Every built-in card leaves the 1h rate zero, so even a request whose cache
+// Every legacy built-in card leaves the 1h rate zero, so even a request whose cache
 // writes are ENTIRELY 1h bills exactly as it did before the field existed.
 //
 // If this test ever fails, a catalogue edit has silently repriced production —
