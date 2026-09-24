@@ -48,6 +48,11 @@ import (
 //     deployments with no OAuth credential to borrow (API-key-only), or when
 //     upstream is unreachable.
 
+// CodexModelsCatalogVersion is the minimum upstream catalog version for
+// GPT-6 Sol/Luna, from CLIProxyAPI codex_client_models.json (2026-09-24).
+// This floor applies only to model discovery, not generation fingerprints.
+const CodexModelsCatalogVersion = "0.155.0"
+
 const codexModelsURL = "https://chatgpt.com/backend-api/codex/models"
 
 // codexManifestFetchTimeout bounds one upstream manifest fetch. The payload is
@@ -112,9 +117,7 @@ func FetchCodexModelsManifest(ctx context.Context, a *Auth, clientVersion string
 	// the identity on hardcoded CLI constants is how a Desktop client_version
 	// ended up pairable with a codex-tui User-Agent.
 	profile := mimicry.DefaultCodexProfile()
-	if clientVersion == "" {
-		clientVersion = profile.ModelsClientVersion
-	}
+	clientVersion = codexManifestFetchVersion(clientVersion)
 	endpoint := codexModelsURL + "?client_version=" + neturl.QueryEscape(clientVersion)
 
 	// A bound of our own, not the caller's. The caller's context is a client
@@ -132,7 +135,7 @@ func FetchCodexModelsManifest(ctx context.Context, a *Auth, clientVersion string
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Accept-Encoding", "identity")
 	req.Header.Set("Originator", profile.ModelsOriginator)
-	req.Header.Set("User-Agent", profile.ModelsUserAgent)
+	req.Header.Set("User-Agent", strings.ReplaceAll(profile.ModelsUserAgent, profile.ModelsClientVersion, clientVersion))
 	req.Header.Set("Version", clientVersion)
 	if accountID, _ := a.CodexIdentity(); accountID != "" {
 		req.Header.Set("Chatgpt-Account-Id", accountID)
@@ -220,6 +223,13 @@ func SynthesizeCodexModelsManifest(models []string, clientVersion string) []byte
 	return out
 }
 
+func codexManifestFetchVersion(version string) string {
+	if len(parseCodexVersion(version)) == 0 || !codexClientAtLeast(version, CodexModelsCatalogVersion) {
+		return CodexModelsCatalogVersion
+	}
+	return version
+}
+
 type codexModelSpec struct {
 	displayName          string
 	description          string
@@ -232,7 +242,9 @@ type codexModelSpec struct {
 }
 
 // codexModelSpecs holds the structural facts for the slugs this gateway
-// advertises, transcribed from crack/codexv0.153.4/rows/01-get-codex-models.json.
+// advertises, from crack/codexv0.153.4/rows/01-get-codex-models.json and,
+// for GPT-6 Sol/Luna, CLIProxyAPI registry/models/codex_client_models.json.
+// The private Codex context and reasoning capabilities differ from the API.
 // A slug with no entry falls back to a conservative default rather than being
 // dropped, so a model added to CodexModelCatalog is never silently invisible.
 var codexModelSpecs = map[string]codexModelSpec{
@@ -241,6 +253,20 @@ var codexModelSpecs = map[string]codexModelSpec{
 		minimalClientVersion: "0.153.0", contextWindow: 272000, maxContextWindow: 872000,
 		defaultReasoning: "medium",
 		reasoningLevels:  []string{"low", "medium", "high", "xhigh", "max", "ultra"},
+		responsesLite:    true,
+	},
+	"gpt-6-sol": {
+		displayName: "GPT-6-Sol", description: "GPT-6 Sol Codex model.",
+		minimalClientVersion: "0.155.0", contextWindow: 272000, maxContextWindow: 872000,
+		defaultReasoning: "medium",
+		reasoningLevels:  []string{"low", "medium", "high", "xhigh", "max", "ultra"},
+		responsesLite:    true,
+	},
+	"gpt-6-luna": {
+		displayName: "GPT-6-Luna", description: "GPT-6 Luna Codex model.",
+		minimalClientVersion: "0.155.0", contextWindow: 272000, maxContextWindow: 872000,
+		defaultReasoning: "medium",
+		reasoningLevels:  []string{"low", "medium", "high", "xhigh", "max"},
 		responsesLite:    true,
 	},
 	"gpt-5.6-sol": {

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.140 — GPT-6 Sol/Luna routing and compatibility
+
+- Add plan eligibility, Codex picker capabilities and the 0.155.0 discovery floor.
+- Normalize both models as Responses-Lite to prevent injected-tool failures.
+- Keep v0.8.139 fixed prices at every context length; cover service tiers and model variants.
+- See [integration and billing notes](docs/gpt-6-models.md).
+
 ## v0.8.139 — add GPT-6 Sol and Luna pricing
 
 - Add published Standard API price cards for `gpt-6-sol` and `gpt-6-luna`,

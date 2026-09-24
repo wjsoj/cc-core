@@ -377,6 +377,8 @@ func StripThinkingSuffix(model string) string {
 // name is what this set exists to stop.
 var codexResponsesLiteModels = map[string]bool{
 	"gpt-6-astra":       true,
+	"gpt-6-sol":         true,
+	"gpt-6-luna":        true,
 	"gpt-reserve":       true,
 	"gpt-5.6-sol":       true,
 	"gpt-5.6-terra":     true,

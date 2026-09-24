@@ -42,9 +42,14 @@ package auth
 //   - The live Pro catalog no longer contains gpt-5.2, gpt-5.3-codex or gpt-5.4,
 //     which this map still lists. Pruning them is a separate, riskier change
 //     (it breaks any customer pinning one) and must not ride along with an add.
+//
+// GPT-6 Sol/Luna placement follows CLIProxyAPI registry/models/models.json
+// (2026-09-24): Luna on free/plus/pro/team, Sol on plus/pro/team. Its richer
+// client manifest supplies capabilities, but is not the plan registry.
 var CodexModelCatalog = map[string][]string{
 	CodexPlanFree: {
 		"gpt-6-astra",
+		"gpt-6-luna",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.4",
@@ -52,6 +57,8 @@ var CodexModelCatalog = map[string][]string{
 	},
 	CodexPlanPlus: {
 		"gpt-6-astra",
+		"gpt-6-sol",
+		"gpt-6-luna",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.3-codex-spark",
@@ -64,6 +71,8 @@ var CodexModelCatalog = map[string][]string{
 	},
 	CodexPlanPro: {
 		"gpt-6-astra",
+		"gpt-6-sol",
+		"gpt-6-luna",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.3-codex-spark",
@@ -76,6 +85,8 @@ var CodexModelCatalog = map[string][]string{
 	},
 	CodexPlanTeam: {
 		"gpt-6-astra",
+		"gpt-6-sol",
+		"gpt-6-luna",
 		"gpt-5.2",
 		"gpt-5.3-codex",
 		"gpt-5.4",
