@@ -34,6 +34,8 @@ var (
 //   - When all OAuth auths are saturated or unhealthy, the session falls back
 //     to an API key (unlimited).
 type Pool struct {
+	apiKeyRoundRobin map[string]uint64 // protected by mu; opt-in models only
+
 	mu           sync.Mutex
 	oauths       []*Auth
 	apikeys      []*Auth
@@ -260,6 +262,9 @@ type AcquireOptions struct {
 	// untouched original body through an API-key credential. The option still
 	// requires AllowAPIKeyFallback so callers cannot bypass their billing opt-in.
 	APIKeyOnly bool
+	// APIKeyRoundRobin balances equally ranked healthy API keys per model.
+	// It never changes credential group, model, disabled or health boundaries.
+	APIKeyRoundRobin bool
 	// ExcludeIDs are credential IDs to skip because the current request already
 	// tried and failed them.
 	ExcludeIDs []string
@@ -472,7 +477,7 @@ func (p *Pool) AcquireWithResult(ctx context.Context, provider, clientToken, cli
 		// upstream round-trip.
 		ready, paused := p.eligibleAPIKeysLocked(now, excluded, tier, provider, clientModel)
 		lastResortPool = append(lastResortPool, paused...)
-		if k := pickReadyAPIKey(ready); k != nil {
+		if k := p.pickReadyAPIKeyForModel(ready, provider, clientModel, opts.APIKeyRoundRobin); k != nil {
 			s.authID = k.ID
 			s.kind = KindAPIKey
 			s.lastSeen = now
@@ -553,9 +558,7 @@ func (p *Pool) eligibleAPIKeysLocked(now time.Time, excluded map[string]bool, ti
 		if isGroupIdleNow(k.Group, now) {
 			continue
 		}
-		// ModelMap is rewrite-only and never filters, so AcceptsModel
-		// always passes here; the call is kept for symmetry in case
-		// per-key routing is reintroduced.
+		// API-key allowlists are hard boundaries, including in last-resort picks.
 		if !k.AcceptsModel(clientModel) {
 			continue
 		}
@@ -602,6 +605,36 @@ func pickReadyAPIKey(cands []apiKeyCandidate) *Auth {
 		return ai.idx < aj.idx
 	})
 	return cands[0].k
+}
+
+// Called under p.mu. Preserve explicit order and outstanding health penalties;
+// share traffic only among the equally ranked ready keys at the front.
+func (p *Pool) pickReadyAPIKeyForModel(cands []apiKeyCandidate, provider, model string, rotate bool) *Auth {
+	first := pickReadyAPIKey(cands)
+	if first == nil || !rotate {
+		return first
+	}
+	best := cands[0]
+	n := 1
+	for n < len(cands) {
+		other := cands[n]
+		if other.k.OrderValue() != first.OrderValue() ||
+			other.rep.QuarantineStrikes != best.rep.QuarantineStrikes ||
+			!unverifiedFailureAt(other.rep).Equal(unverifiedFailureAt(best.rep)) {
+			break
+		}
+		n++
+	}
+	if n == 1 {
+		return first
+	}
+	if p.apiKeyRoundRobin == nil {
+		p.apiKeyRoundRobin = make(map[string]uint64)
+	}
+	key := provider + "|" + model
+	index := p.apiKeyRoundRobin[key] % uint64(n)
+	p.apiKeyRoundRobin[key]++
+	return cands[index].k
 }
 
 // unverifiedFailureAt is the "when did this channel last look bad, with nothing
@@ -689,8 +722,9 @@ func (p *Pool) AcquireMultiWithOptions(ctx context.Context, provider, clientToke
 			// OAuth credential back to a caller replaying a request whose
 			// identity rewrite had already failed — exactly the case the flag
 			// exists to prevent.
-			APIKeyOnly: opts.APIKeyOnly,
-			ExcludeIDs: opts.ExcludeIDs,
+			APIKeyOnly:       opts.APIKeyOnly,
+			APIKeyRoundRobin: opts.APIKeyRoundRobin,
+			ExcludeIDs:       opts.ExcludeIDs,
 		})
 		if a != nil {
 			return NormalizeGroup(g), a

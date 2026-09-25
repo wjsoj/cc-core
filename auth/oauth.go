@@ -273,6 +273,21 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 	baseURL, _ := raw["base_url"].(string)
 	group, _ := raw["group"].(string)
 	modelMap := parseModelMap(raw["model_map"])
+	var allowedModels []string
+	if value, exists := raw["allowed_models"]; exists {
+		items, ok := value.([]any)
+		if !ok && value != nil {
+			return nil, fmt.Errorf("allowed_models must be an array of model names")
+		}
+		for _, item := range items {
+			name, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("allowed_models must contain only strings")
+			}
+			allowedModels = append(allowedModels, name)
+		}
+	}
+	allowedModels = NormalizeAllowedModels(allowedModels)
 	stripThinking, _ := raw["strip_thinking"].(bool)
 	order := 0
 	if v, ok := raw["order"].(float64); ok {
@@ -297,6 +312,7 @@ func parseAPIKeyFile(path string, raw map[string]any, provider string) (*Auth, e
 		LastQuotaHit:         parseQuotaHit(raw),
 		Group:                NormalizeGroup(group),
 		ModelMap:             modelMap,
+		AllowedModels:        allowedModels,
 		StripThinking:        stripThinking,
 		Order:                order,
 		PriceMultiplier:      priceMultiplier,
@@ -599,6 +615,11 @@ func saveAuth(a *Auth) error {
 		raw["strip_thinking"] = true
 	} else {
 		delete(raw, "strip_thinking")
+	}
+	if a.Kind == KindAPIKey && len(a.AllowedModels) > 0 {
+		raw["allowed_models"] = a.AllowedModels
+	} else {
+		delete(raw, "allowed_models")
 	}
 	// model_map: persist for both kinds, always (empty → {}). An absent key
 	// re-injects DefaultClaudeOAuthModelMap for Claude OAuth at load, so writing

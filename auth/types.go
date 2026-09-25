@@ -133,6 +133,10 @@ type Auth struct {
 	// Nil/empty map = no rewriting. OAuth credentials ignore this field.
 	ModelMap map[string]string
 
+	// AllowedModels limits API-key routing by exact client-facing model name.
+	// Empty means unrestricted; OAuth ignores this field.
+	AllowedModels []string
+
 	// StripThinking, when true, makes consumers proactively sanitize prior
 	// `thinking` block signatures from messages[] before every forward on this
 	// credential. Set + persisted automatically the first time an upstream
@@ -473,6 +477,7 @@ func (a *Auth) Snapshot() AuthInfo {
 		LastSuccess:          health.LastSuccess,
 		HardFailureAt:        health.HardFailureAt,
 		ModelMap:             mm,
+		AllowedModels:        append([]string(nil), a.AllowedModels...),
 		CodexRateLimits:      rl,
 		CodexRateLimitsAt:    a.CodexRateLimitsAt,
 		CodexUsage:           a.CodexUsage,
@@ -529,6 +534,7 @@ type AuthInfo struct {
 	LastSuccess         time.Time
 	HardFailureAt       time.Time
 	ModelMap            map[string]string
+	AllowedModels       []string
 	CodexRateLimits     map[string]string
 	CodexRateLimitsAt   time.Time
 	CodexUsage          *CodexUsageInfo
@@ -1336,7 +1342,7 @@ func (a *Auth) SetModelMap(m map[string]string) {
 // the model name to put in the request body — empty string means "send the
 // client's model name unchanged".
 //
-// Wildcard credentials (nil/empty ModelMap) always return (clientModel, true).
+// Accepted models with an empty ModelMap pass through unchanged.
 //
 // Lookup order, mirroring pricing.Lookup so a name that finds a price card also
 // finds its rewrite:
@@ -1357,10 +1363,10 @@ func (a *Auth) SetModelMap(m map[string]string) {
 func (a *Auth) ResolveUpstreamModel(clientModel string) (upstream string, ok bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	// ModelMap is a rewrite table, not an allow-list. A model listed with a
-	// non-empty value is rewritten; anything else (unlisted, or mapped to "")
-	// passes through unchanged. ok is always true — the second return is kept
-	// for call-site symmetry.
+	if !a.acceptsModelLocked(clientModel) {
+		return "", false
+	}
+	// Filtering is applied to the client model before the independent rewrite.
 	if len(a.ModelMap) == 0 {
 		return clientModel, true
 	}
@@ -1397,10 +1403,46 @@ func splitContextModeSuffix(model string) (base, suffix string) {
 	return model[:i], model[i:]
 }
 
-// AcceptsModel reports whether this credential may serve a request for the
-// given client-facing model. ModelMap is rewrite-only and never filters, so
-// every credential accepts every model; the method is retained for the pool
-// selector's call sites and possible future per-key routing.
+// SetAllowedModels replaces the API-key-only allowlist. Empty is unrestricted.
+func (a *Auth) SetAllowedModels(models []string) {
+	cleaned := NormalizeAllowedModels(models)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.Kind == KindAPIKey {
+		a.AllowedModels = cleaned
+	}
+}
+
+// NormalizeAllowedModels returns a trimmed, deduplicated copy.
+func NormalizeAllowedModels(models []string) []string {
+	var out []string
+	seen := make(map[string]bool, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model != "" && !seen[model] {
+			seen[model] = true
+			out = append(out, model)
+		}
+	}
+	return out
+}
+
+// AcceptsModel enforces exact client-facing names for API keys only. Rewrites
+// cannot bypass it, nor can the pool's last-resort cooldown fallback.
 func (a *Auth) AcceptsModel(clientModel string) bool {
-	return true
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.acceptsModelLocked(clientModel)
+}
+
+func (a *Auth) acceptsModelLocked(clientModel string) bool {
+	if a.Kind != KindAPIKey || len(a.AllowedModels) == 0 {
+		return true
+	}
+	for _, model := range a.AllowedModels {
+		if model == clientModel {
+			return true
+		}
+	}
+	return false
 }
