@@ -95,8 +95,7 @@ type RelayOptions struct {
 // A clean end with no terminal event observed is reported as
 // Err == io.ErrUnexpectedEOF (the stream was truncated). A clean end after a
 // terminal event reports Err == nil.
-func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
-	var res RelayResult
+func Relay(w io.Writer, flush func(), opt RelayOptions) (res RelayResult) {
 	var mu sync.Mutex
 	committed := false
 	lastWrite := time.Now()
@@ -187,7 +186,8 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) RelayResult {
 			} else if !res.SawTerminal {
 				res.Err = io.ErrUnexpectedEOF
 			}
-			return res
+			// Wait for the keepalive writer before copying the result to the caller.
+			return
 		}
 	}
 }
