@@ -255,6 +255,14 @@ var codexModelSpecs = map[string]codexModelSpec{
 		reasoningLevels:  []string{"low", "medium", "high", "xhigh", "max", "ultra"},
 		responsesLite:    true,
 	},
+	// API-key fallback metadata from the official GPT-6.1 Sol model card.
+	// This does not assert ChatGPT subscription plan eligibility or Lite mode.
+	"gpt-6.1-sol": {
+		displayName: "GPT-6.1-Sol", description: "Near-Astra performance for complex work at a lower cost.",
+		contextWindow: 1050000, maxContextWindow: 1050000,
+		defaultReasoning: "medium",
+		reasoningLevels:  []string{"low", "medium", "high", "xhigh", "max"},
+	},
 	"gpt-6-sol": {
 		displayName: "GPT-6-Sol", description: "GPT-6 Sol Codex model.",
 		minimalClientVersion: "0.155.0", contextWindow: 272000, maxContextWindow: 872000,

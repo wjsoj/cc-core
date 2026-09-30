@@ -508,8 +508,11 @@ var builtIn = map[string]ModelPrice{
 	// GPT-6 Sol and Luna: published Standard API rates. OAuth subscription
 	// usage does not publish a separate per-token rate, so deployments that
 	// need a plan-specific notional cost can override these cards in config.
-	ProviderOpenAI + "/gpt-6-sol":  {InputPer1M: 2.00, OutputPer1M: 10.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50},
-	ProviderOpenAI + "/gpt-6-luna": {InputPer1M: 0.10, OutputPer1M: 0.50, CacheReadPer1M: 0.01, CacheCreatePer1M: 0.125},
+	// GPT-6.1 Sol, verified 2026-09-30 against the official model page.
+	// Cache reads cost $0.10/MTok (5% of input), unlike GPT-6 Sol.
+	ProviderOpenAI + "/gpt-6.1-sol": {InputPer1M: 2.00, OutputPer1M: 10.00, CacheReadPer1M: 0.10, CacheCreatePer1M: 2.50},
+	ProviderOpenAI + "/gpt-6-sol":   {InputPer1M: 2.00, OutputPer1M: 10.00, CacheReadPer1M: 0.20, CacheCreatePer1M: 2.50},
+	ProviderOpenAI + "/gpt-6-luna":  {InputPer1M: 0.10, OutputPer1M: 0.50, CacheReadPer1M: 0.01, CacheCreatePer1M: 0.125},
 
 	// Frontier — GPT-5.6 line. `gpt-5.6` is the published alias for sol.
 	//

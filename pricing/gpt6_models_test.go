@@ -9,8 +9,11 @@ import (
 
 func TestGPT6FixedPricesAndServiceTiers(t *testing.T) {
 	cat := NewCatalog(Config{})
-	for _, model := range []string{"gpt-6-sol", "gpt-6-luna"} {
+	for _, model := range []string{"gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"} {
 		in, out, read, write := 2.0, 10.0, .2, 2.5
+		if model == "gpt-6.1-sol" {
+			read = .1
+		}
 		if model == "gpt-6-luna" {
 			in, out, read, write = .1, .5, .01, .125
 		}

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.8.144 — GPT-6.1 Sol API support
+
+- Add the official Standard price: input $2, output $10, cache read $0.10, cache write $2.50 per million tokens.
+- Add API-key model-picker metadata with the published 1,050,000-token context and low through max reasoning efforts.
+- Preserve fixed short-context billing policy, service-tier handling and custom price overrides.
+- Do not infer OAuth subscription eligibility or Responses-Lite behavior from an API release. Verified API-key relays can serve the model through existing catalog routing.
+- Source checked 2026-09-30: https://developers.openai.com/api/docs/models/gpt-6.1-sol
+
 ## v0.8.140 — GPT-6 Sol/Luna routing and compatibility
 
 - Add plan eligibility, Codex picker capabilities and the 0.155.0 discovery floor.
