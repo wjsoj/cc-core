@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.148 — bound native Sonnet classifier retries
+
+- Give strictly identified Sonnet 5 stage-one probes a 55-second shared budget and a 20-second API-key attempt budget, while preserving the existing 120-second fallback classifier ceiling for other models.
+- Retry timed-out upstream attempts with identical request bytes, without customer billing or whole-channel penalties; include response-body reads and preserve earlier caller deadlines.
+- Gateways suppress native SDK backoff only for final retryable errors of this known probe, clear retry delays, and preserve genuine classifier fallback and all successful verdicts.
+- Add real-time transport/body timeout, recovery-lease, final-header, and unaffected fallback-model regressions.
+
 ## v0.8.147 — complete Claude streams and retry unusable short classifiers
 
 - Add opt-in stream termination after a complete terminal event, allowing Anthropic gateways to finish without waiting for an upstream connection to close; existing relay consumers retain the default behavior.

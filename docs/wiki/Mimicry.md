@@ -36,7 +36,7 @@ HTTP 400 能力协商错误由 `downstream.IsClaudeSafeguardsUnsupported` / `Scr
 
 严格 stage1 响应检查：`mimicry.IsClaudeSecurityMonitorStageOne` 要求已知完整 monitor 模板、`max_tokens:64`、`thinking.type:disabled`、非流式及单项 `</block>` 或 `</severity>` stop。当前官方 severity 模板替换了 Output Format 节，不再含 block yes/no 样例；识别保留全部共同标题并核实两条完整 severity 输出说明，避免 OAuth 把它误判为普通请求并插入另一套 system。身份改写仍只改 metadata，max_tokens、thinking、stop_sequences 和原 prompt 保持不变。
 
-`CheckClaudeSecurityMonitorResponse` 在上述请求收到 200 时最多 peek 64KiB+1 字节并完整恢复 reader：只有完整 JSON 的 `stop_reason:max_tokens` 且没有任何非空 text（content 为空、空 text 或仅 thinking）才判为无可解析结果；拒绝、有效 yes/no/severity 文本、未知内容类型、普通请求和超大响应不改。读取错误单独返回，调用方不能把 partial JSON 当作 200。两网关 API-key 在 commit/客户计费前换下一未尝试凭据，保持请求体不变、不增 token 预算、不伪造许可、不暂停整个渠道。失败尝试以 AttemptOnly 记录真实 input/output/cache/CostUSD，客户 BilledUSD 为 0；最终全部失败返回安全 502。严格 stage1 的全部尝试共享 120 秒 deadline，客户端更早取消优先；API-key 和 OAuth 的超时/取消均在 commit 前处理，不惩罚凭据。OAuth 仅收口 deadline/读取失败，本次不新增其空响应重试。回归见 `mimicry/claude_monitor_response_test.go` 和两网关 `claude_monitor_response_test.go`。
+`CheckClaudeSecurityMonitorResponse` 在上述请求收到 200 时最多 peek 64KiB+1 字节并完整恢复 reader：只有完整 JSON 的 `stop_reason:max_tokens` 且没有任何非空 text（content 为空、空 text 或仅 thinking）才判为无可解析结果；拒绝、有效 yes/no/severity 文本、未知内容类型、普通请求和超大响应不改。读取错误单独返回，调用方不能把 partial JSON 当作 200。两网关 API-key 在 commit/客户计费前换下一未尝试凭据，保持请求体不变、不增 token 预算、不伪造许可、不暂停整个渠道。失败尝试以 AttemptOnly 记录真实 input/output/cache/CostUSD，客户 BilledUSD 为 0；最终全部失败返回安全 502。严格 stage1 默认全部尝试共享 120 秒 deadline；原始客户端模型为 `claude-sonnet-5`（含 `[1m]`）的已知 native probe 单独使用 55 秒总预算和每次 API-key 20 秒预算，覆盖等待 headers 和完整 body。单次超时仍用原请求换下一凭据，记录 `classifier_attempt_timeout`、不扣客户费用、不惩罚渠道；总预算耗尽返回 504。其他模型（包括实测需超过 20 秒的 Opus 备用分类器）保持 120 秒且不加单次限制，客户端更早取消优先；API-key 和 OAuth 的超时/取消均在 commit 前处理，不惩罚凭据。OAuth 仅收口 deadline/读取失败，本次不新增其空响应重试。回归见 `mimicry/claude_monitor_response_test.go` 和两网关 `claude_monitor_response_test.go`。
 
 Security-monitor 辅助请求可能没有普通 billing block。识别要求固定开头、至少 10,000 字节以及一整套标记；兼容 sub2api 2.1.220 样本规则和本机官方 Claude Code 2.1.291 静态模板规则（后者使用粗体 HARD/SOFT BLOCK 标签）。这只是请求形状识别，不证明调用方可信或命令安全。无 billing 的受限路径仍验证唯一 JSON 字段、非空模型/messages、metadata 身份、账号/session 绑定、prepared 摘要及原始 beta；只替换 `metadata.user_id`，不触碰 system/cache/messages，`BillingVerified()` 返回 false。带 billing 的请求继续原有严格 billing 校验。
 
@@ -774,3 +774,5 @@ WS 中继会把下游客户端的 `response.create` 帧转发给上游。逐字�
 ## 相关页面
 
 [Crack](Crack) · [Sidecar](Sidecar) · [Auth-Pool](Auth-Pool)
+
+已知 Sonnet probe 的最终 SDK 可重试错误（408/409/429/5xx）由网关本地设置 `X-Should-Retry: false` 并清除 `Retry-After` / `Retry-After-Ms`，只在实际提交响应时生效；普通请求和成功响应不变。依据本地官方 CLI 2.1.291 源码：SDK 在状态码/退避之前尊重该 header，classifier 外层 `_no_retry` 结束重试并可进入真实备用分类器。dispatch 层仍可能有一次重发，故不承诺绝对零重发；不会伪造 allow 或替换模型。回归覆盖 Gin 延迟提交、所有 retryable 状态、真实 20 秒 transport/body 超时及凭据轮换。
