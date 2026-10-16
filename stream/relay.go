@@ -36,6 +36,12 @@ type RelayOptions struct {
 	// inspects payload contents.
 	Next func() (out []byte, terminal bool, err error)
 
+	// StopOnTerminal returns after emitting a complete terminal chunk, without
+	// asking Next for another chunk or waiting for the upstream transport EOF.
+	// Next must have emitted the entire terminal frame (including its delimiter)
+	// before reporting terminal. Off by default for callers that drain trailers.
+	StopOnTerminal bool
+
 	// Commit is invoked exactly once, under the write lock, immediately before
 	// the first byte is written downstream. Use it to commit response headers
 	// lazily so a break before any output can be retried by the caller. May be
@@ -187,6 +193,9 @@ func Relay(w io.Writer, flush func(), opt RelayOptions) (res RelayResult) {
 				res.Err = io.ErrUnexpectedEOF
 			}
 			// Wait for the keepalive writer before copying the result to the caller.
+			return
+		}
+		if terminal && opt.StopOnTerminal {
 			return
 		}
 	}

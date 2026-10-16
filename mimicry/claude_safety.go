@@ -69,6 +69,14 @@ var claudeSecurityMonitorCurrentMarkers = []string{
 	"<block>yes</block>", "<block>no</block>",
 }
 
+// Current severity mode replaces only the Output Format section of the block
+// profile. Require its exact output instructions as well as every shared heading.
+var claudeSecurityMonitorSeverityMarkers = append(
+	append([]string(nil), claudeSecurityMonitorCurrentMarkers[:len(claudeSecurityMonitorCurrentMarkers)-2]...),
+	"Output <severity>N</severity> where N is an integer 0-100 and 50 is exactly the allow/block boundary under the rules above.",
+	"Do NOT include a <category> tag when no BLOCK rule matches.",
+)
+
 func hasSecurityMonitorMarkers(text string, markers []string) bool {
 	for _, marker := range markers {
 		if !strings.Contains(text, marker) {
@@ -91,7 +99,7 @@ func isClaudeSecurityMonitorSystem(raw json.RawMessage) bool {
 		if block.Type != "text" || len(block.Text) < 10000 || !strings.HasPrefix(block.Text, claudeSecurityMonitorPrefix) {
 			continue
 		}
-		if hasSecurityMonitorMarkers(block.Text, claudeSecurityMonitorMarkers) || hasSecurityMonitorMarkers(block.Text, claudeSecurityMonitorCurrentMarkers) {
+		if hasSecurityMonitorMarkers(block.Text, claudeSecurityMonitorMarkers) || hasSecurityMonitorMarkers(block.Text, claudeSecurityMonitorCurrentMarkers) || hasSecurityMonitorMarkers(block.Text, claudeSecurityMonitorSeverityMarkers) {
 			matches++
 		}
 	}

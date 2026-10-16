@@ -46,6 +46,8 @@
 - `err == io.EOF` 且**未见终止事件** → `res.Err = io.ErrUnexpectedEOF`（流被截断）；
 - `err == io.EOF` 且已见终止事件 → `res.Err = nil`（干净结束）。
 
+**完整终止帧后返回**：`RelayOptions.StopOnTerminal` 默认 `false`，保留继续读取到 EOF 的行为（包括现有 Codex 调用）。Anthropic 调用方设为 `true`，并且只有在完整 `message_stop` / `error` 帧的空行分隔符已经输出时才让 `Next` 返回 `terminal=true`；不能在第一条 `data:` 行就停止。这样保留所有帧内容、换行和之前的 usage / safeguards 数据，也不会因为上游发送终止帧后保持 HTTP 连接而再次阻塞读取。返回后调用方仍负责关闭上游 body。终止帧缺少空行、在 EOF 前尚未完整结束时，仍按截断处理；`error` 帧的业务失败状态由调用方单独记录。回归见 `stream/relay_terminal_test.go`，两应用的 `anthropic_terminal_frame_test.go` 使用不关闭的 `io.Pipe` 验证完整帧后及时返回。
+
 `Relay` 从不解析 payload：分帧、模型名改写、用量累计、终止判定全在调用方的 `Next` 闭包里。
 
 ```mermaid

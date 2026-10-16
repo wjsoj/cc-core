@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.147 — complete Claude streams and retry unusable short classifiers
+
+- Add opt-in stream termination after a complete terminal event, allowing Anthropic gateways to finish without waiting for an upstream connection to close; existing relay consumers retain the default behavior.
+- Recognize the official severity monitor profile and preserve its prompt, token budget, disabled thinking and stop sequence during OAuth identity rewrite.
+- Expose a bounded response check for strict short classifiers that return no text at max_tokens, preserving valid denials and unfamiliar responses without manufacturing approvals.
+- Gateway regressions cover failover across credentials, unchanged request bytes, safe exhausted errors, observed failed-attempt usage without customer billing, and shared deadlines that never commit partial JSON or penalize channels.
+
 ## v0.8.146 — preserve Claude safeguards capability fallback
 
 - Recognize explicit HTTP 400 rejections of safeguards or the dangerous-tool-use beta and emit a fixed native invalid_request_error with the capability name.
