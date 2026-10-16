@@ -92,6 +92,7 @@ func ApplyClaudeCodeHeaders(req *http.Request, token, kind string, stream, isAnt
 	} else {
 		req.Header.Set("Anthropic-Beta", ClaudeAnthropicBetaFull)
 	}
+	EnsureClaudeSafeguardsBeta(req.Header, body)
 	if isAnthropicBase {
 		ensureHeader(req.Header, "Anthropic-Dangerous-Direct-Browser-Access", "true")
 	}

@@ -173,7 +173,7 @@ func ClassifyClaudeCodeRequest(body []byte) RequestClass {
 	if err := json.Unmarshal(body, &obj); err != nil || obj == nil {
 		return RequestClassUnknown
 	}
-	if systemHasBillingBlock(obj["system"]) || hasClaudeCodeSystemPrefix(obj["system"]) {
+	if systemHasBillingBlock(obj["system"]) || hasClaudeCodeSystemPrefix(obj["system"]) || isClaudeSecurityMonitorSystem(obj["system"]) {
 		return RequestClassGenuine
 	}
 	return RequestClassGeneric
@@ -267,6 +267,13 @@ func transformGenuineRewrite(body []byte, id SimIdentity, policy RequestPolicy, 
 		return BodyTransformResult{}, fmt.Errorf("rewrite requires a genuine source session: %w", err)
 	}
 	targetSession := SessionIDForSource(id, source.SessionID)
+	if isUnbilledClaudeSecurityMonitor(body) {
+		out, err := rewriteUnbilledClaudeSecurityMonitor(body, id, targetSession)
+		if err != nil {
+			return BodyTransformResult{}, err
+		}
+		return newBodyTransformResult(out, policy, id, credentialKind, targetSession, true, false, source.ExtraMetadataKeys), nil
+	}
 	out, err := rewriteGenuineIdentity(body, id, targetSession)
 	if err != nil {
 		return BodyTransformResult{}, err
@@ -411,6 +418,7 @@ func ApplyClaudeCodePreparedRequest(req *http.Request, credentialToken, credenti
 	if req.Header == nil {
 		req.Header = make(http.Header)
 	}
+	declaredBetas := strings.Join(req.Header.Values("Anthropic-Beta"), ",")
 
 	switch result.policy.class {
 	case RequestClassGeneric:
@@ -461,6 +469,11 @@ func ApplyClaudeCodePreparedRequest(req *http.Request, credentialToken, credenti
 	default:
 		return errors.New("invalid prepared request class")
 	}
+	if claudeHasSafeguards(result.body) {
+		// Generic profile pinning must not erase the caller's safety features.
+		req.Header.Set("Anthropic-Beta", appendMissingClaudeBetas(req.Header.Get("Anthropic-Beta"), declaredBetas))
+		EnsureClaudeSafeguardsBeta(req.Header, result.body)
+	}
 	installPreparedBody(req, result.body)
 	return nil
 }
@@ -510,7 +523,11 @@ func validatePreparedResult(result BodyTransformResult) error {
 		if !metadataMatchesIdentity(result.body, result.identity, result.sessionID) {
 			return errors.New("prepared rewrite metadata no longer matches its account identity")
 		}
-		if err := verifyRewrittenBilling(result.body); err != nil {
+		if !result.billingVerified {
+			if err := validateUnbilledClaudeSecurityMonitor(result.body); err != nil {
+				return fmt.Errorf("prepared security monitor validation failed: %w", err)
+			}
+		} else if err := verifyRewrittenBilling(result.body); err != nil {
 			return fmt.Errorf("prepared rewrite billing verification failed: %w", err)
 		}
 	}

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.8.145 — Claude Code auto-mode protocol compatibility
+
+- Negotiate the dangerous-tool-use beta when a request carries safeguards, including direct API-key relays.
+- Preserve old and current security-monitor prompts and their cache blocks; narrowly support monitors without a billing block while retaining prepared-request identity and integrity checks.
+- Preserve upstream classifier results, unknown fields and tool IDs in JSON and SSE; never synthesize an approval.
+- Expose a conservative model-capability check so gateways can return Anthropic not_found_error for statically unsupported models without confusing temporary account outages with model absence.
+- Cover protocol negotiation, identity binding, transparent responses and model/group boundaries with regression tests.
+
 ## v0.8.144 — GPT-6.1 Sol API support
 
 - Add the official Standard price: input $2, output $10, cache read $0.10, cache write $2.50 per million tokens.
