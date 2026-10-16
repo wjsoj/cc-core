@@ -32,6 +32,8 @@
 
 `mimicry.EnsureClaudeSafeguardsBeta(http.Header, []byte)`（`mimicry/claude_safety.go:46`）在请求包含顶层 `safeguards` 时补上 `dangerous-tool-use-2026-09-03`，保留调用方已有的 beta，重复调用不重复添加。它不修改请求体，也不生成审批结果。直接 API-key relay 应在发送前调用；`ApplyClaudeCodeHeaders` 和 prepared 管线已接入。普通无 safeguards 请求维持原策略。
 
+HTTP 400 能力协商错误由 `downstream.IsClaudeSafeguardsUnsupported` / `ScrubHTTPErrorPayload` 识别：仅当上游明确拒绝顶层 `safeguards` 参数或 `dangerous-tool-use` beta 的支持能力，输出固定 `invalid_request_error` 与 `The safeguards parameter is not supported by this upstream.`。官方客户端的原生 fallback 需要 400 消息保留 safeguards 语义；hypitoken 的统一错误分类原先会抹除它，OAuth 和 API-key 两支均受影响。固定结构不回显上游 key、URL、账号、request ID 或额外字段。401/403/5xx、普通字段格式校验、缺少 verdict、超时和拒绝结果不进入该分支，不合成通过结果；其他错误仍走原有策略。共享回归位于 `downstream/claude_error_test.go`，两网关 `claude_safeguards_error_test.go` 用本地模拟上游覆盖 OAuth/API-key 与流式/非流式 400。
+
 Security-monitor 辅助请求可能没有普通 billing block。识别要求固定开头、至少 10,000 字节以及一整套标记；兼容 sub2api 2.1.220 样本规则和本机官方 Claude Code 2.1.291 静态模板规则（后者使用粗体 HARD/SOFT BLOCK 标签）。这只是请求形状识别，不证明调用方可信或命令安全。无 billing 的受限路径仍验证唯一 JSON 字段、非空模型/messages、metadata 身份、账号/session 绑定、prepared 摘要及原始 beta；只替换 `metadata.user_id`，不触碰 system/cache/messages，`BillingVerified()` 返回 false。带 billing 的请求继续原有严格 billing 校验。
 
 证据类型：2.1.291 协议来自本地官方可执行文件的静态源码，未发真实请求，不是生产抓包或免费计费验证。该源码发送 `safeguards[{type:"dangerous_tool_use",classifier_context:...}]`，读取 `message_delta.delta.safeguard_results`；`auto-mode-classifier-2026-07-16` 是 beta，并非模型名。代理必须保留真实结果及 tool-use ID，不能伪造 `not_flagged`。回归见 `mimicry/claude_safety_test.go`、`downstream/claude_safety_test.go`，覆盖拒绝、允许、不支持、不可用、未知及缺失结果的透明传递。

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.146 — preserve Claude safeguards capability fallback
+
+- Recognize explicit HTTP 400 rejections of safeguards or the dangerous-tool-use beta and emit a fixed native invalid_request_error with the capability name.
+- Let Claude Code perform its supported local-classifier fallback without exposing upstream diagnostics, identifiers or credentials.
+- Exclude ordinary validation errors, absent verdicts, authentication failures and transient errors; preserve all other existing error handling.
+- Verify OAuth and API-key gateway paths with streaming and non-streaming mock-upstream regressions.
+
 ## v0.8.145 — Claude Code auto-mode protocol compatibility
 
 - Negotiate the dangerous-tool-use beta when a request carries safeguards, including direct API-key relays.
